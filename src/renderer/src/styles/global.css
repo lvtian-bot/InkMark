@@ -60,3 +60,11 @@ body {
   padding: 4px 8px; border-radius: 6px; transition: background 0.15s;
 }
 .titlebar-btn:hover { background: var(--bg-tertiary); }
+
+.titlebar-actions { display: flex; align-items: center; gap: 2px; margin-left: 12px; }
+.titlebar-action-btn {
+  background: none; border: none; cursor: pointer; font-size: 12px;
+  padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
+  transition: background 0.12s, color 0.12s; -webkit-app-region: no-drag;
+}
+.titlebar-action-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }

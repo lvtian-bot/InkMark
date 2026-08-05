@@ -3,13 +3,27 @@ interface TitleBarProps {
   isDirty: boolean
   theme: 'light' | 'dark'
   onToggleTheme: () => void
+  onNew: () => void
+  onOpen: () => void
+  onSave: () => void
 }
 
-export function TitleBar({ fileName, isDirty, theme, onToggleTheme }: TitleBarProps) {
+export function TitleBar({ fileName, isDirty, theme, onToggleTheme, onNew, onOpen, onSave }: TitleBarProps) {
   return (
     <header className="titlebar">
       <div className="titlebar-left">
         <span className="titlebar-app-name">InkMark</span>
+        <div className="titlebar-actions">
+          <button className="titlebar-action-btn" onClick={onNew} title={'\u65b0\u5efa (Ctrl+N)'}>
+            {'\u65b0\u5efa'}
+          </button>
+          <button className="titlebar-action-btn" onClick={onOpen} title={'\u6253\u5f00 (Ctrl+O)'}>
+            {'\u6253\u5f00'}
+          </button>
+          <button className="titlebar-action-btn" onClick={onSave} title={'\u4fdd\u5b58 (Ctrl+S)'}>
+            {'\u4fdd\u5b58'}
+          </button>
+        </div>
       </div>
       <div className="titlebar-center">
         {isDirty && <span className="titlebar-dirty">{'\u2022'}</span>}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import { MilkdownProvider } from '@milkdown/react'
 import { Editor } from './components/Editor'
 import { Outline } from './components/Outline'
@@ -71,6 +71,9 @@ function AppContent() {
         isDirty={isDirty}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onNew={() => { void fileOps.newFile() }}
+        onOpen={() => { void fileOps.openFile() }}
+        onSave={() => { void fileOps.save() }}
       />
       <div className="app-body">
         <Outline />
