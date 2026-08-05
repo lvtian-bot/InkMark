@@ -2,18 +2,30 @@ interface TitleBarProps {
   fileName: string
   isDirty: boolean
   theme: 'light' | 'dark'
+  outlineVisible: boolean
+  onToggleOutline: () => void
   onToggleTheme: () => void
   onNew: () => void
   onOpen: () => void
   onSave: () => void
 }
 
-export function TitleBar({ fileName, isDirty, theme, onToggleTheme, onNew, onOpen, onSave }: TitleBarProps) {
+export function TitleBar({
+  fileName, isDirty, theme, outlineVisible,
+  onToggleOutline, onToggleTheme, onNew, onOpen, onSave
+}: TitleBarProps) {
   return (
     <header className="titlebar">
       <div className="titlebar-left">
         <span className="titlebar-app-name">InkMark</span>
         <div className="titlebar-actions">
+          <button
+            className={`titlebar-action-btn ${outlineVisible ? 'active' : ''}`}
+            onClick={onToggleOutline}
+            title={'\u5927\u7eb2'}
+          >
+            {'\u2630'}
+          </button>
           <button className="titlebar-action-btn" onClick={onNew} title={'\u65b0\u5efa (Ctrl+N)'}>
             {'\u65b0\u5efa'}
           </button>

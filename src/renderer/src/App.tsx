@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { MilkdownProvider } from '@milkdown/react'
 import { Editor } from './components/Editor'
 import { Outline } from './components/Outline'
@@ -14,6 +14,10 @@ function AppContent() {
   const { outline, updateOutline } = useOutline()
   const fileName = useStore((s) => s.fileName)
   const isDirty = useStore((s) => s.isDirty)
+  const outlineWidth = useStore((s) => s.outlineWidth)
+  const outlineVisible = useStore((s) => s.outlineVisible)
+  const setOutlineWidth = useStore((s) => s.setOutlineWidth)
+  const setOutlineVisible = useStore((s) => s.setOutlineVisible)
 
   const getMarkdown = useCallback(() => editorHandle.current?.getMarkdown() ?? '', [])
   const setMarkdown = useCallback((md: string) => editorHandle.current?.setMarkdown(md), [])
@@ -28,6 +32,34 @@ function AppContent() {
     [fileOps, updateOutline]
   )
 
+  const [isResizing, setIsResizing] = useState(false)
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsResizing(true)
+  }, [])
+
+  useEffect(() => {
+    if (!isResizing) return
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.min(500, Math.max(150, e.clientX))
+      setOutlineWidth(newWidth)
+    }
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+  }, [isResizing, setOutlineWidth])
+
   useEffect(() => {
     window.inkmark.onMenuNew(() => { void fileOps.newFile() })
     window.inkmark.onMenuOpen(() => { void fileOps.openFile() })
@@ -35,6 +67,7 @@ function AppContent() {
     window.inkmark.onMenuSaveAs(() => { void fileOps.saveAs() })
     window.inkmark.onMenuToggleTheme(() => toggleTheme())
     window.inkmark.onMenuClose(() => { void fileOps.handleClose() })
+    window.inkmark.onOpenFilePath((path: string) => { void fileOps.openFilePath(path) })
   }, [fileOps, toggleTheme])
 
   useEffect(() => {
@@ -65,18 +98,27 @@ function AppContent() {
   }, [fileName, isDirty])
 
   return (
-    <div className="app">
+    <div className={`app ${isResizing ? 'resizing' : ''}`}>
       <TitleBar
         fileName={fileName}
         isDirty={isDirty}
         theme={theme}
+        outlineVisible={outlineVisible}
+        onToggleOutline={() => setOutlineVisible(!outlineVisible)}
         onToggleTheme={toggleTheme}
         onNew={() => { void fileOps.newFile() }}
         onOpen={() => { void fileOps.openFile() }}
         onSave={() => { void fileOps.save() }}
       />
       <div className="app-body">
-        <Outline />
+        {outlineVisible && (
+          <>
+            <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
+              <Outline />
+            </div>
+            <div className="resize-handle" onMouseDown={handleResizeStart} />
+          </>
+        )}
         <main className="editor-main">
           <Editor onDocChange={handleDocChange} />
         </main>

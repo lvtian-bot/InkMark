@@ -49,6 +49,20 @@
       "target": [
         "nsis"
       ]
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown",
+        "role": "Editor",
+        "description": "Markdown File"
+      },
+      {
+        "ext": "markdown",
+        "name": "Markdown",
+        "role": "Editor",
+        "description": "Markdown File"
+      }
+    ]
   }
 }

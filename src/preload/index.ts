@@ -8,6 +8,9 @@ const api = {
     ipcRenderer.invoke('dialog:saveFileAs', { content }),
   openFilePath: (path: string) =>
     ipcRenderer.invoke('file:read', { path }),
+  onOpenFilePath: (cb: (path: string) => void) => {
+    ipcRenderer.on('file:open-path', (_event, path: string) => cb(path))
+  },
   onMenuNew: (cb: () => void) => {
     ipcRenderer.on('menu:new', () => cb())
   },

@@ -9,7 +9,6 @@
   --accent: #5b8def;
   --accent-hover: #4a7de0;
   --titlebar-height: 40px;
-  --outline-width: 240px;
   --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
   --editor-max-width: 780px;
@@ -35,6 +34,9 @@ body {
   user-select: none;
 }
 .app { display: flex; flex-direction: column; height: 100vh; }
+.app.resizing { cursor: col-resize; }
+.app.resizing * { user-select: none !important; pointer-events: none !important; }
+.app.resizing .resize-handle { pointer-events: auto !important; }
 .app-body { display: flex; flex: 1; overflow: hidden; }
 .editor-main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 .titlebar {
@@ -60,11 +62,18 @@ body {
   padding: 4px 8px; border-radius: 6px; transition: background 0.15s;
 }
 .titlebar-btn:hover { background: var(--bg-tertiary); }
-
-.titlebar-actions { display: flex; align-items: center; gap: 2px; margin-left: 12px; }
+.titlebar-actions { display: flex; align-items: center; gap: 2px; margin-left: 8px; }
 .titlebar-action-btn {
   background: none; border: none; cursor: pointer; font-size: 12px;
   padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
   transition: background 0.12s, color 0.12s; -webkit-app-region: no-drag;
 }
 .titlebar-action-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.titlebar-action-btn.active { color: var(--accent); background: var(--bg-tertiary); }
+.resize-handle {
+  width: 4px; cursor: col-resize; background: transparent;
+  flex-shrink: 0; position: relative; z-index: 10;
+  transition: background 0.15s;
+}
+.resize-handle:hover { background: var(--accent); }
+.app.resizing .resize-handle { background: var(--accent); }

@@ -4,6 +4,33 @@ import { readFileSync, writeFileSync } from 'fs'
 
 let mainWindow: BrowserWindow | null = null
 let forceClose = false
+let pendingFilePath: string | null = null
+
+function getFileFromArgs(argv: string[]): string | null {
+  for (let i = 1; i < argv.length; i++) {
+    const arg = argv[i]
+    if (!arg.startsWith('-') && !arg.startsWith('--') && /\.(md|markdown|txt)$/i.test(arg)) {
+      return arg
+    }
+  }
+  return null
+}
+
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const filePath = getFileFromArgs(argv)
+    if (mainWindow) {
+      if (filePath) {
+        mainWindow.webContents.send('file:open-path', filePath)
+      }
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -26,6 +53,13 @@ function createWindow(): void {
     mainWindow?.show()
   })
 
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (pendingFilePath) {
+      mainWindow?.webContents.send('file:open-path', pendingFilePath)
+      pendingFilePath = null
+    }
+  })
+
   mainWindow.on('close', (e) => {
     if (!forceClose) {
       e.preventDefault()
@@ -45,37 +79,17 @@ function createMenu(): void {
     {
       label: '\u6587\u4ef6',
       submenu: [
-        {
-          label: '\u65b0\u5efa',
-          accelerator: 'CmdOrCtrl+N',
-          click: () => mainWindow?.webContents.send('menu:new')
-        },
-        {
-          label: '\u6253\u5f00...',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => mainWindow?.webContents.send('menu:open')
-        },
+        { label: '\u65b0\u5efa', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('menu:new') },
+        { label: '\u6253\u5f00...', accelerator: 'CmdOrCtrl+O', click: () => mainWindow?.webContents.send('menu:open') },
         { type: 'separator' },
-        {
-          label: '\u4fdd\u5b58',
-          accelerator: 'CmdOrCtrl+S',
-          click: () => mainWindow?.webContents.send('menu:save')
-        },
-        {
-          label: '\u53e6\u5b58\u4e3a...',
-          accelerator: 'CmdOrCtrl+Shift+S',
-          click: () => mainWindow?.webContents.send('menu:saveAs')
-        }
+        { label: '\u4fdd\u5b58', accelerator: 'CmdOrCtrl+S', click: () => mainWindow?.webContents.send('menu:save') },
+        { label: '\u53e6\u5b58\u4e3a...', accelerator: 'CmdOrCtrl+Shift+S', click: () => mainWindow?.webContents.send('menu:saveAs') }
       ]
     },
     {
       label: '\u89c6\u56fe',
       submenu: [
-        {
-          label: '\u5207\u6362\u4e3b\u9898',
-          accelerator: 'CmdOrCtrl+Shift+T',
-          click: () => mainWindow?.webContents.send('menu:toggleTheme')
-        },
+        { label: '\u5207\u6362\u4e3b\u9898', accelerator: 'CmdOrCtrl+Shift+T', click: () => mainWindow?.webContents.send('menu:toggleTheme') },
         { type: 'separator' },
         { label: '\u653e\u5927', role: 'zoomIn' },
         { label: '\u7f29\u5c0f', role: 'zoomOut' },
@@ -89,14 +103,14 @@ function createMenu(): void {
       ]
     }
   ]
-  const menu = Menu.buildFromTemplate(template)
-  Menu.setApplicationMenu(menu)
+  Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 app.whenReady().then(() => {
   createMenu()
   createWindow()
-
+  pendingFilePath = getFileFromArgs(process.argv)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

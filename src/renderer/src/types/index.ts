@@ -15,6 +15,7 @@ export interface InkMarkAPI {
   saveFile: (content: string, path: string) => Promise<void>
   saveFileAs: (content: string) => Promise<string | null>
   openFilePath: (path: string) => Promise<FileResult>
+  onOpenFilePath: (cb: (path: string) => void) => void
   onMenuNew: (cb: () => void) => void
   onMenuOpen: (cb: () => void) => void
   onMenuSave: (cb: () => void) => void
