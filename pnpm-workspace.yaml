@@ -1,4 +1,0 @@
-allowBuilds:
-  esbuild: set this to true or false
-minimumReleaseAgeExclude:
-  - electron@43.3.0

@@ -5,15 +5,15 @@ A beautiful Markdown editor for everyday documents.
 ## 开发
 
 ```bash
-pnpm install
-pnpm dev
+npm install
+npm run dev
 ```
 
 ## 构建
 
 ```bash
-pnpm build
-pnpm build:win
+npm run build
+npm run build:win
 ```
 
 ## 快捷键
