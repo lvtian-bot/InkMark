@@ -1,0 +1,62 @@
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f8;
+  --bg-tertiary: #ececee;
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b6b6b;
+  --text-tertiary: #9a9a9a;
+  --border-color: #e2e2e4;
+  --accent: #5b8def;
+  --accent-hover: #4a7de0;
+  --titlebar-height: 40px;
+  --outline-width: 240px;
+  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+  --editor-max-width: 780px;
+}
+[data-theme='dark'] {
+  --bg-primary: #1e1e2e;
+  --bg-secondary: #181825;
+  --bg-tertiary: #11111b;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-tertiary: #7f849c;
+  --border-color: #313244;
+  --accent: #89b4fa;
+  --accent-hover: #74a0f7;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body, #root { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-family);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+.app { display: flex; flex-direction: column; height: 100vh; }
+.app-body { display: flex; flex: 1; overflow: hidden; }
+.editor-main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.titlebar {
+  height: var(--titlebar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  -webkit-app-region: drag;
+}
+.titlebar-left, .titlebar-right { display: flex; align-items: center; gap: 8px; -webkit-app-region: no-drag; }
+.titlebar-center {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; -webkit-app-region: drag;
+}
+.titlebar-app-name { font-size: 13px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.5px; }
+.titlebar-filename { font-size: 13px; color: var(--text-primary); }
+.titlebar-dirty { color: var(--accent); font-size: 16px; line-height: 1; }
+.titlebar-btn {
+  background: none; border: none; cursor: pointer; font-size: 16px;
+  padding: 4px 8px; border-radius: 6px; transition: background 0.15s;
+}
+.titlebar-btn:hover { background: var(--bg-tertiary); }

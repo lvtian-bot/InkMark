@@ -1,0 +1,52 @@
+{
+  "name": "inkmark",
+  "version": "1.0.0",
+  "description": "A beautiful Markdown editor for everyday documents",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "build:win": "electron-vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "@milkdown/kit": "^7.22.0",
+    "@milkdown/react": "^7.22.0",
+    "@milkdown/theme-nord": "^7.22.0",
+    "@milkdown/plugin-listener": "^7.22.0",
+    "@milkdown/plugin-prism": "^7.22.0",
+    "@milkdown/plugin-slash": "^7.22.0",
+    "@milkdown/plugin-block": "^7.22.0",
+    "@milkdown/plugin-tooltip": "^7.22.0",
+    "@milkdown/plugin-clipboard": "^7.22.0",
+    "@milkdown/plugin-upload": "^7.22.0",
+    "prosemirror-state": "^1.4.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/node": "^22.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "electron": "^43.3.0",
+    "electron-builder": "^25.0.0",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.5.0",
+    "vite": "^6.0.0"
+  },
+  "build": {
+    "appId": "com.inkmark.app",
+    "productName": "InkMark",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "win": {
+      "target": ["nsis"]
+    }
+  }
+}
