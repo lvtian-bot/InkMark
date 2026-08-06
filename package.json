@@ -1,6 +1,6 @@
 {
   "name": "inkmark",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "A beautiful Markdown editor for everyday documents",
   "main": "./out/main/index.js",
   "scripts": {
