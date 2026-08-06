@@ -1,7 +1,7 @@
 {
   "name": "inkmark",
   "version": "0.0.1",
-  "description": "A beautiful Markdown editor for everyday documents",
+  "description": "InkMark",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -40,7 +40,8 @@
     "appId": "com.inkmark.app",
     "productName": "InkMark",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*"
@@ -48,20 +49,23 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.png"
     },
     "fileAssociations": [
       {
         "ext": "md",
-        "name": "Markdown",
+        "name": "InkMark.Markdown",
         "role": "Editor",
-        "description": "Markdown File"
+        "description": "InkMark Markdown 文档",
+        "icon": "build/fileicon-md.ico"
       },
       {
         "ext": "markdown",
-        "name": "Markdown",
+        "name": "InkMark.Markdown",
         "role": "Editor",
-        "description": "Markdown File"
+        "description": "InkMark Markdown 文档",
+        "icon": "build/fileicon-md.ico"
       }
     ]
   }

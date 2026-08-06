@@ -1,6 +1,6 @@
 # InkMark
 
-A beautiful Markdown editor for everyday documents.
+一个 Markdown 编辑器，打开 .md 文件直接编辑，所见即所得。
 
 ## 开发
 
@@ -32,3 +32,11 @@ npm run build:win
 - Milkdown 7 (WYSIWYG Markdown 编辑器)
 - electron-vite 5 (构建工具)
 - Zustand 5 (状态管理)
+
+## 致谢
+
+InkMark 基于众多开源项目构建，感谢所有依赖库的贡献者。完整依赖列表见 [package.json](./package.json)。
+
+## 协议
+
+[MIT](./LICENSE)

@@ -1,10 +1,47 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
 import { join } from 'path'
-import { readFileSync, writeFileSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 
 let mainWindow: BrowserWindow | null = null
 let forceClose = false
 let pendingFilePath: string | null = null
+
+// ===== Window state persistence =====
+interface WindowState {
+  x?: number
+  y?: number
+  width: number
+  height: number
+  isMaximized: boolean
+}
+
+function getWindowStatePath(): string {
+  return join(app.getPath('userData'), 'window-state.json')
+}
+
+function loadWindowState(): WindowState {
+  try {
+    const statePath = getWindowStatePath()
+    if (existsSync(statePath)) {
+      return JSON.parse(readFileSync(statePath, 'utf-8'))
+    }
+  } catch {}
+  return { width: 1200, height: 800, isMaximized: false }
+}
+
+function saveWindowState(win: BrowserWindow): void {
+  try {
+    const bounds = win.getBounds()
+    const state: WindowState = {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      isMaximized: win.isMaximized()
+    }
+    writeFileSync(getWindowStatePath(), JSON.stringify(state))
+  } catch {}
+}
 
 function getFileFromArgs(argv: string[]): string | null {
   for (let i = 1; i < argv.length; i++) {
@@ -33,9 +70,13 @@ if (!gotLock) {
 }
 
 function createWindow(): void {
+  const savedState = loadWindowState()
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: savedState.width,
+    height: savedState.height,
+    ...(savedState.x !== undefined && savedState.y !== undefined
+      ? { x: savedState.x, y: savedState.y }
+      : {}),
     minWidth: 800,
     minHeight: 600,
     show: false,
@@ -48,6 +89,10 @@ function createWindow(): void {
       sandbox: false
     }
   })
+
+  if (savedState.isMaximized) {
+    mainWindow.maximize()
+  }
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
@@ -64,6 +109,8 @@ function createWindow(): void {
     if (!forceClose) {
       e.preventDefault()
       mainWindow?.webContents.send('menu:close')
+    } else {
+      if (mainWindow) saveWindowState(mainWindow)
     }
   })
 

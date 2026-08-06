@@ -17,7 +17,6 @@ export function TitleBar({
   return (
     <header className="titlebar">
       <div className="titlebar-left">
-        <span className="titlebar-app-name">InkMark</span>
         <div className="titlebar-actions">
           <button
             className={`titlebar-action-btn ${outlineVisible ? 'active' : ''}`}
