@@ -1,29 +1,53 @@
 import { create } from 'zustand'
 import type { Heading, ContentTheme } from '../types'
 
-interface InkMarkState {
+export interface Tab {
+  id: string
   filePath: string | null
   fileName: string
   isDirty: boolean
-  theme: 'light' | 'dark'
-  contentTheme: ContentTheme
   outline: Heading[]
-  outlineWidth: number
-  outlineVisible: boolean
   wordCount: number
   charCount: number
+  sourceContent: string
+  scrollTop: number
+}
+
+interface InkMarkState {
+  tabs: Tab[]
+  activeTabId: string
+
+  filePath: string | null
+  fileName: string
+  isDirty: boolean
+  outline: Heading[]
+  wordCount: number
+  charCount: number
+
+  theme: 'light' | 'dark'
+  contentTheme: ContentTheme
+  outlineWidth: number
+  outlineVisible: boolean
   viewMode: 'wysiwyg' | 'source'
+
+  addTab: (init?: { filePath?: string | null; content?: string }) => string
+  closeTab: (id: string) => void
+  setActiveTab: (id: string) => void
+  updateTab: (id: string, updates: Partial<Omit<Tab, 'id'>>) => void
+
   setFilePath: (path: string | null) => void
   setDirty: (dirty: boolean) => void
+  setOutline: (outline: Heading[]) => void
+  setWordCount: (words: number, chars: number) => void
+  setSourceContent: (content: string) => void
+  setScrollTop: (top: number) => void
+
   setTheme: (theme: 'light' | 'dark') => void
   setContentTheme: (theme: ContentTheme) => void
-  setOutline: (headings: Heading[]) => void
   setOutlineWidth: (width: number) => void
   setOutlineVisible: (visible: boolean) => void
-  setWordCount: (words: number, chars: number) => void
   setViewMode: (mode: 'wysiwyg' | 'source') => void
   toggleViewMode: () => void
-  reset: () => void
 }
 
 const savedTheme = (typeof localStorage !== 'undefined' &&
@@ -40,52 +64,186 @@ const savedOutlineVisible = typeof localStorage !== 'undefined'
   ? localStorage.getItem('inkmark-outline-visible') !== 'false'
   : true
 
-export const useStore = create<InkMarkState>((set) => ({
-  filePath: null,
-  fileName: '\u672a\u547d\u540d',
-  isDirty: false,
+let tabIdCounter = 0
+function nextTabId(): string {
+  return `tab-${Date.now()}-${tabIdCounter++}`
+}
+
+function createTab(init?: { filePath?: string | null; content?: string }): Tab {
+  const filePath = init?.filePath ?? null
+  return {
+    id: nextTabId(),
+    filePath,
+    fileName: filePath ? filePath.split(/[/\\]/).pop()! : '未命名',
+    isDirty: false,
+    outline: [],
+    wordCount: 0,
+    charCount: 0,
+    sourceContent: init?.content ?? '',
+    scrollTop: 0,
+  }
+}
+
+const initialTab = createTab()
+
+export const useStore = create<InkMarkState>((set, get) => ({
+  tabs: [initialTab],
+  activeTabId: initialTab.id,
+
+  filePath: initialTab.filePath,
+  fileName: initialTab.fileName,
+  isDirty: initialTab.isDirty,
+  outline: initialTab.outline,
+  wordCount: initialTab.wordCount,
+  charCount: initialTab.charCount,
+
   theme: savedTheme,
   contentTheme: savedContentTheme,
-  outline: [],
   outlineWidth: savedOutlineWidth,
   outlineVisible: savedOutlineVisible,
-  wordCount: 0,
-  charCount: 0,
   viewMode: 'wysiwyg',
-  setFilePath: (path) =>
+
+  addTab: (init) => {
+    const tab = createTab(init)
     set({
+      tabs: [...get().tabs, tab],
+      activeTabId: tab.id,
+      filePath: tab.filePath,
+      fileName: tab.fileName,
+      isDirty: tab.isDirty,
+      outline: tab.outline,
+      wordCount: tab.wordCount,
+      charCount: tab.charCount,
+    })
+    return tab.id
+  },
+
+  closeTab: (id) => {
+    set((state) => {
+      const idx = state.tabs.findIndex((t) => t.id === id)
+      if (idx === -1) return state
+      const tabs = state.tabs.filter((t) => t.id !== id)
+
+      if (tabs.length === 0) {
+        const newTab = createTab()
+        return {
+          tabs: [newTab],
+          activeTabId: newTab.id,
+          filePath: newTab.filePath,
+          fileName: newTab.fileName,
+          isDirty: newTab.isDirty,
+          outline: newTab.outline,
+          wordCount: newTab.wordCount,
+          charCount: newTab.charCount,
+        }
+      }
+
+      if (id === state.activeTabId) {
+        const newActive = tabs[Math.min(idx, tabs.length - 1)]
+        return {
+          tabs,
+          activeTabId: newActive.id,
+          filePath: newActive.filePath,
+          fileName: newActive.fileName,
+          isDirty: newActive.isDirty,
+          outline: newActive.outline,
+          wordCount: newActive.wordCount,
+          charCount: newActive.charCount,
+        }
+      }
+
+      return { tabs }
+    })
+  },
+
+  setActiveTab: (id) => {
+    set((state) => {
+      const tab = state.tabs.find((t) => t.id === id)
+      if (!tab) return state
+      return {
+        activeTabId: id,
+        filePath: tab.filePath,
+        fileName: tab.fileName,
+        isDirty: tab.isDirty,
+        outline: tab.outline,
+        wordCount: tab.wordCount,
+        charCount: tab.charCount,
+      }
+    })
+  },
+
+  updateTab: (id, updates) => {
+    set((state) => {
+      const tabs = state.tabs.map((t) =>
+        t.id === id ? { ...t, ...updates } : t
+      )
+      if (id === state.activeTabId) {
+        const tab = tabs.find((t) => t.id === id)
+        if (tab) {
+          return {
+            tabs,
+            filePath: tab.filePath,
+            fileName: tab.fileName,
+            isDirty: tab.isDirty,
+            outline: tab.outline,
+            wordCount: tab.wordCount,
+            charCount: tab.charCount,
+          }
+        }
+      }
+      return { tabs }
+    })
+  },
+
+  setFilePath: (path) => {
+    get().updateTab(get().activeTabId, {
       filePath: path,
-      fileName: path ? path.split(/[/\\]/).pop()! : '\u672a\u547d\u540d',
-      isDirty: false
-    }),
-  setDirty: (dirty) => set({ isDirty: dirty }),
+      fileName: path ? path.split(/[/\\]/).pop()! : '未命名',
+      isDirty: false,
+    })
+  },
+
+  setDirty: (dirty) => {
+    get().updateTab(get().activeTabId, { isDirty: dirty })
+  },
+
+  setOutline: (outline) => {
+    get().updateTab(get().activeTabId, { outline })
+  },
+
+  setWordCount: (words, chars) => {
+    get().updateTab(get().activeTabId, { wordCount: words, charCount: chars })
+  },
+
+  setSourceContent: (content) => {
+    get().updateTab(get().activeTabId, { sourceContent: content })
+  },
+
+  setScrollTop: (top) => {
+    get().updateTab(get().activeTabId, { scrollTop: top })
+  },
+
   setTheme: (theme) => {
     localStorage.setItem('inkmark-theme', theme)
     set({ theme })
   },
+
   setContentTheme: (theme) => {
     localStorage.setItem('inkmark-content-theme', theme)
     set({ contentTheme: theme })
   },
-  setOutline: (outline) => set({ outline }),
+
   setOutlineWidth: (width) => {
     localStorage.setItem('inkmark-outline-width', String(width))
     set({ outlineWidth: width })
   },
+
   setOutlineVisible: (visible) => {
     localStorage.setItem('inkmark-outline-visible', String(visible))
     set({ outlineVisible: visible })
   },
-  setWordCount: (words, chars) => set({ wordCount: words, charCount: chars }),
+
   setViewMode: (mode) => set({ viewMode: mode }),
-  toggleViewMode: () => set((s) => ({ viewMode: s.viewMode === 'wysiwyg' ? 'source' : 'wysiwyg' })),
-  reset: () =>
-    set({
-      filePath: null,
-      fileName: '\u672a\u547d\u540d',
-      isDirty: false,
-      outline: [],
-      wordCount: 0,
-      charCount: 0
-    })
+  toggleViewMode: () =>
+    set((s) => ({ viewMode: s.viewMode === 'wysiwyg' ? 'source' : 'wysiwyg' })),
 }))

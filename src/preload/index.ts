@@ -40,6 +40,10 @@ const api = {
     ipcRenderer.removeAllListeners('menu:toggleOutline')
     ipcRenderer.on('menu:toggleOutline', () => cb())
   },
+  onMenuCloseTab: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:closeTab')
+    ipcRenderer.on('menu:closeTab', () => cb())
+  },
   onMenuClose: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:close')
     ipcRenderer.on('menu:close', () => cb())

@@ -1,112 +1,184 @@
 import { useCallback, useRef } from 'react'
 import { useStore } from '../stores/useStore'
+import { editorStateCache } from '../editor-state-cache'
 
 export function useFile(
   getMarkdown: () => string,
-  rawSetMarkdown: (md: string) => void
+  setMarkdown: (md: string) => void,
+  sourceRef: React.RefObject<HTMLTextAreaElement | null>,
+  viewMode: 'wysiwyg' | 'source'
 ) {
-  const filePath = useStore((s) => s.filePath)
+  const tabs = useStore((s) => s.tabs)
+  const activeTabId = useStore((s) => s.activeTabId)
   const fileName = useStore((s) => s.fileName)
   const isDirty = useStore((s) => s.isDirty)
-  const setFilePath = useStore((s) => s.setFilePath)
+  const addTab = useStore((s) => s.addTab)
+  const closeTabStore = useStore((s) => s.closeTab)
+  const setActiveTab = useStore((s) => s.setActiveTab)
+  const updateTab = useStore((s) => s.updateTab)
   const setDirty = useStore((s) => s.setDirty)
-  const reset = useStore((s) => s.reset)
 
   const suppressDirtyRef = useRef(false)
-  const setMarkdown = useCallback((md: string) => {
-    suppressDirtyRef.current = true
-    rawSetMarkdown(md)
-  }, [rawSetMarkdown])
 
-  const stateRef = useRef({ filePath, isDirty, fileName, getMarkdown, setMarkdown })
-  stateRef.current = { filePath, isDirty, fileName, getMarkdown, setMarkdown }
+  const stateRef = useRef({ tabs, activeTabId, getMarkdown, setMarkdown, sourceRef, viewMode })
+  stateRef.current = { tabs, activeTabId, getMarkdown, setMarkdown, sourceRef, viewMode }
 
-  const updateTitle = useCallback(() => {
+  const getTabMarkdown = useCallback((tabId: string): string => {
     const s = stateRef.current
-    const mark = s.isDirty ? '\u2022 ' : ''
-    window.inkmark.setWindowTitle(`${mark}${s.fileName} - InkMark`)
-  }, [])
-
-  const confirmUnsaved = useCallback(async (): Promise<boolean> => {
-    const s = stateRef.current
-    if (!s.isDirty) return true
-
-    const choice = await window.inkmark.confirmDialog(
-      '\u672a\u4fdd\u5b58\u7684\u66f4\u6539',
-      '\u662f\u5426\u4fdd\u5b58\u5f53\u524d\u6587\u4ef6\u7684\u66f4\u6539\uff1f',
-      ['\u4fdd\u5b58', '\u4e0d\u4fdd\u5b58', '\u53d6\u6d88']
-    )
-
-    if (choice === 2) return false
-    if (choice === 0) {
-      await doSave()
+    if (tabId === s.activeTabId) {
+      if (s.viewMode === 'source' && s.sourceRef.current) {
+        return s.sourceRef.current.value
+      }
+      return s.getMarkdown()
     }
-    return true
+    const tab = s.tabs.find((t) => t.id === tabId)
+    return tab?.sourceContent ?? ''
   }, [])
 
-  const doSave = useCallback(async (): Promise<boolean> => {
+  const saveTab = useCallback(async (tabId: string): Promise<boolean> => {
     const s = stateRef.current
-    const md = s.getMarkdown()
-    if (s.filePath) {
-      await window.inkmark.saveFile(md, s.filePath)
-      setDirty(false)
-      updateTitle()
+    const tab = s.tabs.find((t) => t.id === tabId)
+    if (!tab) return false
+
+    const content = getTabMarkdown(tabId)
+
+    if (tab.filePath) {
+      await window.inkmark.saveFile(content, tab.filePath)
+      updateTab(tabId, { isDirty: false })
       return true
     }
-    const newPath = await window.inkmark.saveFileAs(md)
+
+    const newPath = await window.inkmark.saveFileAs(content)
     if (newPath) {
-      setFilePath(newPath)
-      updateTitle()
+      updateTab(tabId, {
+        filePath: newPath,
+        fileName: newPath.split(/[/\\]/).pop()!,
+        isDirty: false,
+      })
       return true
     }
     return false
-  }, [setDirty, setFilePath, updateTitle])
+  }, [getTabMarkdown, updateTab])
+
+  const newFile = useCallback(() => {
+    addTab()
+  }, [addTab])
+
+  const openFile = useCallback(async () => {
+    const result = await window.inkmark.openFileDialog()
+    if (!result) return
+    const s = stateRef.current
+    const existing = s.tabs.find((t) => t.filePath === result.path)
+    if (existing) {
+      setActiveTab(existing.id)
+      return
+    }
+
+    const activeTab = s.tabs.find((t) => t.id === s.activeTabId)
+    if (activeTab && !activeTab.filePath && !activeTab.isDirty && activeTab.sourceContent === '') {
+      suppressDirtyRef.current = true
+      s.setMarkdown(result.content)
+      updateTab(activeTab.id, {
+        filePath: result.path,
+        fileName: result.path.split(/[/\\]/).pop()!,
+        sourceContent: result.content,
+      })
+      return
+    }
+
+    addTab({ filePath: result.path, content: result.content })
+  }, [addTab, setActiveTab, updateTab])
+
+  const openFilePath = useCallback(async (path: string) => {
+    const s = stateRef.current
+    const existing = s.tabs.find((t) => t.filePath === path)
+    if (existing) {
+      setActiveTab(existing.id)
+      return
+    }
+
+    const result = await window.inkmark.openFilePath(path)
+
+    const activeTab = s.tabs.find((t) => t.id === s.activeTabId)
+    if (activeTab && !activeTab.filePath && !activeTab.isDirty && activeTab.sourceContent === '') {
+      suppressDirtyRef.current = true
+      s.setMarkdown(result.content)
+      updateTab(activeTab.id, {
+        filePath: result.path,
+        fileName: result.path.split(/[/\\]/).pop()!,
+        sourceContent: result.content,
+      })
+      return
+    }
+
+    addTab({ filePath: result.path, content: result.content })
+  }, [addTab, setActiveTab, updateTab])
 
   const save = useCallback(async () => {
-    await doSave()
-  }, [doSave])
+    await saveTab(stateRef.current.activeTabId)
+  }, [saveTab])
 
   const saveAs = useCallback(async () => {
     const s = stateRef.current
-    const md = s.getMarkdown()
-    const newPath = await window.inkmark.saveFileAs(md)
+    const content = getTabMarkdown(s.activeTabId)
+    const newPath = await window.inkmark.saveFileAs(content)
     if (newPath) {
-      setFilePath(newPath)
-      updateTitle()
+      updateTab(s.activeTabId, {
+        filePath: newPath,
+        fileName: newPath.split(/[/\\]/).pop()!,
+        isDirty: false,
+      })
     }
-  }, [setFilePath, updateTitle])
+  }, [getTabMarkdown, updateTab])
 
-  const openFile = useCallback(async () => {
-    if (!(await confirmUnsaved())) return
-    const result = await window.inkmark.openFileDialog()
-    if (!result) return
-    stateRef.current.setMarkdown(result.content)
-    setFilePath(result.path)
-    setDirty(false)
-    updateTitle()
-  }, [confirmUnsaved, setFilePath, setDirty, updateTitle])
+  const closeTab = useCallback(async (tabId?: string): Promise<boolean> => {
+    const s = stateRef.current
+    const id = tabId ?? s.activeTabId
+    const tab = s.tabs.find((t) => t.id === id)
+    if (!tab) return false
 
-  const openFilePath = useCallback(async (path: string) => {
-    if (!(await confirmUnsaved())) return
-    const result = await window.inkmark.openFilePath(path)
-    stateRef.current.setMarkdown(result.content)
-    setFilePath(result.path)
-    setDirty(false)
-    updateTitle()
-  }, [confirmUnsaved, setFilePath, setDirty, updateTitle])
+    if (tab.isDirty) {
+      const choice = await window.inkmark.confirmDialog(
+        '未保存的更改',
+        `是否保存"${tab.fileName}"的更改？`,
+        ['保存', '不保存', '取消']
+      )
+      if (choice === 2) return false
+      if (choice === 0) {
+        const saved = await saveTab(id)
+        if (!saved) return false
+      }
+    }
 
-  const newFile = useCallback(async () => {
-    if (!(await confirmUnsaved())) return
-    stateRef.current.setMarkdown('')
-    reset()
-    updateTitle()
-  }, [confirmUnsaved, reset, updateTitle])
+    editorStateCache.delete(id)
 
-  const handleClose = useCallback(async () => {
-    if (await confirmUnsaved()) {
+    if (s.tabs.length <= 1) {
       await window.inkmark.closeWindow()
+      return true
     }
-  }, [confirmUnsaved])
+
+    closeTabStore(id)
+    return true
+  }, [saveTab, closeTabStore])
+
+  const closeWindow = useCallback(async (): Promise<boolean> => {
+    const s = stateRef.current
+    const dirtyTabs = s.tabs.filter((t) => t.isDirty)
+    for (const tab of dirtyTabs) {
+      const choice = await window.inkmark.confirmDialog(
+        '未保存的更改',
+        `是否保存"${tab.fileName}"的更改？`,
+        ['保存', '不保存', '取消']
+      )
+      if (choice === 2) return false
+      if (choice === 0) {
+        const saved = await saveTab(tab.id)
+        if (!saved) return false
+      }
+    }
+    await window.inkmark.closeWindow()
+    return true
+  }, [saveTab])
 
   const markDirty = useCallback(() => {
     if (suppressDirtyRef.current) {
@@ -114,19 +186,18 @@ export function useFile(
       return
     }
     setDirty(true)
-    updateTitle()
-  }, [setDirty, updateTitle])
+  }, [setDirty])
 
   return {
     fileName,
     isDirty,
-    filePath,
     newFile,
     openFile,
     openFilePath,
     save,
     saveAs,
-    handleClose,
+    closeTab,
+    closeWindow,
     markDirty
   }
 }

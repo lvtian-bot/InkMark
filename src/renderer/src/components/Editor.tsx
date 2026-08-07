@@ -1,8 +1,9 @@
 import { useRef, useEffect } from 'react'
 import { useEditor, Milkdown } from '@milkdown/react'
-import { Editor as MilkdownEditor, rootCtx, defaultValueCtx, editorViewCtx } from '@milkdown/kit/core'
+import { Editor as MilkdownEditor, rootCtx, defaultValueCtx, editorViewCtx, serializerCtx } from '@milkdown/kit/core'
 import { commonmark } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
+import { history } from '@milkdown/kit/plugin/history'
 import { nord } from '@milkdown/theme-nord'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { block } from '@milkdown/plugin-block'
@@ -49,6 +50,7 @@ export function Editor({ onDocChange }: EditorProps) {
       .use(nord)
       .use(commonmark)
       .use(gfm)
+      .use(history)
       .use(listener)
       .use(block)
       .use(clipboard)
@@ -105,6 +107,30 @@ export function Editor({ onDocChange }: EditorProps) {
           console.error('setMarkdown error:', e)
         }
       },
+      getEditorState: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx)
+          return view.state
+        } catch {
+          return null
+        }
+      },
+      setEditorState: (state) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx)
+          view.updateState(state)
+        } catch (e) {
+          console.error('setEditorState error:', e)
+        }
+      },
+      getMarkdownFromState: (state) => {
+        try {
+          const serializer = ed.ctx.get(serializerCtx)
+          return serializer(state.doc) ?? ''
+        } catch {
+          return ''
+        }
+      },
       scrollToPos: (pos: number) => {
         try {
           const view = ed.ctx.get(editorViewCtx)
@@ -126,6 +152,14 @@ export function Editor({ onDocChange }: EditorProps) {
       },
       getScrollContainer: () => {
         return document.querySelector('.editor-container') as HTMLElement | null
+      },
+      getScrollTop: () => {
+        const container = document.querySelector('.editor-container') as HTMLElement | null
+        return container?.scrollTop ?? 0
+      },
+      setScrollTop: (top: number) => {
+        const container = document.querySelector('.editor-container') as HTMLElement | null
+        if (container) container.scrollTop = top
       }
     }
 

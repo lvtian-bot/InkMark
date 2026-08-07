@@ -9,7 +9,6 @@ let currentThemeId = 'inkmark-light'
 let currentSourceMode = false
 let currentOutlineVisible = true
 
-// ===== Window state persistence =====
 interface WindowState {
   x?: number
   y?: number
@@ -130,39 +129,40 @@ function applyNativeTheme(themeId: string): void {
 function createMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: '\u6587\u4ef6',
+      label: '文件',
       submenu: [
-        { label: '\u65b0\u5efa', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('menu:new') },
-        { label: '\u6253\u5f00...', accelerator: 'CmdOrCtrl+O', click: () => mainWindow?.webContents.send('menu:open') },
+        { label: '新建', accelerator: 'CmdOrCtrl+T', click: () => mainWindow?.webContents.send('menu:new') },
+        { label: '打开...', accelerator: 'CmdOrCtrl+O', click: () => mainWindow?.webContents.send('menu:open') },
+        { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', click: () => mainWindow?.webContents.send('menu:closeTab') },
         { type: 'separator' },
-        { label: '\u4fdd\u5b58', accelerator: 'CmdOrCtrl+S', click: () => mainWindow?.webContents.send('menu:save') },
-        { label: '\u53e6\u5b58\u4e3a...', accelerator: 'CmdOrCtrl+Shift+S', click: () => mainWindow?.webContents.send('menu:saveAs') }
+        { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => mainWindow?.webContents.send('menu:save') },
+        { label: '另存为...', accelerator: 'CmdOrCtrl+Shift+S', click: () => mainWindow?.webContents.send('menu:saveAs') }
       ]
     },
     {
-      label: '\u4e3b\u9898',
+      label: '主题',
       submenu: [
-        { label: 'InkMark \u4eae\u8272', type: 'radio', checked: currentThemeId === 'inkmark-light', click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-light') },
-        { label: 'InkMark \u6697\u8272', type: 'radio', checked: currentThemeId === 'inkmark-dark', click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-dark') },
-        { label: 'GitHub \u4eae\u8272', type: 'radio', checked: currentThemeId === 'github-light', click: () => mainWindow?.webContents.send('menu:setTheme', 'github-light') },
-        { label: 'GitHub \u6697\u8272', type: 'radio', checked: currentThemeId === 'github-dark', click: () => mainWindow?.webContents.send('menu:setTheme', 'github-dark') }
+        { label: 'InkMark 亮色', type: 'radio', checked: currentThemeId === 'inkmark-light', click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-light') },
+        { label: 'InkMark 暗色', type: 'radio', checked: currentThemeId === 'inkmark-dark', click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-dark') },
+        { label: 'GitHub 亮色', type: 'radio', checked: currentThemeId === 'github-light', click: () => mainWindow?.webContents.send('menu:setTheme', 'github-light') },
+        { label: 'GitHub 暗色', type: 'radio', checked: currentThemeId === 'github-dark', click: () => mainWindow?.webContents.send('menu:setTheme', 'github-dark') }
       ]
     },
     {
-      label: '\u89c6\u56fe',
+      label: '视图',
       submenu: [
-        { label: '\u5927\u7eb2', type: 'checkbox', checked: currentOutlineVisible, click: () => mainWindow?.webContents.send('menu:toggleOutline') },
-        { label: '\u6e90\u7801\u6a21\u5f0f', accelerator: 'CmdOrCtrl+/', type: 'checkbox', checked: currentSourceMode, click: () => mainWindow?.webContents.send('menu:toggleSource') },
+        { label: '大纲', type: 'checkbox', checked: currentOutlineVisible, click: () => mainWindow?.webContents.send('menu:toggleOutline') },
+        { label: '源码模式', accelerator: 'CmdOrCtrl+/', type: 'checkbox', checked: currentSourceMode, click: () => mainWindow?.webContents.send('menu:toggleSource') },
         { type: 'separator' },
-        { label: '\u653e\u5927', role: 'zoomIn' },
-        { label: '\u7f29\u5c0f', role: 'zoomOut' },
-        { label: '\u91cd\u7f6e\u7f29\u653e', role: 'resetZoom' }
+        { label: '放大', role: 'zoomIn' },
+        { label: '缩小', role: 'zoomOut' },
+        { label: '重置缩放', role: 'resetZoom' }
       ]
     },
     {
-      label: '\u5e2e\u52a9',
+      label: '帮助',
       submenu: [
-        { label: '\u5173\u4e8e InkMark', role: 'about' }
+        { label: '关于 InkMark', role: 'about' }
       ]
     }
   ]

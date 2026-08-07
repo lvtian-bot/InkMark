@@ -10,7 +10,7 @@ export interface FileResult {
   content: string
 }
 
-export type ContentTheme = 'inkmark' | 'github'
+export type ContentTheme = "inkmark" | "github"
 
 export interface InkMarkAPI {
   openFileDialog: () => Promise<FileResult | null>
@@ -24,10 +24,15 @@ export interface InkMarkAPI {
   onMenuSaveAs: (cb: () => void) => void
   onMenuSetTheme: (cb: (themeId: string) => void) => void
   onMenuClose: (cb: () => void) => void
+  onMenuCloseTab: (cb: () => void) => void
+  onMenuToggleSource: (cb: () => void) => void
+  onMenuToggleOutline: (cb: () => void) => void
   setWindowTitle: (title: string) => Promise<void>
   closeWindow: () => Promise<void>
   confirmDialog: (title: string, message: string, buttons: string[]) => Promise<number>
   syncThemeId: (themeId: string) => void
+  syncSourceMode: (checked: boolean) => void
+  syncOutlineVisible: (visible: boolean) => void
   platform: string
 }
 
