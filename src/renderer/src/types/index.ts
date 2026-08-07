@@ -33,6 +33,7 @@ export interface InkMarkAPI {
   syncThemeId: (themeId: string) => void
   syncSourceMode: (checked: boolean) => void
   syncOutlineVisible: (visible: boolean) => void
+  popupMenu: () => void
   platform: string
 }
 

@@ -1,16 +1,16 @@
 import { useRef, useEffect } from 'react'
 import { useEditor, Milkdown } from '@milkdown/react'
 import { Editor as MilkdownEditor, rootCtx, defaultValueCtx, editorViewCtx, serializerCtx } from '@milkdown/kit/core'
-import { commonmark } from '@milkdown/kit/preset/commonmark'
+import { commonmark, toggleStrongCommand, toggleEmphasisCommand, wrapInHeadingCommand, wrapInBulletListCommand, wrapInOrderedListCommand } from '@milkdown/kit/preset/commonmark'
 import { gfm } from '@milkdown/kit/preset/gfm'
-import { history } from '@milkdown/kit/plugin/history'
+import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history'
 import { nord } from '@milkdown/theme-nord'
 import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { block } from '@milkdown/plugin-block'
 import { clipboard } from '@milkdown/plugin-clipboard'
 import { upload } from '@milkdown/plugin-upload'
 import { prism } from '@milkdown/plugin-prism'
-import { getMarkdown as getMarkdownAction, replaceAll as replaceAllAction } from '@milkdown/kit/utils'
+import { getMarkdown as getMarkdownAction, replaceAll as replaceAllAction, callCommand } from '@milkdown/kit/utils'
 import { TextSelection } from '@milkdown/kit/prose/state'
 import { editorHandle } from '../editor-ref'
 import { useStore } from '../stores/useStore'
@@ -160,10 +160,69 @@ export function Editor({ onDocChange }: EditorProps) {
       setScrollTop: (top: number) => {
         const container = document.querySelector('.editor-container') as HTMLElement | null
         if (container) container.scrollTop = top
+      },
+      undo: () => {
+        try {
+          ed.action(callCommand(undoCommand.key))
+        } catch (e) {
+          console.error('undo error:', e)
+        }
+      },
+      redo: () => {
+        try {
+          ed.action(callCommand(redoCommand.key))
+        } catch (e) {
+          console.error('redo error:', e)
+        }
+      },
+      toggleBold: () => {
+        try {
+          ed.action(callCommand(toggleStrongCommand.key))
+        } catch (e) {
+          console.error('toggleBold error:', e)
+        }
+      },
+      toggleItalic: () => {
+        try {
+          ed.action(callCommand(toggleEmphasisCommand.key))
+        } catch (e) {
+          console.error('toggleItalic error:', e)
+        }
+      },
+      wrapHeading: (level: number) => {
+        try {
+          ed.action(callCommand(wrapInHeadingCommand.key, level))
+        } catch (e) {
+          console.error('wrapHeading error:', e)
+        }
+      },
+      wrapBulletList: () => {
+        try {
+          ed.action(callCommand(wrapInBulletListCommand.key))
+        } catch (e) {
+          console.error('wrapBulletList error:', e)
+        }
+      },
+      wrapOrderedList: () => {
+        try {
+          ed.action(callCommand(wrapInOrderedListCommand.key))
+        } catch (e) {
+          console.error('wrapOrderedList error:', e)
+        }
+      },
+      focus: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx)
+          view.focus()
+        } catch {}
       }
     }
 
     armedRef.current = true
+
+    requestAnimationFrame(() => {
+      editorHandle.current?.focus()
+    })
 
     return () => {
       editorHandle.current = null

@@ -62,6 +62,9 @@ const api = {
   syncOutlineVisible: (visible: boolean) => {
     ipcRenderer.send('menu:syncOutline', visible)
   },
+  popupMenu: () => {
+    ipcRenderer.send('menu:popup')
+  },
   platform: process.platform
 }
 

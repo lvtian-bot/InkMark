@@ -10,6 +10,14 @@ export interface EditorHandle {
   getScrollContainer: () => HTMLElement | null
   getScrollTop: () => number
   setScrollTop: (top: number) => void
+  undo: () => void
+  redo: () => void
+  toggleBold: () => void
+  toggleItalic: () => void
+  wrapHeading: (level: number) => void
+  wrapBulletList: () => void
+  wrapOrderedList: () => void
+  focus: () => void
 }
 
 export const editorHandle: { current: EditorHandle | null } = { current: null }

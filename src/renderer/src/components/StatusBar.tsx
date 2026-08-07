@@ -26,8 +26,8 @@ export function StatusBar() {
         >
           {'\u6e90\u7801'}
         </button>
-        <span className="status-item">{wordCount} \u5b57</span>
-        <span className="status-item">{charCount} \u5b57\u7b26</span>
+        <span className="status-item">{wordCount} {'\u5b57'}</span>
+        <span className="status-item">{charCount} {'\u5b57\u7b26'}</span>
       </div>
     </footer>
   )

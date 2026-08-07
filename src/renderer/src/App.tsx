@@ -5,6 +5,7 @@ import { SourceEditor } from './components/SourceEditor'
 import { StatusBar } from './components/StatusBar'
 import { Outline } from './components/Outline'
 import { TabBar } from './components/TabBar'
+import { Toolbar } from './components/Toolbar'
 import { useTheme } from './hooks/useTheme'
 import { useFile } from './hooks/useFile'
 import { useOutline } from './hooks/useOutline'
@@ -255,6 +256,7 @@ function AppContent() {
           </>
         )}
         <main className="editor-main">
+          <Toolbar sourceRef={sourceRef} />
           <div className={`editor-view ${viewMode === 'wysiwyg' ? '' : 'is-hidden'}`}>
             <Editor onDocChange={handleDocChange} />
           </div>

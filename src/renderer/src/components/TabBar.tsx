@@ -25,6 +25,13 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
 
   return (
     <div className="tab-bar">
+      <button
+        className="tab-menu"
+        onClick={() => window.inkmark.popupMenu()}
+        title={'\u83dc\u5355'}
+      >
+        {'\u2630'}
+      </button>
       <div className="tab-list">
         {tabs.map((tab) => (
           <div

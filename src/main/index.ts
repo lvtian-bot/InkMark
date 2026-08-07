@@ -211,6 +211,13 @@ ipcMain.on('menu:syncOutline', (_event, visible: boolean) => {
   createMenu()
 })
 
+ipcMain.on('menu:popup', () => {
+  const menu = Menu.getApplicationMenu()
+  if (menu && mainWindow) {
+    menu.popup()
+  }
+})
+
 ipcMain.handle('dialog:openFile', async () => {
   if (!mainWindow) return null
   const result = await dialog.showOpenDialog(mainWindow, {

@@ -11,6 +11,29 @@
   -webkit-app-region: drag;
 }
 
+.tab-menu {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+  flex-shrink: 0;
+  margin-right: 2px;
+  -webkit-app-region: no-drag;
+}
+
+.tab-menu:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
 .tab-list {
   display: flex;
   overflow-x: auto;
