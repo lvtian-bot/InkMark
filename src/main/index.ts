@@ -83,6 +83,12 @@ function createWindow(): void {
     minHeight: 600,
     show: false,
     title: 'InkMark',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      height: 36,
+      color: '#f7f7f8',
+      symbolColor: '#6b6b6b'
+    },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -188,6 +194,11 @@ ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
   currentThemeId = themeId
   applyNativeTheme(themeId)
   createMenu()
+  const isDark = themeId.endsWith('-dark')
+  mainWindow?.setTitleBarOverlay({
+    color: isDark ? '#181825' : '#f7f7f8',
+    symbolColor: isDark ? '#a6adc8' : '#6b6b6b'
+  })
 })
 
 ipcMain.on('menu:syncSource', (_event, checked: boolean) => {

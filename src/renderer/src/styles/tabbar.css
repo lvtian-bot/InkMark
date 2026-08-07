@@ -4,9 +4,11 @@
   height: 36px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
-  padding: 0 4px;
+  padding: 0 4px 0 4px;
+  padding-right: 140px;
   flex-shrink: 0;
   user-select: none;
+  -webkit-app-region: drag;
 }
 
 .tab-list {
@@ -23,8 +25,8 @@
 .tab {
   display: flex;
   align-items: center;
-  min-width: 100px;
-  max-width: 200px;
+  min-width: 120px;
+  max-width: 250px;
   height: 28px;
   padding: 0 4px 0 12px;
   margin: 0 2px;
@@ -34,8 +36,9 @@
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
-  flex-shrink: 0;
+  flex: 0 1 250px;
   transition: background 0.1s;
+  -webkit-app-region: no-drag;
 }
 
 .tab:hover {
@@ -96,6 +99,7 @@
   cursor: pointer;
   border-radius: 6px;
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
 }
 
 .tab-new:hover {
