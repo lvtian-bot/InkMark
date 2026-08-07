@@ -8,11 +8,19 @@ import { listener, listenerCtx } from '@milkdown/plugin-listener'
 import { block } from '@milkdown/plugin-block'
 import { clipboard } from '@milkdown/plugin-clipboard'
 import { upload } from '@milkdown/plugin-upload'
+import { prism } from '@milkdown/plugin-prism'
 import { getMarkdown as getMarkdownAction, replaceAll as replaceAllAction } from '@milkdown/kit/utils'
 import { TextSelection } from '@milkdown/kit/prose/state'
 import { editorHandle } from '../editor-ref'
+import { useStore } from '../stores/useStore'
 import '../styles/editor.css'
+import '../styles/prism.css'
+import '../styles/themes/github.css'
 import '@milkdown/theme-nord/style.css'
+import githubLightUrl from 'github-markdown-css/github-markdown-light.css?url'
+import githubDarkUrl from 'github-markdown-css/github-markdown-dark.css?url'
+
+const GITHUB_LINK_ID = 'inkmark-github-theme'
 
 interface EditorProps {
   onDocChange: (doc: unknown) => void
@@ -21,6 +29,9 @@ interface EditorProps {
 export function Editor({ onDocChange }: EditorProps) {
   const onDocChangeRef = useRef(onDocChange)
   onDocChangeRef.current = onDocChange
+  const armedRef = useRef(false)
+  const contentTheme = useStore((s) => s.contentTheme)
+  const theme = useStore((s) => s.theme)
 
   const { loading, get } = useEditor((root) => {
     return MilkdownEditor.make()
@@ -31,6 +42,7 @@ export function Editor({ onDocChange }: EditorProps) {
       .config((ctx) => {
         const manager = ctx.get(listenerCtx)
         manager.updated((_ctx, doc) => {
+          if (!armedRef.current) return
           onDocChangeRef.current(doc)
         })
       })
@@ -41,7 +53,34 @@ export function Editor({ onDocChange }: EditorProps) {
       .use(block)
       .use(clipboard)
       .use(upload)
+      .use(prism)
   }, [])
+
+  useEffect(() => {
+    let link = document.getElementById(GITHUB_LINK_ID) as HTMLLinkElement | null
+
+    if (contentTheme === 'github') {
+      const href = theme === 'dark' ? githubDarkUrl : githubLightUrl
+      if (!link) {
+        link = document.createElement('link')
+        link.id = GITHUB_LINK_ID
+        link.rel = 'stylesheet'
+        document.head.appendChild(link)
+      }
+      link.href = href
+    } else if (link) {
+      link.remove()
+    }
+
+    const milkdown = document.querySelector('.editor-container .milkdown')
+    if (milkdown) {
+      if (contentTheme === 'github') {
+        milkdown.classList.add('markdown-body')
+      } else {
+        milkdown.classList.remove('markdown-body')
+      }
+    }
+  }, [contentTheme, theme, loading])
 
   useEffect(() => {
     if (loading) return
@@ -59,7 +98,9 @@ export function Editor({ onDocChange }: EditorProps) {
       },
       setMarkdown: (md: string) => {
         try {
-          ed.action(replaceAllAction(md))
+          ed.action(replaceAllAction(md, true))
+          const view = ed.ctx.get(editorViewCtx)
+          onDocChangeRef.current(view.state.doc)
         } catch (e) {
           console.error('setMarkdown error:', e)
         }
@@ -70,18 +111,25 @@ export function Editor({ onDocChange }: EditorProps) {
           const doc = view.state.doc
           const safePos = Math.min(Math.max(0, pos), doc.content.size)
           const sel = TextSelection.near(doc.resolve(safePos))
-          const tr = view.state.tr.setSelection(sel)
-          view.dispatch(tr)
+          view.dispatch(view.state.tr.setSelection(sel))
           view.focus()
-          view.scrollIntoView()
+
+          const container = document.querySelector('.editor-container') as HTMLElement | null
+          if (container) {
+            const offset = 80
+            const delta = view.coordsAtPos(safePos).top - container.getBoundingClientRect().top - offset
+            container.scrollTop += delta
+          }
         } catch (e) {
           console.error('scrollToPos error:', e)
         }
       },
       getScrollContainer: () => {
-        return document.querySelector('.milkdown') as HTMLElement | null
+        return document.querySelector('.editor-container') as HTMLElement | null
       }
     }
+
+    armedRef.current = true
 
     return () => {
       editorHandle.current = null
@@ -89,7 +137,7 @@ export function Editor({ onDocChange }: EditorProps) {
   }, [loading, get])
 
   return (
-    <div className="editor-container">
+    <div className={`editor-container theme-${contentTheme}`}>
       <Milkdown />
     </div>
   )

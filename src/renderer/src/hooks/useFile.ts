@@ -3,7 +3,7 @@ import { useStore } from '../stores/useStore'
 
 export function useFile(
   getMarkdown: () => string,
-  setMarkdown: (md: string) => void
+  rawSetMarkdown: (md: string) => void
 ) {
   const filePath = useStore((s) => s.filePath)
   const fileName = useStore((s) => s.fileName)
@@ -11,6 +11,12 @@ export function useFile(
   const setFilePath = useStore((s) => s.setFilePath)
   const setDirty = useStore((s) => s.setDirty)
   const reset = useStore((s) => s.reset)
+
+  const suppressDirtyRef = useRef(false)
+  const setMarkdown = useCallback((md: string) => {
+    suppressDirtyRef.current = true
+    rawSetMarkdown(md)
+  }, [rawSetMarkdown])
 
   const stateRef = useRef({ filePath, isDirty, fileName, getMarkdown, setMarkdown })
   stateRef.current = { filePath, isDirty, fileName, getMarkdown, setMarkdown }
@@ -103,6 +109,10 @@ export function useFile(
   }, [confirmUnsaved])
 
   const markDirty = useCallback(() => {
+    if (suppressDirtyRef.current) {
+      suppressDirtyRef.current = false
+      return
+    }
     setDirty(true)
     updateTitle()
   }, [setDirty, updateTitle])

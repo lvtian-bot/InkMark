@@ -1,10 +1,13 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 
 let mainWindow: BrowserWindow | null = null
 let forceClose = false
 let pendingFilePath: string | null = null
+let currentThemeId = 'inkmark-light'
+let currentSourceMode = false
+let currentOutlineVisible = true
 
 // ===== Window state persistence =====
 interface WindowState {
@@ -80,7 +83,6 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    autoHideMenuBar: true,
     title: 'InkMark',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -121,6 +123,10 @@ function createWindow(): void {
   }
 }
 
+function applyNativeTheme(themeId: string): void {
+  nativeTheme.themeSource = themeId.endsWith('-dark') ? 'dark' : 'light'
+}
+
 function createMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -134,9 +140,19 @@ function createMenu(): void {
       ]
     },
     {
+      label: '\u4e3b\u9898',
+      submenu: [
+        { label: 'InkMark \u4eae\u8272', type: 'radio', checked: currentThemeId === 'inkmark-light', click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-light') },
+        { label: 'InkMark \u6697\u8272', type: 'radio', checked: currentThemeId === 'inkmark-dark', click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-dark') },
+        { label: 'GitHub \u4eae\u8272', type: 'radio', checked: currentThemeId === 'github-light', click: () => mainWindow?.webContents.send('menu:setTheme', 'github-light') },
+        { label: 'GitHub \u6697\u8272', type: 'radio', checked: currentThemeId === 'github-dark', click: () => mainWindow?.webContents.send('menu:setTheme', 'github-dark') }
+      ]
+    },
+    {
       label: '\u89c6\u56fe',
       submenu: [
-        { label: '\u5207\u6362\u4e3b\u9898', accelerator: 'CmdOrCtrl+Shift+T', click: () => mainWindow?.webContents.send('menu:toggleTheme') },
+        { label: '\u5927\u7eb2', type: 'checkbox', checked: currentOutlineVisible, click: () => mainWindow?.webContents.send('menu:toggleOutline') },
+        { label: '\u6e90\u7801\u6a21\u5f0f', accelerator: 'CmdOrCtrl+/', type: 'checkbox', checked: currentSourceMode, click: () => mainWindow?.webContents.send('menu:toggleSource') },
         { type: 'separator' },
         { label: '\u653e\u5927', role: 'zoomIn' },
         { label: '\u7f29\u5c0f', role: 'zoomOut' },
@@ -155,6 +171,7 @@ function createMenu(): void {
 }
 
 app.whenReady().then(() => {
+  applyNativeTheme(currentThemeId)
   createMenu()
   createWindow()
   pendingFilePath = getFileFromArgs(process.argv)
@@ -165,6 +182,22 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
+  currentThemeId = themeId
+  applyNativeTheme(themeId)
+  createMenu()
+})
+
+ipcMain.on('menu:syncSource', (_event, checked: boolean) => {
+  currentSourceMode = checked
+  createMenu()
+})
+
+ipcMain.on('menu:syncOutline', (_event, visible: boolean) => {
+  currentOutlineVisible = visible
+  createMenu()
 })
 
 ipcMain.handle('dialog:openFile', async () => {
