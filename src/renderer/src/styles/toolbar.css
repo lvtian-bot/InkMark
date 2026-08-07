@@ -25,7 +25,9 @@
   line-height: 1;
   cursor: pointer;
   border-radius: 6px;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 
 .toolbar-btn:hover {

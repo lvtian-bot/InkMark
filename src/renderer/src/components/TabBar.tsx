@@ -1,27 +1,27 @@
-import { useStore } from '../stores/useStore'
-import '../styles/tabbar.css'
+import { useStore } from '../stores/useStore';
+import '../styles/tabbar.css';
 
 interface TabBarProps {
-  onSelectTab: (id: string) => void
-  onCloseTab: (id: string) => void
-  onNewTab: () => void
+  onSelectTab: (id: string) => void;
+  onCloseTab: (id: string) => void;
+  onNewTab: () => void;
 }
 
 export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
-  const tabs = useStore((s) => s.tabs)
-  const activeTabId = useStore((s) => s.activeTabId)
+  const tabs = useStore((s) => s.tabs);
+  const activeTabId = useStore((s) => s.activeTabId);
 
   const handleClose = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation()
-    onCloseTab(id)
-  }
+    e.stopPropagation();
+    onCloseTab(id);
+  };
 
   const handleMouseDown = (e: React.MouseEvent, id: string) => {
     if (e.button === 1) {
-      e.preventDefault()
-      onCloseTab(id)
+      e.preventDefault();
+      onCloseTab(id);
     }
-  }
+  };
 
   return (
     <div className="tab-bar">
@@ -42,7 +42,8 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
             title={tab.filePath ?? tab.fileName}
           >
             <span className="tab-title">
-              {tab.isDirty ? '\u2022 ' : ''}{tab.fileName}
+              {tab.isDirty ? '\u2022 ' : ''}
+              {tab.fileName}
             </span>
             <button
               className="tab-close"
@@ -58,5 +59,5 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
         </button>
       </div>
     </div>
-  )
+  );
 }

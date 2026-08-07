@@ -1,8 +1,8 @@
-import { forwardRef } from 'react'
-import '../styles/editor.css'
+import { forwardRef } from 'react';
+import '../styles/editor.css';
 
 interface SourceEditorProps {
-  onChange: () => void
+  onChange: () => void;
 }
 
 export const SourceEditor = forwardRef<HTMLTextAreaElement, SourceEditorProps>(
@@ -17,6 +17,6 @@ export const SourceEditor = forwardRef<HTMLTextAreaElement, SourceEditorProps>(
           placeholder={'\u5728\u6b64\u8f93\u5165 Markdown \u6e90\u7801...'}
         />
       </div>
-    )
-  }
-)
+    );
+  },
+);

@@ -28,6 +28,10 @@ npm run dev        # 启动 electron-vite 开发模式，支持热重载
 npm run build      # 生产构建，输出到 out/
 npm run preview    # 预览生产构建
 npm run build:win  # 构建并打包 Windows NSIS 安装包到 dist/
+npm run lint       # ESLint 代码检查
+npm run lint:fix   # ESLint 自动修复
+npm run format     # Prettier 格式化全部文件
+npm run format:check  # Prettier 检查格式（不写入）
 ```
 
 目前尚未配置测试套件，没有测试运行器。
@@ -49,3 +53,11 @@ npm run build:win  # 构建并打包 Windows NSIS 安装包到 dist/
 - 遵循现有的 Conventional Commits 风格：`feat:`、`fix:`、`chore:`、`docs:`（如 `feat: resizable/toggleable outline`）。
 - 标题使用祈使句，长度不超过 72 个字符。
 - PR 提交到 `main` 分支，包含简要说明以及界面/窗口行为的必要手动验证步骤。
+
+## 沟通方式
+
+与维护者讨论问题（bug、风险、审查意见）时，先用场景说明影响，不要堆代码：
+
+- 先讲清楚三件事：用户做什么操作会触发、触发后的实际后果是什么、这个场景是日常普遍的还是极端少见的。
+- 描述问题时避免罗列函数名、变量名和内部实现概念；用界面和用户可见的行为来表述（例如"标题栏显示文件名，但编辑区是空白的"）。
+- 场景和影响讲清楚之后，再给出具体的代码位置和修复方案。

@@ -25,8 +25,17 @@
   --accent-hover: #74a0f7;
   color-scheme: dark;
 }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body, #root { height: 100%; overflow: hidden; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
 body {
   font-family: var(--font-family);
   background: var(--bg-primary);
@@ -34,16 +43,44 @@ body {
   -webkit-font-smoothing: antialiased;
   user-select: none;
 }
-.app { display: flex; flex-direction: column; height: 100vh; }
-.app.resizing { cursor: col-resize; }
-.app.resizing * { user-select: none !important; pointer-events: none !important; }
-.app.resizing .resize-handle { pointer-events: auto !important; }
-.app-body { display: flex; flex: 1; overflow: hidden; }
-.editor-main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.app.resizing {
+  cursor: col-resize;
+}
+.app.resizing * {
+  user-select: none !important;
+  pointer-events: none !important;
+}
+.app.resizing .resize-handle {
+  pointer-events: auto !important;
+}
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.editor-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .resize-handle {
-  width: 4px; cursor: col-resize; background: transparent;
-  flex-shrink: 0; position: relative; z-index: 10;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
   transition: background 0.15s;
 }
-.resize-handle:hover { background: var(--accent); }
-.app.resizing .resize-handle { background: var(--accent); }
+.resize-handle:hover {
+  background: var(--accent);
+}
+.app.resizing .resize-handle {
+  background: var(--accent);
+}

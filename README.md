@@ -18,12 +18,12 @@ npm run build:win
 
 ## 快捷键
 
-| 快捷键 | 功能 |
-|--------|------|
-| Ctrl+N | 新建文件 |
-| Ctrl+O | 打开文件 |
-| Ctrl+S | 保存 |
-| Ctrl+Shift+S | 另存为 |
+| 快捷键       | 功能         |
+| ------------ | ------------ |
+| Ctrl+N       | 新建文件     |
+| Ctrl+O       | 打开文件     |
+| Ctrl+S       | 保存         |
+| Ctrl+Shift+S | 另存为       |
 | Ctrl+Shift+T | 切换明暗主题 |
 
 ## 技术栈

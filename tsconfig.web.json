@@ -10,8 +10,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": [
-    "src/renderer/src/**/*",
-    "src/preload/index.ts"
-  ]
+  "include": ["src/renderer/src/**/*", "src/preload/index.ts"]
 }

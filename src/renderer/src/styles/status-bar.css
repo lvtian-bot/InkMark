@@ -11,7 +11,9 @@
   user-select: none;
   flex-shrink: 0;
 }
-.status-item { white-space: nowrap; }
+.status-item {
+  white-space: nowrap;
+}
 
 .status-counts {
   margin-left: auto;
@@ -34,7 +36,9 @@
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .status-toggle-btn:hover {
   background: var(--bg-tertiary);
@@ -57,7 +61,9 @@
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 .status-mode-btn:hover {
   background: var(--bg-tertiary);

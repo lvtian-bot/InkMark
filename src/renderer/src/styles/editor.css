@@ -10,15 +10,48 @@
   padding: 48px 56px 120px;
   min-height: 100%;
 }
-.editor-container .milkdown:focus { outline: none; }
-.editor-container .ProseMirror { outline: none; caret-color: var(--accent); }
-.editor-container.theme-inkmark h1 { font-size: 1.8em; font-weight: 700; margin: 0.8em 0 0.4em; }
-.editor-container.theme-inkmark h2 { font-size: 1.5em; font-weight: 700; margin: 0.8em 0 0.4em; }
-.editor-container.theme-inkmark h3 { font-size: 1.25em; font-weight: 700; margin: 0.8em 0 0.4em; }
-.editor-container.theme-inkmark h4 { font-size: 1.1em; font-weight: 700; margin: 0.8em 0 0.4em; }
-.editor-container.theme-inkmark h5 { font-size: 1em; font-weight: 700; margin: 0.8em 0 0.4em; }
-.editor-container.theme-inkmark h6 { font-size: 0.9em; font-weight: 700; margin: 0.8em 0 0.4em; color: var(--text-secondary); }
-.editor-container.theme-inkmark p { line-height: 1.75; margin: 0.6em 0; }
+.editor-container .milkdown:focus {
+  outline: none;
+}
+.editor-container .ProseMirror {
+  outline: none;
+  caret-color: var(--accent);
+}
+.editor-container.theme-inkmark h1 {
+  font-size: 1.8em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+.editor-container.theme-inkmark h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+.editor-container.theme-inkmark h3 {
+  font-size: 1.25em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+.editor-container.theme-inkmark h4 {
+  font-size: 1.1em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+.editor-container.theme-inkmark h5 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+}
+.editor-container.theme-inkmark h6 {
+  font-size: 0.9em;
+  font-weight: 700;
+  margin: 0.8em 0 0.4em;
+  color: var(--text-secondary);
+}
+.editor-container.theme-inkmark p {
+  line-height: 1.75;
+  margin: 0.6em 0;
+}
 .editor-container.theme-inkmark code {
   font-family: var(--font-mono);
   font-size: 0.875em;
@@ -33,15 +66,27 @@
   overflow-x: auto;
   margin: 1em 0;
 }
-.editor-container.theme-inkmark pre code { background: none; padding: 0; font-size: 0.875em; line-height: 1.6; }
+.editor-container.theme-inkmark pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.875em;
+  line-height: 1.6;
+}
 .editor-container.theme-inkmark blockquote {
   border-left: 3px solid var(--accent);
   padding-left: 16px;
   margin: 1em 0;
   color: var(--text-secondary);
 }
-.editor-container.theme-inkmark ul, .editor-container.theme-inkmark ol { padding-left: 24px; margin: 0.6em 0; line-height: 1.75; }
-.editor-container.theme-inkmark li { margin: 0.2em 0; }
+.editor-container.theme-inkmark ul,
+.editor-container.theme-inkmark ol {
+  padding-left: 24px;
+  margin: 0.6em 0;
+  line-height: 1.75;
+}
+.editor-container.theme-inkmark li {
+  margin: 0.2em 0;
+}
 .editor-container.theme-inkmark table {
   border-collapse: collapse;
   display: block;
@@ -52,23 +97,44 @@
   font-size: 0.9em;
   line-height: 1.5;
 }
-.editor-container.theme-inkmark th, .editor-container.theme-inkmark td {
+.editor-container.theme-inkmark th,
+.editor-container.theme-inkmark td {
   border: 1px solid var(--border-color);
   padding: 6px 10px;
   text-align: left;
 }
-.editor-container.theme-inkmark th { background: var(--bg-secondary); font-weight: 600; }
-.editor-container.theme-inkmark img { max-width: 100%; border-radius: 8px; margin: 1em 0; }
-.editor-container.theme-inkmark hr { border: none; border-top: 1px solid var(--border-color); margin: 2em 0; }
-.editor-container.theme-inkmark a { color: var(--accent); text-decoration: none; }
-.editor-container.theme-inkmark a:hover { text-decoration: underline; }
-.editor-view, .source-view {
+.editor-container.theme-inkmark th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+.editor-container.theme-inkmark img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 1em 0;
+}
+.editor-container.theme-inkmark hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 2em 0;
+}
+.editor-container.theme-inkmark a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.editor-container.theme-inkmark a:hover {
+  text-decoration: underline;
+}
+.editor-view,
+.source-view {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.editor-view.is-hidden, .source-view.is-hidden { display: none; }
+.editor-view.is-hidden,
+.source-view.is-hidden {
+  display: none;
+}
 
 .source-container {
   flex: 1;
@@ -93,4 +159,6 @@
   display: block;
   tab-size: 2;
 }
-.source-textarea::placeholder { color: var(--text-tertiary); }
+.source-textarea::placeholder {
+  color: var(--text-tertiary);
+}

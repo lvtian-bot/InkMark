@@ -95,7 +95,9 @@
   flex-shrink: 0;
   margin-left: 4px;
   opacity: 0;
-  transition: opacity 0.1s, background 0.1s;
+  transition:
+    opacity 0.1s,
+    background 0.1s;
 }
 
 .tab:hover .tab-close,

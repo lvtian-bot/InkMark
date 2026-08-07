@@ -1,70 +1,70 @@
-import { useEffect, useState, useRef } from 'react'
-import { useStore } from '../stores/useStore'
-import { editorHandle } from '../editor-ref'
-import '../styles/outline.css'
+import { useEffect, useState, useRef } from 'react';
+import { useStore } from '../stores/useStore';
+import { editorHandle } from '../editor-ref';
+import '../styles/outline.css';
 
 export function Outline() {
-  const outline = useStore((s) => s.outline)
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const tickingRef = useRef(false)
+  const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const tickingRef = useRef(false);
 
   useEffect(() => {
     const handleScroll = (): void => {
-      if (tickingRef.current) return
-      tickingRef.current = true
+      if (tickingRef.current) return;
+      tickingRef.current = true;
       requestAnimationFrame(() => {
-        const container = editorHandle.current?.getScrollContainer()
+        const container = editorHandle.current?.getScrollContainer();
         if (!container) {
-          tickingRef.current = false
-          return
+          tickingRef.current = false;
+          return;
         }
-        const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6')
-        let active: Element | null = null
-        const scrollTop = container.scrollTop || window.scrollY
-        const offset = 80
-        headings.forEach((h) => {
+        const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        let active: Element | null = null;
+        const scrollTop = container.scrollTop || window.scrollY;
+        const offset = 80;
+        for (const h of headings) {
           if (h.getBoundingClientRect().top + scrollTop - offset <= scrollTop) {
-            active = h
+            active = h;
           }
-        })
-        if (active) {
-          const text = active.textContent || ''
-          const heading = outline.find((h) => h.text === text)
-          if (heading) setActiveId(heading.id)
         }
-        tickingRef.current = false
-      })
-    }
+        if (active) {
+          const text = active.textContent || '';
+          const heading = outline.find((h) => h.text === text);
+          if (heading) setActiveId(heading.id);
+        }
+        tickingRef.current = false;
+      });
+    };
 
-    const container = editorHandle.current?.getScrollContainer()
+    const container = editorHandle.current?.getScrollContainer();
     if (container) {
-      container.addEventListener('scroll', handleScroll)
-      return () => container.removeEventListener('scroll', handleScroll)
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
     } else {
-      window.addEventListener('scroll', handleScroll)
-      return () => window.removeEventListener('scroll', handleScroll)
+      window.addEventListener('scroll', handleScroll);
+      return () => window.removeEventListener('scroll', handleScroll);
     }
-  }, [outline])
+  }, [outline]);
 
   const handleClick = (pos: number): void => {
-    editorHandle.current?.scrollToPos(pos)
-  }
+    editorHandle.current?.scrollToPos(pos);
+  };
 
   if (outline.length === 0) {
     return (
       <aside className="outline">
         <div className="outline-header">
-          <span className="outline-title">{"\u5927\u7eb2"}</span>
+          <span className="outline-title">{'\u5927\u7eb2'}</span>
         </div>
-        <div className="outline-empty">{"\u6682\u65e0\u5927\u7eb2"}</div>
+        <div className="outline-empty">{'\u6682\u65e0\u5927\u7eb2'}</div>
       </aside>
-    )
+    );
   }
 
   return (
     <aside className="outline">
       <div className="outline-header">
-        <span className="outline-title">{"\u5927\u7eb2"}</span>
+        <span className="outline-title">{'\u5927\u7eb2'}</span>
       </div>
       <nav className="outline-list">
         {outline.map((heading) => (
@@ -83,5 +83,5 @@ export function Outline() {
         ))}
       </nav>
     </aside>
-  )
+  );
 }
