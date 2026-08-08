@@ -130,6 +130,7 @@ function toggleTaskPrefix(): SourceEdit | null {
 
 export function Toolbar() {
   const viewMode = useStore((s) => s.viewMode);
+  const toolbarWidth = useStore((s) => s.toolbarWidth);
   const isWysiwyg = viewMode === 'wysiwyg';
 
   const handleUndo = (): void => {
@@ -274,7 +275,7 @@ export function Toolbar() {
   };
 
   return (
-    <div className="toolbar">
+    <div className={`toolbar toolbar-width-${toolbarWidth}`}>
       <div className="toolbar-group">
         <button className="toolbar-btn" onClick={handleUndo} title="撤销 (Ctrl+Z)">
           <Undo2 size={16} />

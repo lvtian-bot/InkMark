@@ -1,10 +1,11 @@
 /* CodeMirror 6 源码编辑器样式 */
 
+/* cm-editor 铺满外层容器，保留 CM6 原生滚动（大文档按需渲染）。
+   滚动由 cm-scroller 负责，滚动条贴窗口最右。 */
 .source-container .cm-editor {
   flex: 1;
-  max-width: var(--editor-max-width);
-  width: 100%;
-  margin: 0 auto;
+  min-height: 0;
+  min-width: 0;
   background: transparent;
 }
 
@@ -16,10 +17,19 @@
   font-family: var(--font-family);
   font-size: var(--editor-font-size, 16px);
   line-height: var(--editor-line-height, 1.7);
-  padding: 48px var(--editor-side-padding) 120px;
+  align-items: flex-start;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
 }
 
+/* 内容限宽居中：与预览模式使用同一个 --editor-max-width 和内边距，
+   确保两种模式下文字行的可用宽度完全一致。 */
 .source-container .cm-content {
+  max-width: var(--editor-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: 48px var(--editor-side-padding) 120px;
   font-family: var(--font-family);
   caret-color: var(--accent);
 }
@@ -33,7 +43,7 @@
   color: var(--text-tertiary);
 }
 
-/* 选区与光标 */
+/* 选区 */
 .source-container .cm-selectionBackground,
 .source-container .cm-content ::selection {
   background: var(--selection-bg, rgba(39, 116, 213, 0.2));

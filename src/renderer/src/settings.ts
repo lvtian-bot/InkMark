@@ -1,12 +1,14 @@
 import type { ContentTheme } from './types';
 
 export type AppTheme = 'light' | 'dark';
+export type ToolbarWidth = 'wide' | 'medium' | 'narrow';
 
 export interface AppSettings {
   theme: AppTheme;
   contentTheme: ContentTheme;
   outlineWidth: number;
   outlineVisible: boolean;
+  toolbarWidth: ToolbarWidth;
 }
 
 export const OUTLINE_WIDTH_MIN = 150;
@@ -17,6 +19,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   contentTheme: 'inkmark',
   outlineWidth: 240,
   outlineVisible: true,
+  toolbarWidth: 'wide',
 };
 
 const SETTINGS_STORAGE_KEY = 'inkmark-settings';
@@ -62,10 +65,16 @@ function normalizeSettings(value: unknown): AppSettings {
         ? candidate.contentTheme
         : DEFAULT_SETTINGS.contentTheme,
     outlineWidth: normalizeOutlineWidth(candidate.outlineWidth),
-    outlineVisible:
-      typeof candidate.outlineVisible === 'boolean'
-        ? candidate.outlineVisible
-        : DEFAULT_SETTINGS.outlineVisible,
+   outlineVisible:
+     typeof candidate.outlineVisible === 'boolean'
+       ? candidate.outlineVisible
+       : DEFAULT_SETTINGS.outlineVisible,
+    toolbarWidth:
+      candidate.toolbarWidth === 'wide' ||
+      candidate.toolbarWidth === 'medium' ||
+      candidate.toolbarWidth === 'narrow'
+        ? candidate.toolbarWidth
+        : DEFAULT_SETTINGS.toolbarWidth,
   };
 }
 

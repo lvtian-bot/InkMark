@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import type { Heading, ContentTheme, ViewMode } from '../types';
-import { loadSettings, saveSettings, type AppSettings, type AppTheme } from '../settings';
+import {
+  loadSettings,
+  saveSettings,
+  type AppSettings,
+  type AppTheme,
+  type ToolbarWidth,
+} from '../settings';
 
 export interface Tab {
   id: string;
@@ -44,6 +50,7 @@ interface InkMarkState extends AppSettings {
   setContentTheme: (theme: ContentTheme) => void;
   setOutlineWidth: (width: number) => void;
   setOutlineVisible: (visible: boolean) => void;
+  setToolbarWidth: (width: ToolbarWidth) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
 }
@@ -56,6 +63,7 @@ function selectSettings(state: AppSettings): AppSettings {
     contentTheme: state.contentTheme,
     outlineWidth: state.outlineWidth,
     outlineVisible: state.outlineVisible,
+    toolbarWidth: state.toolbarWidth,
   };
 }
 
@@ -197,6 +205,9 @@ export const useStore = create<InkMarkState>((set, get) => ({
 
   setOutlineVisible: (visible) => {
     set(saveSettings({ ...selectSettings(get()), outlineVisible: visible }));
+  },
+  setToolbarWidth: (toolbarWidth) => {
+    set(saveSettings({ ...selectSettings(get()), toolbarWidth }));
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),

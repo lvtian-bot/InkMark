@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { OUTLINE_WIDTH_MAX, OUTLINE_WIDTH_MIN, type AppSettings, type AppTheme } from '../settings';
+import {
+  OUTLINE_WIDTH_MAX,
+  OUTLINE_WIDTH_MIN,
+  type AppSettings,
+  type AppTheme,
+  type ToolbarWidth,
+} from '../settings';
 import { useStore } from '../stores/useStore';
 import type { ContentTheme } from '../types';
 import '../styles/settings-dialog.css';
@@ -10,11 +16,12 @@ interface SettingsDialogProps {
 
 function currentSettings(): AppSettings {
   const state = useStore.getState();
-  return {
-    theme: state.theme,
-    contentTheme: state.contentTheme,
-    outlineWidth: state.outlineWidth,
-    outlineVisible: state.outlineVisible,
+ return {
+   theme: state.theme,
+   contentTheme: state.contentTheme,
+   outlineWidth: state.outlineWidth,
+   outlineVisible: state.outlineVisible,
+    toolbarWidth: state.toolbarWidth,
   };
 }
 
@@ -135,8 +142,28 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   }))
                 }
               >
-                <option value="inkmark">InkMark</option>
-                <option value="github">GitHub</option>
+               <option value="inkmark">InkMark</option>
+               <option value="github">GitHub</option>
+              </select>
+            </label>
+
+            <label className="settings-field">
+              <span className="settings-field-copy">
+                <span className="settings-field-label">工具栏宽度</span>
+                <span className="settings-field-hint">调整工具栏外框宽度，不影响正文宽度。</span>
+              </span>
+              <select
+                value={draft.toolbarWidth}
+                onChange={(event) =>
+                  setDraft((settings) => ({
+                    ...settings,
+                    toolbarWidth: event.target.value as ToolbarWidth,
+                  }))
+                }
+              >
+                <option value="wide">宽</option>
+                <option value="medium">适中</option>
+                <option value="narrow">窄</option>
               </select>
             </label>
           </fieldset>

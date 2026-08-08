@@ -15,6 +15,22 @@
   user-select: none;
 }
 
+/* 三档只调整工具栏外框，正文宽度仍由 --editor-max-width 决定。
+   窄档与正文实际文字区对齐（编辑区宽度减去左右内边距）。 */
+.toolbar-width-wide {
+  max-width: var(--editor-max-width);
+}
+
+.toolbar-width-medium {
+  max-width: calc(var(--editor-max-width) - var(--editor-side-padding));
+}
+
+.toolbar-width-narrow {
+  max-width: calc(
+    var(--editor-max-width) - var(--editor-side-padding) - var(--editor-side-padding)
+  );
+}
+
 .toolbar-group {
   display: flex;
   align-items: center;

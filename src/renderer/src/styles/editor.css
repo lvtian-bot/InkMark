@@ -23,8 +23,6 @@
   margin: 20px auto 0;
   padding: 48px var(--editor-side-padding) 120px;
   min-height: calc(100% - 12px);
-  background: var(--bg-primary);
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
 }
 .editor-container [data-milkdown-root]:focus {
   outline: none;
@@ -165,10 +163,9 @@
 
 .source-container {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  min-height: 0;
+  min-width: 0;
   background: var(--canvas-bg);
-  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
 }
