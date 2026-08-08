@@ -109,7 +109,7 @@ function createWindow(): void {
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       height: 36,
-      color: '#f7f7f8',
+      color: '#e4eefa',
       symbolColor: '#6b6b6b',
     },
     webPreferences: {
@@ -268,7 +268,7 @@ ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
   createMenu();
   const isDark = themeId.endsWith('-dark');
   mainWindow?.setTitleBarOverlay({
-    color: isDark ? '#181825' : '#f7f7f8',
+    color: isDark ? '#181825' : '#e4eefa',
     symbolColor: isDark ? '#a6adc8' : '#6b6b6b',
   });
 });

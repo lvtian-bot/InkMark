@@ -20,12 +20,16 @@ export function Outline() {
         }
         const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
         let active: Element | null = null;
-        const scrollTop = container.scrollTop || window.scrollY;
-        const offset = 80;
+        // 判定线以编辑容器顶为基准，与 scrollToPos 的落点同一参照系，
+        // 否则点击跳转后目标标题过不了判定线，高亮会落在上一个标题
+        const line = container.getBoundingClientRect().top + 80;
         for (const h of headings) {
-          if (h.getBoundingClientRect().top + scrollTop - offset <= scrollTop) {
+          if (h.getBoundingClientRect().top <= line) {
             active = h;
           }
+        }
+        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
+          active = headings[headings.length - 1] ?? active;
         }
         if (active) {
           const text = active.textContent || '';

@@ -34,7 +34,6 @@ import { useStore } from '../stores/useStore';
 import '../styles/editor.css';
 import '../styles/prism.css';
 import '../styles/themes/github.css';
-import '@milkdown/theme-nord/style.css';
 import githubLightUrl from 'github-markdown-css/github-markdown-light.css?url';
 import githubDarkUrl from 'github-markdown-css/github-markdown-dark.css?url';
 
@@ -98,7 +97,7 @@ export function Editor({ onDocChange }: EditorProps) {
       link.remove();
     }
 
-    const milkdown = document.querySelector('.editor-container .milkdown');
+    const milkdown = document.querySelector('.editor-container [data-milkdown-root]');
     if (milkdown) {
       if (contentTheme === 'github') {
         milkdown.classList.add('markdown-body');
@@ -166,7 +165,8 @@ export function Editor({ onDocChange }: EditorProps) {
 
           const container = document.querySelector('.editor-container') as HTMLElement | null;
           if (container) {
-            const offset = 80;
+            // 落点比大纲高亮判定线（容器顶 +80）高 4px，确保点击后目标标题立即进入高亮区
+            const offset = 76;
             const delta =
               view.coordsAtPos(safePos).top - container.getBoundingClientRect().top - offset;
             container.scrollTop += delta;

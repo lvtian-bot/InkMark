@@ -4,18 +4,29 @@
   overflow-x: hidden;
   background: var(--bg-primary);
 }
-.editor-container .milkdown {
+.editor-container [data-milkdown-root] {
   max-width: var(--editor-max-width);
   margin: 0 auto;
   padding: 48px 56px 120px;
   min-height: 100%;
 }
-.editor-container .milkdown:focus {
+.editor-container [data-milkdown-root]:focus {
   outline: none;
 }
 .editor-container .ProseMirror {
   outline: none;
   caret-color: var(--accent);
+}
+/* 编辑器功能性样式：原由 nord 样式表提供，视觉层不再加载后由此接管 */
+.editor-container .ProseMirror-selectednode {
+  outline: 2px solid #8cf;
+}
+.editor-container .ProseMirror [draggable][contenteditable='false'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+.editor-container .ProseMirror .tableWrapper {
+  overflow-x: auto;
 }
 .editor-container.theme-inkmark h1 {
   font-size: 1.8em;

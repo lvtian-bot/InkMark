@@ -3,7 +3,7 @@
   align-items: center;
   height: 36px;
   padding: 0 8px;
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
   gap: 2px;

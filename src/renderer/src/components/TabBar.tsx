@@ -41,17 +41,19 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
             onMouseDown={(e) => handleMouseDown(e, tab.id)}
             title={tab.filePath ?? tab.fileName}
           >
-            <span className="tab-title">
-              {tab.isDirty ? '\u2022 ' : ''}
-              {tab.fileName}
-            </span>
-            <button
-              className="tab-close"
-              onClick={(e) => handleClose(e, tab.id)}
-              title="关闭标签页"
-            >
-              {'\u00d7'}
-            </button>
+            <div className="tab-body">
+              <span className="tab-title">
+                {tab.isDirty ? '\u2022 ' : ''}
+                {tab.fileName}
+              </span>
+              <button
+                className="tab-close"
+                onClick={(e) => handleClose(e, tab.id)}
+                title="关闭标签页"
+              >
+                {'\u00d7'}
+              </button>
+            </div>
           </div>
         ))}
         <button className="tab-new" onClick={onNewTab} title="新标签页 (Ctrl+T)">

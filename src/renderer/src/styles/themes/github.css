@@ -6,16 +6,16 @@
   background: #0d1117;
 }
 /* 保留底部留白，避免编辑到底部时过于贴边 */
-.editor-container.theme-github .milkdown {
+.editor-container.theme-github [data-milkdown-root] {
   padding-bottom: 120px;
 }
 
 /* 消除 nord 基础主题对 github 标题字重的干扰，钉回 github-markdown-css 的本意值 600 */
-.editor-container.theme-github .milkdown h1,
-.editor-container.theme-github .milkdown h2,
-.editor-container.theme-github .milkdown h3,
-.editor-container.theme-github .milkdown h4,
-.editor-container.theme-github .milkdown h5,
-.editor-container.theme-github .milkdown h6 {
+.editor-container.theme-github [data-milkdown-root] h1,
+.editor-container.theme-github [data-milkdown-root] h2,
+.editor-container.theme-github [data-milkdown-root] h3,
+.editor-container.theme-github [data-milkdown-root] h4,
+.editor-container.theme-github [data-milkdown-root] h5,
+.editor-container.theme-github [data-milkdown-root] h6 {
   font-weight: 600;
 }
