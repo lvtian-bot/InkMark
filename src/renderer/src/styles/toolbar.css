@@ -1,13 +1,24 @@
 .toolbar {
   display: flex;
   align-items: center;
+  gap: 10px;
   height: 36px;
   padding: 0 8px;
+  width: calc(100% - 24px);
+  max-width: var(--editor-max-width);
+  margin: 8px auto 0;
+  border-radius: 8px;
   background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
+  transform: translateX(calc(var(--scrollbar-w) / -2));
   flex-shrink: 0;
-  gap: 2px;
   user-select: none;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .toolbar-btn {
@@ -19,7 +30,7 @@
   padding: 0 6px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--text-primary) 50%, var(--text-secondary) 50%);
   font-size: 14px;
   font-family: var(--font-family);
   line-height: 1;
@@ -40,19 +51,7 @@
   color: #fff;
 }
 
-.toolbar-bold {
-  font-weight: 700;
-}
-
-.toolbar-italic {
-  font-style: italic;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.toolbar-separator {
-  width: 1px;
-  height: 18px;
-  background: var(--border-color);
-  margin: 0 4px;
-  flex-shrink: 0;
+.toolbar-heading {
+  font-size: 13px;
+  font-weight: 600;
 }

@@ -2,13 +2,29 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--bg-primary);
+  background: var(--canvas-bg);
+  scrollbar-gutter: stable;
+}
+.editor-container::-webkit-scrollbar,
+.source-container::-webkit-scrollbar {
+  width: var(--scrollbar-w);
+}
+.editor-container::-webkit-scrollbar-track,
+.source-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+.editor-container::-webkit-scrollbar-thumb,
+.source-container::-webkit-scrollbar-thumb {
+  border-radius: 5px;
+  background: var(--text-tertiary);
 }
 .editor-container [data-milkdown-root] {
   max-width: var(--editor-max-width);
-  margin: 0 auto;
-  padding: 48px 56px 120px;
-  min-height: 100%;
+  margin: 12px auto 0;
+  padding: 48px var(--editor-side-padding) 120px;
+  min-height: calc(100% - 12px);
+  background: var(--bg-primary);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
 }
 .editor-container [data-milkdown-root]:focus {
   outline: none;
@@ -149,25 +165,31 @@
 
 .source-container {
   flex: 1;
-  overflow: hidden;
-  background: var(--bg-primary);
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--canvas-bg);
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
 }
 .source-textarea {
+  display: block;
+  field-sizing: content;
   width: 100%;
-  height: 100%;
+  flex: 1 0 auto;
   max-width: var(--editor-max-width);
-  margin: 0 auto;
-  padding: 48px 56px 120px;
+  margin: 12px auto 0;
+  padding: 48px var(--editor-side-padding) 120px;
   border: none;
   outline: none;
   resize: none;
-  background: transparent;
+  background: var(--bg-primary);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 14px;
+  font-family: var(--font-family);
+  font-size: 16px;
   line-height: 1.75;
   user-select: text;
-  display: block;
   tab-size: 2;
 }
 .source-textarea::placeholder {

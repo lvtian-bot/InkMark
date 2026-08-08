@@ -5,6 +5,12 @@
 [data-theme='dark'] .editor-container.theme-github {
   background: #0d1117;
 }
+.source-container.theme-github {
+  background: #ffffff;
+}
+[data-theme='dark'] .source-container.theme-github {
+  background: #0d1117;
+}
 /* 保留底部留白，避免编辑到底部时过于贴边 */
 .editor-container.theme-github [data-milkdown-root] {
   padding-bottom: 120px;

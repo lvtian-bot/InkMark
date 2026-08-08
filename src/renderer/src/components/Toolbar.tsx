@@ -1,4 +1,5 @@
 import { type RefObject } from 'react';
+import { Bold, CircleCheck, Code, Italic, List, Redo2, Strikethrough, Undo2 } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
 import '../styles/toolbar.css';
@@ -59,6 +60,24 @@ function toggleLinePrefix(textarea: HTMLTextAreaElement, prefix: string): void {
     const newValue = text.slice(0, lineStart) + prefix + line + text.slice(lineEndPos);
     updateTextareaValue(textarea, newValue, start + prefix.length, start + prefix.length);
   }
+}
+
+function setHeadingLevel(textarea: HTMLTextAreaElement, level: number): void {
+  const start = textarea.selectionStart;
+  const text = textarea.value;
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = text.indexOf('\n', start);
+  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
+  const line = text.slice(lineStart, lineEndPos);
+
+  const match = line.match(/^(#{1,6})\s(.*)$/);
+  const currentLevel = match ? match[1].length : 0;
+  const body = match ? match[2] : line;
+
+  const newLine = currentLevel === level ? body : `${'#'.repeat(level)} ${body}`;
+  const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
+  const newStart = Math.max(lineStart, start + (newLine.length - line.length));
+  updateTextareaValue(textarea, newValue, newStart, newStart);
 }
 
 function toggleTaskPrefix(textarea: HTMLTextAreaElement): void {
@@ -135,11 +154,27 @@ export function Toolbar({ sourceRef }: ToolbarProps) {
     }
   };
 
-  const handleHeading = (): void => {
+  const handleHeading = (level: number): void => {
     if (isWysiwyg) {
-      editorHandle.current?.wrapHeading(1);
+      editorHandle.current?.wrapHeading(level);
     } else if (sourceRef.current) {
-      toggleLinePrefix(sourceRef.current, '# ');
+      setHeadingLevel(sourceRef.current, level);
+    }
+  };
+
+  const handleStrike = (): void => {
+    if (isWysiwyg) {
+      editorHandle.current?.toggleStrike();
+    } else if (sourceRef.current) {
+      wrapSelection(sourceRef.current, '~~', '~~');
+    }
+  };
+
+  const handleInlineCode = (): void => {
+    if (isWysiwyg) {
+      editorHandle.current?.toggleInlineCode();
+    } else if (sourceRef.current) {
+      wrapSelection(sourceRef.current, '`', '`');
     }
   };
 
@@ -161,36 +196,59 @@ export function Toolbar({ sourceRef }: ToolbarProps) {
 
   return (
     <div className="toolbar">
-      <button className="toolbar-btn" onClick={handleUndo} title={'\u64a4\u9500 (Ctrl+Z)'}>
-        {'\u21B6'}
-      </button>
-      <button className="toolbar-btn" onClick={handleRedo} title={'\u91cd\u505a (Ctrl+Y)'}>
-        {'\u21B7'}
-      </button>
-      <div className="toolbar-separator" />
-      <button
-        className="toolbar-btn toolbar-bold"
-        onClick={handleBold}
-        title={'\u52a0\u7c97 (Ctrl+B)'}
-      >
-        {'B'}
-      </button>
-      <button
-        className="toolbar-btn toolbar-italic"
-        onClick={handleItalic}
-        title={'\u659c\u4f53 (Ctrl+I)'}
-      >
-        {'I'}
-      </button>
-      <button className="toolbar-btn" onClick={handleHeading} title={'\u6807\u9898'}>
-        {'H'}
-      </button>
-      <button className="toolbar-btn" onClick={handleBulletList} title={'\u65e0\u5e8f\u5217\u8868'}>
-        {'\u2022'}
-      </button>
-      <button className="toolbar-btn" onClick={handleTaskList} title={'\u5f85\u529e\u4efb\u52a1'}>
-        {'\u2611'}
-      </button>
+      <div className="toolbar-group">
+        <button className="toolbar-btn" onClick={handleUndo} title="撤销 (Ctrl+Z)">
+          <Undo2 size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={handleRedo} title="重做 (Ctrl+Y)">
+          <Redo2 size={16} />
+        </button>
+      </div>
+      <div className="toolbar-group">
+        <button className="toolbar-btn" onClick={handleBold} title="加粗 (Ctrl+B)">
+          <Bold size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={handleItalic} title="斜体 (Ctrl+I)">
+          <Italic size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={handleStrike} title="删除线">
+          <Strikethrough size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={handleInlineCode} title="行内代码">
+          <Code size={16} />
+        </button>
+      </div>
+      <div className="toolbar-group">
+        <button
+          className="toolbar-btn toolbar-heading"
+          onClick={() => handleHeading(1)}
+          title="一级标题"
+        >
+          H1
+        </button>
+        <button
+          className="toolbar-btn toolbar-heading"
+          onClick={() => handleHeading(2)}
+          title="二级标题"
+        >
+          H2
+        </button>
+        <button
+          className="toolbar-btn toolbar-heading"
+          onClick={() => handleHeading(3)}
+          title="三级标题"
+        >
+          H3
+        </button>
+      </div>
+      <div className="toolbar-group">
+        <button className="toolbar-btn" onClick={handleBulletList} title="无序列表">
+          <List size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={handleTaskList} title="待办任务">
+          <CircleCheck size={16} />
+        </button>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@
   display: flex;
   justify-content: center;
   padding: 80px 24px 48px;
+  background: var(--bg-primary);
 }
 
 .start-content {
@@ -34,7 +35,9 @@
   background: var(--bg-primary);
   color: var(--text-primary);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .start-btn:hover {

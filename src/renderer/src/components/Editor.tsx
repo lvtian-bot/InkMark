@@ -11,11 +11,12 @@ import {
   commonmark,
   toggleStrongCommand,
   toggleEmphasisCommand,
+  toggleInlineCodeCommand,
   wrapInHeadingCommand,
   wrapInBulletListCommand,
   wrapInOrderedListCommand,
 } from '@milkdown/kit/preset/commonmark';
-import { gfm } from '@milkdown/kit/preset/gfm';
+import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history';
 import { nord } from '@milkdown/theme-nord';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
@@ -219,6 +220,20 @@ export function Editor({ onDocChange }: EditorProps) {
           ed.action(callCommand(toggleEmphasisCommand.key));
         } catch (e) {
           console.error('toggleItalic error:', e);
+        }
+      },
+      toggleStrike: () => {
+        try {
+          ed.action(callCommand(toggleStrikethroughCommand.key));
+        } catch (e) {
+          console.error('toggleStrike error:', e);
+        }
+      },
+      toggleInlineCode: () => {
+        try {
+          ed.action(callCommand(toggleInlineCodeCommand.key));
+        } catch (e) {
+          console.error('toggleInlineCode error:', e);
         }
       },
       wrapHeading: (level: number) => {

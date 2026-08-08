@@ -14,6 +14,8 @@ export interface EditorHandle {
   redo: () => void;
   toggleBold: () => void;
   toggleItalic: () => void;
+  toggleStrike: () => void;
+  toggleInlineCode: () => void;
   wrapHeading: (level: number) => void;
   wrapBulletList: () => void;
   wrapOrderedList: () => void;

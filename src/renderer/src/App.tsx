@@ -26,18 +26,18 @@ function AppContent() {
   const fileName = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.fileName ?? '未命名',
   );
- const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
+  const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
   const isStartPage = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStartPage ?? false,
   );
- const outlineWidth = useStore((s) => s.outlineWidth);
+  const outlineWidth = useStore((s) => s.outlineWidth);
   const outlineVisible = useStore((s) => s.outlineVisible);
   const viewMode = useStore((s) => s.viewMode);
   const setOutlineWidth = useStore((s) => s.setOutlineWidth);
   const toggleViewMode = useStore((s) => s.toggleViewMode);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const updateTab = useStore((s) => s.updateTab);
- const setSourceContent = useStore((s) => s.setSourceContent);
+  const setSourceContent = useStore((s) => s.setSourceContent);
   const setStartPage = useStore((s) => s.setStartPage);
 
   const sourceRef = useRef<HTMLTextAreaElement>(null);
@@ -251,7 +251,7 @@ function AppContent() {
   useEffect(() => {
     const mark = isDirty ? '\u2022 ' : '';
     window.inkmark.setWindowTitle(`${mark}${fileName} - InkMark`);
- }, [fileName, isDirty]);
+  }, [fileName, isDirty]);
 
   const prevStartPageRef = useRef(isStartPage);
 
@@ -318,7 +318,7 @@ function AppContent() {
             <div className="resize-handle" onMouseDown={handleResizeStart} />
           </>
         )}
-       <main className="editor-main">
+        <main className="editor-main">
           {isStartPage && (
             <StartPage
               onCreateBlank={() => setStartPage(false)}
@@ -326,18 +326,20 @@ function AppContent() {
               onOpenPath={(path) => void fileOps.openFilePath(path)}
             />
           )}
-          <div className={isStartPage ? 'is-hidden' : ''}>
-            <Toolbar sourceRef={sourceRef} />
-          </div>
-          <div className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}>
+          {!isStartPage && <Toolbar sourceRef={sourceRef} />}
+          <div
+            className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}
+          >
             <Editor onDocChange={handleDocChange} />
           </div>
-          <div className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}>
+          <div
+            className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}
+          >
             <SourceEditor ref={sourceRef} onChange={handleSourceChange} />
           </div>
+          <StatusBar />
         </main>
       </div>
-      <StatusBar />
       <ConfirmDialog />
     </div>
   );
