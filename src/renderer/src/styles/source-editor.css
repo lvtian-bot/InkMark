@@ -1,0 +1,45 @@
+/* CodeMirror 6 源码编辑器样式 */
+
+.source-container .cm-editor {
+  flex: 1;
+  max-width: var(--editor-max-width);
+  width: 100%;
+  margin: 0 auto;
+  background: transparent;
+}
+
+.source-container .cm-editor.cm-focused {
+  outline: none;
+}
+
+.source-container .cm-scroller {
+  font-family: var(--font-family);
+  font-size: var(--editor-font-size, 16px);
+  line-height: var(--editor-line-height, 1.7);
+  padding: 48px var(--editor-side-padding) 120px;
+}
+
+.source-container .cm-content {
+  font-family: var(--font-family);
+  caret-color: var(--accent);
+}
+
+.source-container .cm-line {
+  padding: 0;
+}
+
+/* 标记淡化：Markdown 语法标记符号用较淡的颜色，正文保持正常对比度 */
+.source-container .cm-mark-faded {
+  color: var(--text-tertiary);
+}
+
+/* 选区与光标 */
+.source-container .cm-selectionBackground,
+.source-container .cm-content ::selection {
+  background: var(--selection-bg, rgba(39, 116, 213, 0.2));
+}
+
+.source-container.cm-theme-dark .cm-selectionBackground,
+.source-container.cm-theme-dark .cm-content ::selection {
+  background: rgba(100, 150, 214, 0.25);
+}

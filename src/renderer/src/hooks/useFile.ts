@@ -3,6 +3,7 @@ import { useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
+import { sourceEditorHandle } from '../source-editor-ref';
 import type { FileResult, FileWatchEvent, ViewMode } from '../types';
 
 function filePathKey(path: string): string {
@@ -12,7 +13,6 @@ function filePathKey(path: string): string {
 export function useFile(
   getMarkdown: () => string,
   setMarkdown: (md: string) => boolean,
-  sourceRef: React.RefObject<HTMLTextAreaElement | null>,
   viewMode: ViewMode,
 ) {
   const tabs = useStore((s) => s.tabs);
@@ -30,16 +30,16 @@ export function useFile(
   const watchedPathsRef = useRef(new Map<string, string>());
   const missingNotifiedTabIdsRef = useRef(new Set<string>());
 
-  const stateRef = useRef({ tabs, activeTabId, getMarkdown, setMarkdown, sourceRef, viewMode });
+  const stateRef = useRef({ tabs, activeTabId, getMarkdown, setMarkdown, viewMode });
   useEffect(() => {
-    stateRef.current = { tabs, activeTabId, getMarkdown, setMarkdown, sourceRef, viewMode };
+    stateRef.current = { tabs, activeTabId, getMarkdown, setMarkdown, viewMode };
   });
 
   const getTabMarkdown = useCallback((tabId: string): string => {
     const s = stateRef.current;
     if (tabId === s.activeTabId) {
-      if (s.viewMode === 'source' && s.sourceRef.current) {
-        return s.sourceRef.current.value;
+      if (s.viewMode === 'source') {
+        return sourceEditorHandle.current?.getValue() ?? '';
       }
       return s.getMarkdown();
     }
@@ -306,8 +306,8 @@ export function useFile(
         if (!current.setMarkdown(result.content)) {
           suppressDirtyRef.current = false;
         }
-        if (current.viewMode === 'source' && current.sourceRef.current) {
-          current.sourceRef.current.value = result.content;
+        if (current.viewMode === 'source') {
+          sourceEditorHandle.current?.setValue(result.content);
         }
       } else {
         suppressDirtyRef.current = false;

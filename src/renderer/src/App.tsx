@@ -19,6 +19,7 @@ import { useWordCount } from './hooks/useWordCount';
 import { useStore } from './stores/useStore';
 import type { ContentTheme } from './types';
 import { editorHandle } from './editor-ref';
+import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
 import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
@@ -48,7 +49,6 @@ function AppContent() {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const sourceRef = useRef<HTMLTextAreaElement>(null);
   const switchingRef = useRef(false);
   const prevTabIdRef = useRef(activeTabId);
   const viewModeRef = useRef(viewMode);
@@ -63,8 +63,8 @@ function AppContent() {
     return true;
   }, []);
 
-  const fileOps = useFile(getMarkdown, setMarkdown, sourceRef, viewMode);
-  const findReplace = useFindReplace({ activeTabId, sourceRef, viewMode });
+  const fileOps = useFile(getMarkdown, setMarkdown, viewMode);
+  const findReplace = useFindReplace({ activeTabId, viewMode });
   const {
     close: closeFindReplace,
     isOpen: isFindReplaceOpen,
@@ -122,8 +122,8 @@ function AppContent() {
       const scrollTop = editorHandle.current.getScrollTop();
       const vm = viewModeRef.current;
       const sourceContent =
-        vm === 'source' && sourceRef.current
-          ? sourceRef.current.value
+        vm === 'source'
+          ? sourceEditorHandle.current?.getValue() ?? ''
           : editorHandle.current.getMarkdown();
       updateTab(oldTabId, { sourceContent, scrollTop });
     }
@@ -139,8 +139,8 @@ function AppContent() {
       if (newState) editorStateCache.set(newTabId, newState);
     }
 
-    if (viewModeRef.current === 'source' && sourceRef.current) {
-      sourceRef.current.value = newTab.sourceContent;
+    if (viewModeRef.current === 'source') {
+      sourceEditorHandle.current?.setValue(newTab.sourceContent);
     }
 
     switchingRef.current = false;
@@ -167,12 +167,10 @@ function AppContent() {
     prevModeRef.current = viewMode;
     if (viewMode === 'source') {
       const md = editorHandle.current?.getMarkdown() ?? '';
-      if (sourceRef.current) {
-        sourceRef.current.value = md;
-      }
+      sourceEditorHandle.current?.setValue(md);
       setSourceContent(md);
     } else {
-      const md = sourceRef.current?.value ?? '';
+      const md = sourceEditorHandle.current?.getValue() ?? '';
       const current = editorHandle.current?.getMarkdown() ?? '';
       if (md !== current) {
         editorHandle.current?.setMarkdown(md);
@@ -337,8 +335,8 @@ function AppContent() {
     }
     prevStartPageRef.current = isStartPage;
     const raf = requestAnimationFrame(() => {
-      if (viewModeRef.current === 'source' && sourceRef.current) {
-        sourceRef.current.focus();
+      if (viewModeRef.current === 'source') {
+        sourceEditorHandle.current?.focus();
       } else {
         editorHandle.current?.focus();
       }
@@ -400,7 +398,7 @@ function AppContent() {
               onOpenPath={(path) => void fileOps.openFilePath(path)}
             />
           )}
-          {!isStartPage && <Toolbar sourceRef={sourceRef} />}
+          {!isStartPage && <Toolbar />}
           {!isStartPage && isFindReplaceOpen && <FindReplaceBar controller={findReplace} />}
           <div
             className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}
@@ -410,9 +408,9 @@ function AppContent() {
           <div
             className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}
           >
-            <SourceEditor ref={sourceRef} onChange={handleSourceChange} />
+            <SourceEditor onChange={handleSourceChange} />
           </div>
-          <StatusBar />
+          <StatusBar onOpenSettings={() => setIsSettingsOpen(true)} />
         </main>
       </div>
       <ConfirmDialog />

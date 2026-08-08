@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { editorHandle } from '../editor-ref';
+import { sourceEditorHandle } from '../source-editor-ref';
 import {
   findLiteralMatches,
   findMatchAtOrAfter,
@@ -10,7 +11,6 @@ import type { ViewMode } from '../types';
 
 interface UseFindReplaceOptions {
   activeTabId: string;
-  sourceRef: RefObject<HTMLTextAreaElement>;
   viewMode: ViewMode;
 }
 
@@ -42,41 +42,6 @@ export interface FindReplaceController {
   showReplace: boolean;
 }
 
-function replaceTextareaSelection(
-  textarea: HTMLTextAreaElement,
-  match: TextMatch,
-  replacement: string,
-): void {
-  textarea.focus({ preventScroll: true });
-  textarea.setSelectionRange(match.from, match.to);
-
-  if (document.execCommand('insertText', false, replacement)) return;
-
-  textarea.setRangeText(replacement, match.from, match.to, 'end');
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-function replaceAllTextareaMatches(
-  textarea: HTMLTextAreaElement,
-  matches: readonly TextMatch[],
-  replacement: string,
-): void {
-  if (matches.length === 0) return;
-
-  let nextValue = textarea.value;
-  for (let index = matches.length - 1; index >= 0; index -= 1) {
-    const match = matches[index];
-    nextValue = nextValue.slice(0, match.from) + replacement + nextValue.slice(match.to);
-  }
-
-  textarea.focus({ preventScroll: true });
-  textarea.select();
-  if (document.execCommand('insertText', false, nextValue)) return;
-
-  textarea.setRangeText(nextValue, 0, textarea.value.length, 'end');
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
 function createWysiwygAdapter(): FindReplaceAdapter {
   return {
     clear: () => editorHandle.current?.showTextMatches([], -1),
@@ -94,28 +59,29 @@ function createWysiwygAdapter(): FindReplaceAdapter {
   };
 }
 
-function createSourceAdapter(
-  getTextarea: () => HTMLTextAreaElement | null,
-  focusQueryInput: () => void,
-): FindReplaceAdapter {
+function createSourceAdapter(focusQueryInput: () => void): FindReplaceAdapter {
   return {
     clear: () => editorHandle.current?.showTextMatches([], -1),
-    find: (query) => findLiteralMatches(getTextarea()?.value ?? '', query),
-    focus: () => getTextarea()?.focus(),
+    find: (query) => findLiteralMatches(sourceEditorHandle.current?.getValue() ?? '', query),
+    focus: () => sourceEditorHandle.current?.focus(),
     replaceAll: (matches, replacement) => {
-      const textarea = getTextarea();
-      if (textarea) replaceAllTextareaMatches(textarea, matches, replacement);
+      const handle = sourceEditorHandle.current;
+      if (!handle || matches.length === 0) return;
+      // 从后往前逐处替换，避免前面的偏移影响后面 match 的位置。用 quiet 写入
+      // 不触发 onChange：替换后由调用方统一 refresh 刷新匹配。
+      for (let index = matches.length - 1; index >= 0; index -= 1) {
+        const match = matches[index];
+        handle.replaceRangeQuiet(match.from, match.to, replacement);
+      }
     },
     replaceCurrent: (match, replacement) => {
-      const textarea = getTextarea();
-      if (textarea) replaceTextareaSelection(textarea, match, replacement);
+      sourceEditorHandle.current?.replaceRangeQuiet(match.from, match.to, replacement);
     },
     select: (match) => {
       editorHandle.current?.showTextMatches([], -1);
-      const textarea = getTextarea();
-      if (!textarea) return;
-      textarea.focus({ preventScroll: true });
-      textarea.setSelectionRange(match.from, match.to);
+      const handle = sourceEditorHandle.current;
+      if (!handle) return;
+      handle.setSelection(match.from, match.to);
       requestAnimationFrame(focusQueryInput);
     },
   };
@@ -123,7 +89,6 @@ function createSourceAdapter(
 
 export function useFindReplace({
   activeTabId,
-  sourceRef,
   viewMode,
 }: UseFindReplaceOptions): FindReplaceController {
   const [isOpen, setIsOpen] = useState(false);
@@ -142,7 +107,6 @@ export function useFindReplace({
   const activeMatchRef = useRef<TextMatch | null>(null);
   const contextRef = useRef(`${activeTabId}:${viewMode}`);
   const adapterRef = useRef<FindReplaceAdapter>(createWysiwygAdapter());
-  const getSourceTextarea = useCallback(() => sourceRef.current, [sourceRef]);
   const focusQueryInput = useCallback(
     () => queryInputRef.current?.focus({ preventScroll: true }),
     [],
@@ -152,8 +116,8 @@ export function useFindReplace({
     adapterRef.current =
       viewMode === 'wysiwyg'
         ? createWysiwygAdapter()
-        : createSourceAdapter(getSourceTextarea, focusQueryInput);
-  }, [focusQueryInput, getSourceTextarea, viewMode]);
+        : createSourceAdapter(focusQueryInput);
+  }, [focusQueryInput, viewMode]);
 
   useEffect(() => {
     isOpenRef.current = isOpen;

@@ -1,73 +1,81 @@
-import { type RefObject } from 'react';
 import { Bold, CircleCheck, Code, Code2, Italic, Link2, List, Redo2, Strikethrough, Table, Undo2 } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
+import { sourceEditorHandle, type SourceSelection } from '../source-editor-ref';
 import { promptDialog } from '../confirm-dialog';
 import '../styles/toolbar.css';
 
-interface ToolbarProps {
-  sourceRef: RefObject<HTMLTextAreaElement>;
+/// 源码模式下的编辑结果：新全文 + 新选区。辅助函数只产出这份结果，
+/// 统一由 applySourceEdit 落盘到 CodeMirror，保持「计算-写入」分离。
+interface SourceEdit {
+  text: string;
+  selection: SourceSelection;
 }
 
-function updateTextareaValue(
-  textarea: HTMLTextAreaElement,
-  newValue: string,
-  selStart: number,
-  selEnd: number,
-): void {
-  const nativeSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLTextAreaElement.prototype,
-    'value',
-  )!.set!;
-  nativeSetter.call(textarea, newValue);
-  textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  textarea.setSelectionRange(selStart, selEnd);
-  textarea.focus();
+/// 把一次源码编辑写入编辑器并定位光标。用 quiet 写入（工具栏操作由
+/// React onChange 链路之外的 dispatch 触发，但仍要让 useFile 感知到改动），
+/// 因此这里用 replaceRange（会触发 updateListener → onChange）。
+function applySourceEdit(edit: SourceEdit): void {
+  const handle = sourceEditorHandle.current;
+  if (!handle) return;
+  const oldLen = handle.getValue().length;
+  handle.replaceRange(0, oldLen, edit.text);
+  handle.setSelection(edit.selection.from, edit.selection.to);
 }
 
-function wrapSelection(textarea: HTMLTextAreaElement, before: string, after: string): void {
-  const start = textarea.selectionStart;
-  const end = textarea.selectionEnd;
-  const text = textarea.value;
-  const selected = text.slice(start, end);
+function wrapSelection(before: string, after: string): SourceEdit | null {
+  const handle = sourceEditorHandle.current;
+  if (!handle) return null;
+  const text = handle.getValue();
+  const { from, to } = handle.getSelection();
+  const selected = text.slice(from, to);
 
-  const beforeCtx = text.slice(Math.max(0, start - before.length), start);
-  const afterCtx = text.slice(end, Math.min(text.length, end + after.length));
+  const beforeCtx = text.slice(Math.max(0, from - before.length), from);
+  const afterCtx = text.slice(to, Math.min(text.length, to + after.length));
 
   if (beforeCtx === before && afterCtx === after) {
-    const newValue =
-      text.slice(0, start - before.length) + selected + text.slice(end + after.length);
-    updateTextareaValue(textarea, newValue, start - before.length, end - before.length);
-  } else {
-    const newValue = text.slice(0, start) + before + selected + after + text.slice(end);
-    updateTextareaValue(textarea, newValue, start + before.length, end + before.length);
+    // 已包裹 → 去掉标记
+    return {
+      text: text.slice(0, from - before.length) + selected + text.slice(to + after.length),
+      selection: { from: from - before.length, to: to - before.length },
+    };
   }
+  return {
+    text: text.slice(0, from) + before + selected + after + text.slice(to),
+    selection: { from: from + before.length, to: to + before.length },
+  };
 }
 
-function toggleLinePrefix(textarea: HTMLTextAreaElement, prefix: string): void {
-  const start = textarea.selectionStart;
-  const text = textarea.value;
-  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-  const lineEnd = text.indexOf('\n', start);
+function toggleLinePrefix(prefix: string): SourceEdit | null {
+  const handle = sourceEditorHandle.current;
+  if (!handle) return null;
+  const text = handle.getValue();
+  const { from } = handle.getSelection();
+  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
+  const lineEnd = text.indexOf('\n', from);
   const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
   const line = text.slice(lineStart, lineEndPos);
 
   if (line.startsWith(prefix)) {
     const newLine = line.slice(prefix.length);
-    const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
-    const newStart = Math.max(lineStart, start - prefix.length);
-    updateTextareaValue(textarea, newValue, newStart, newStart);
-  } else {
-    const newValue = text.slice(0, lineStart) + prefix + line + text.slice(lineEndPos);
-    updateTextareaValue(textarea, newValue, start + prefix.length, start + prefix.length);
+    return {
+      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
+      selection: { from: Math.max(lineStart, from - prefix.length), to: Math.max(lineStart, from - prefix.length) },
+    };
   }
+  return {
+    text: text.slice(0, lineStart) + prefix + line + text.slice(lineEndPos),
+    selection: { from: from + prefix.length, to: from + prefix.length },
+  };
 }
 
-function setHeadingLevel(textarea: HTMLTextAreaElement, level: number): void {
-  const start = textarea.selectionStart;
-  const text = textarea.value;
-  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-  const lineEnd = text.indexOf('\n', start);
+function setHeadingLevel(level: number): SourceEdit | null {
+  const handle = sourceEditorHandle.current;
+  if (!handle) return null;
+  const text = handle.getValue();
+  const { from } = handle.getSelection();
+  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
+  const lineEnd = text.indexOf('\n', from);
   const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
   const line = text.slice(lineStart, lineEndPos);
 
@@ -76,139 +84,151 @@ function setHeadingLevel(textarea: HTMLTextAreaElement, level: number): void {
   const body = match ? match[2] : line;
 
   const newLine = currentLevel === level ? body : `${'#'.repeat(level)} ${body}`;
-  const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
-  const newStart = Math.max(lineStart, start + (newLine.length - line.length));
-  updateTextareaValue(textarea, newValue, newStart, newStart);
+  const delta = newLine.length - line.length;
+  return {
+    text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
+    selection: { from: Math.max(lineStart, from + delta), to: Math.max(lineStart, from + delta) },
+  };
 }
 
-function toggleTaskPrefix(textarea: HTMLTextAreaElement): void {
-  const start = textarea.selectionStart;
-  const text = textarea.value;
-  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
-  const lineEnd = text.indexOf('\n', start);
+function toggleTaskPrefix(): SourceEdit | null {
+  const handle = sourceEditorHandle.current;
+  if (!handle) return null;
+  const text = handle.getValue();
+  const { from } = handle.getSelection();
+  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
+  const lineEnd = text.indexOf('\n', from);
   const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
   const line = text.slice(lineStart, lineEndPos);
 
-  // Already a task list item – remove the [ ] / [x] to make it a regular list item
   const taskMatch = line.match(/^(\s*)([-*+])\s\[[ xX]\]\s(.*)$/);
   if (taskMatch) {
     const newLine = `${taskMatch[1]}${taskMatch[2]} ${taskMatch[3]}`;
-    const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
-    const delta = lineStart + taskMatch[1].length + 2; // after "- "
-    const newSel = Math.min(Math.max(start - 4, delta), lineStart + newLine.length);
-    updateTextareaValue(textarea, newValue, newSel, newSel);
-    return;
+    const delta = lineStart + taskMatch[1].length + 2;
+    const newSel = Math.min(Math.max(from - 4, delta), lineStart + newLine.length);
+    return {
+      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
+      selection: { from: newSel, to: newSel },
+    };
   }
 
-  // Regular list item – add [ ] to make it a task
   const listMatch = line.match(/^(\s*)([-*+])\s(.*)$/);
   if (listMatch) {
     const newLine = `${listMatch[1]}${listMatch[2]} [ ] ${listMatch[3]}`;
-    const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
-    const newSel = start + 4; // added "[ ] "
-    updateTextareaValue(textarea, newValue, newSel, newSel);
-    return;
+    return {
+      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
+      selection: { from: from + 4, to: from + 4 },
+    };
   }
 
-  // Not a list – add "- [ ] " prefix
   const newLine = `- [ ] ${line}`;
-  const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
-  const newSel = start + 6;
-  updateTextareaValue(textarea, newValue, newSel, newSel);
+  return {
+    text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
+    selection: { from: from + 6, to: from + 6 },
+  };
 }
 
-export function Toolbar({ sourceRef }: ToolbarProps) {
+export function Toolbar() {
   const viewMode = useStore((s) => s.viewMode);
   const isWysiwyg = viewMode === 'wysiwyg';
 
   const handleUndo = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.undo();
-    } else if (sourceRef.current) {
-      sourceRef.current.focus();
-      document.execCommand('undo');
+    } else {
+      sourceEditorHandle.current?.focus();
+      sourceEditorHandle.current?.undo();
     }
   };
 
   const handleRedo = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.redo();
-    } else if (sourceRef.current) {
-      sourceRef.current.focus();
-      document.execCommand('redo');
+    } else {
+      sourceEditorHandle.current?.focus();
+      sourceEditorHandle.current?.redo();
     }
   };
 
   const handleBold = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.toggleBold();
-    } else if (sourceRef.current) {
-      wrapSelection(sourceRef.current, '**', '**');
+    } else {
+      const edit = wrapSelection('**', '**');
+      if (edit) applySourceEdit(edit);
     }
   };
 
   const handleItalic = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.toggleItalic();
-    } else if (sourceRef.current) {
-      wrapSelection(sourceRef.current, '*', '*');
+    } else {
+      const edit = wrapSelection('*', '*');
+      if (edit) applySourceEdit(edit);
     }
   };
 
   const handleHeading = (level: number): void => {
     if (isWysiwyg) {
       editorHandle.current?.wrapHeading(level);
-    } else if (sourceRef.current) {
-      setHeadingLevel(sourceRef.current, level);
+    } else {
+      const edit = setHeadingLevel(level);
+      if (edit) applySourceEdit(edit);
     }
   };
 
   const handleStrike = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.toggleStrike();
-    } else if (sourceRef.current) {
-      wrapSelection(sourceRef.current, '~~', '~~');
+    } else {
+      const edit = wrapSelection('~~', '~~');
+      if (edit) applySourceEdit(edit);
     }
   };
 
   const handleInlineCode = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.toggleInlineCode();
-    } else if (sourceRef.current) {
-      wrapSelection(sourceRef.current, '`', '`');
+    } else {
+      const edit = wrapSelection('`', '`');
+      if (edit) applySourceEdit(edit);
     }
   };
 
   const handleBulletList = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.wrapBulletList();
-    } else if (sourceRef.current) {
-      toggleLinePrefix(sourceRef.current, '- ');
+    } else {
+      const edit = toggleLinePrefix('- ');
+      if (edit) applySourceEdit(edit);
     }
   };
 
   const handleTaskList = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.wrapTaskList();
-    } else if (sourceRef.current) {
-      toggleTaskPrefix(sourceRef.current);
+    } else {
+      const edit = toggleTaskPrefix();
+      if (edit) applySourceEdit(edit);
     }
   };
 
   const handleCodeBlock = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.insertCodeBlock();
-    } else if (sourceRef.current) {
-      const ta = sourceRef.current;
-      const start = ta.selectionStart;
-      const text = ta.value;
-      const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+    } else {
+      const handle = sourceEditorHandle.current;
+      if (!handle) return;
+      const text = handle.getValue();
+      const { from } = handle.getSelection();
+      const lineStart = text.lastIndexOf('\n', from - 1) + 1;
       const needsNewline = lineStart > 0 && text[lineStart - 1] !== '\n';
       const prefix = needsNewline ? '\n' : '';
       const block = prefix + '```\n\n```\n';
-      const newValue = text.slice(0, lineStart) + block + text.slice(lineStart);
-      const cursorPos = lineStart + prefix.length + 4;
-      updateTextareaValue(ta, newValue, cursorPos, cursorPos);
+      applySourceEdit({
+        text: text.slice(0, lineStart) + block + text.slice(lineStart),
+        selection: { from: lineStart + prefix.length + 4, to: lineStart + prefix.length + 4 },
+      });
     }
   };
 
@@ -220,31 +240,36 @@ export function Toolbar({ sourceRef }: ToolbarProps) {
     if (!href) return;
     if (isWysiwyg) {
       editorHandle.current?.insertLink(href);
-    } else if (sourceRef.current) {
-      const ta = sourceRef.current;
-      const start = ta.selectionStart;
-      const end = ta.selectionEnd;
-      const text = ta.value;
-      const selected = text.slice(start, end) || '链接文本';
-      const insert = '[' + selected + '](' + href + ')';
-      updateTextareaValue(ta, text.slice(0, start) + insert + text.slice(end), start + 1, start + 1 + selected.length);
+    } else {
+      const handle = sourceEditorHandle.current;
+      if (!handle) return;
+      const text = handle.getValue();
+      const { from, to } = handle.getSelection();
+      const selected = text.slice(from, to) || '链接文本';
+      const insert = `[${selected}](${href})`;
+      applySourceEdit({
+        text: text.slice(0, from) + insert + text.slice(to),
+        selection: { from: from + 1, to: from + 1 + selected.length },
+      });
     }
   };
 
   const handleTable = (): void => {
     if (isWysiwyg) {
       editorHandle.current?.insertTable();
-    } else if (sourceRef.current) {
-      const ta = sourceRef.current;
-      const start = ta.selectionStart;
-      const text = ta.value;
-      const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+    } else {
+      const handle = sourceEditorHandle.current;
+      if (!handle) return;
+      const text = handle.getValue();
+      const { from } = handle.getSelection();
+      const lineStart = text.lastIndexOf('\n', from - 1) + 1;
       const needsNewline = lineStart > 0 && text[lineStart - 1] !== '\n';
       const prefix = needsNewline ? '\n' : '';
       const table = prefix + '| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n';
-      const newValue = text.slice(0, lineStart) + table + text.slice(lineStart);
-      const cursorPos = lineStart + table.length;
-      updateTextareaValue(ta, newValue, cursorPos, cursorPos);
+      applySourceEdit({
+        text: text.slice(0, lineStart) + table + text.slice(lineStart),
+        selection: { from: lineStart + table.length, to: lineStart + table.length },
+      });
     }
   };
 
