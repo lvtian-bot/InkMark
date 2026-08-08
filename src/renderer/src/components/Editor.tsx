@@ -29,6 +29,7 @@ import { prism } from '@milkdown/plugin-prism';
 import { Fragment, type Node } from '@milkdown/kit/prose/model';
 import { Decoration } from '@milkdown/kit/prose/view';
 import { imageView } from '../plugins/image-view';
+import { preprocessObsidianImages, postprocessObsidianImages } from '../plugins/obsidian-image';
 import {
   getMarkdown as getMarkdownAction,
   replaceAll as replaceAllAction,
@@ -179,14 +180,16 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
     editorHandle.current = {
       getMarkdown: () => {
         try {
-          return ed.action(getMarkdownAction()) ?? '';
+          const md = ed.action(getMarkdownAction()) ?? '';
+          return postprocessObsidianImages(md);
         } catch {
           return '';
         }
       },
       setMarkdown: (md: string) => {
         try {
-          ed.action(replaceAllAction(md, true));
+          const processed = preprocessObsidianImages(md);
+          ed.action(replaceAllAction(processed, true));
           const view = ed.ctx.get(editorViewCtx);
           onDocChangeRef.current(view.state.doc);
         } catch (e) {
@@ -212,7 +215,8 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       getMarkdownFromState: (state) => {
         try {
           const serializer = ed.ctx.get(serializerCtx);
-          return serializer(state.doc) ?? '';
+          const md = serializer(state.doc) ?? '';
+          return postprocessObsidianImages(md);
         } catch {
           return '';
         }

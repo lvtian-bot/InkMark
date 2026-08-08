@@ -1,6 +1,7 @@
 import { $view } from '@milkdown/kit/utils';
 import { imageSchema } from '@milkdown/kit/preset/commonmark';
 import { useStore } from '../stores/useStore';
+import { OBSIDIAN_MARK } from './obsidian-image';
 
 const PROTOCOL = 'inkmark-local';
 
@@ -39,7 +40,7 @@ export const imageView = $view(imageSchema, () => (node) => {
     const mdPath = activeTab?.filePath ?? null;
     dom.src = resolveLocalSrc(attrs.src, mdPath);
     dom.alt = attrs.alt || '';
-    if (attrs.title) {
+    if (attrs.title && attrs.title !== OBSIDIAN_MARK) {
       dom.title = attrs.title;
     } else {
       dom.removeAttribute('title');
