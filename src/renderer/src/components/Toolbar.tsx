@@ -61,6 +61,42 @@ function toggleLinePrefix(textarea: HTMLTextAreaElement, prefix: string): void {
   }
 }
 
+function toggleTaskPrefix(textarea: HTMLTextAreaElement): void {
+  const start = textarea.selectionStart;
+  const text = textarea.value;
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = text.indexOf('\n', start);
+  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
+  const line = text.slice(lineStart, lineEndPos);
+
+  // Already a task list item – remove the [ ] / [x] to make it a regular list item
+  const taskMatch = line.match(/^(\s*)([-*+])\s\[[ xX]\]\s(.*)$/);
+  if (taskMatch) {
+    const newLine = `${taskMatch[1]}${taskMatch[2]} ${taskMatch[3]}`;
+    const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
+    const delta = lineStart + taskMatch[1].length + 2; // after "- "
+    const newSel = Math.min(Math.max(start - 4, delta), lineStart + newLine.length);
+    updateTextareaValue(textarea, newValue, newSel, newSel);
+    return;
+  }
+
+  // Regular list item – add [ ] to make it a task
+  const listMatch = line.match(/^(\s*)([-*+])\s(.*)$/);
+  if (listMatch) {
+    const newLine = `${listMatch[1]}${listMatch[2]} [ ] ${listMatch[3]}`;
+    const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
+    const newSel = start + 4; // added "[ ] "
+    updateTextareaValue(textarea, newValue, newSel, newSel);
+    return;
+  }
+
+  // Not a list – add "- [ ] " prefix
+  const newLine = `- [ ] ${line}`;
+  const newValue = text.slice(0, lineStart) + newLine + text.slice(lineEndPos);
+  const newSel = start + 6;
+  updateTextareaValue(textarea, newValue, newSel, newSel);
+}
+
 export function Toolbar({ sourceRef }: ToolbarProps) {
   const viewMode = useStore((s) => s.viewMode);
   const isWysiwyg = viewMode === 'wysiwyg';
@@ -115,6 +151,14 @@ export function Toolbar({ sourceRef }: ToolbarProps) {
     }
   };
 
+  const handleTaskList = (): void => {
+    if (isWysiwyg) {
+      editorHandle.current?.wrapTaskList();
+    } else if (sourceRef.current) {
+      toggleTaskPrefix(sourceRef.current);
+    }
+  };
+
   return (
     <div className="toolbar">
       <button className="toolbar-btn" onClick={handleUndo} title={'\u64a4\u9500 (Ctrl+Z)'}>
@@ -143,6 +187,9 @@ export function Toolbar({ sourceRef }: ToolbarProps) {
       </button>
       <button className="toolbar-btn" onClick={handleBulletList} title={'\u65e0\u5e8f\u5217\u8868'}>
         {'\u2022'}
+      </button>
+      <button className="toolbar-btn" onClick={handleTaskList} title={'\u5f85\u529e\u4efb\u52a1'}>
+        {'\u2611'}
       </button>
     </div>
   );

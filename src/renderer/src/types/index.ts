@@ -13,6 +13,8 @@ export interface FileResult {
 
 export type SaveResult = { status: 'ok'; mtime: number } | { status: 'conflict' };
 
+export type MtimeResult = { status: 'ok'; mtime: number } | { status: 'error' };
+
 export interface SaveAsResult {
   path: string;
   mtime: number;
@@ -29,7 +31,9 @@ export interface InkMarkAPI {
     force?: boolean,
   ) => Promise<SaveResult>;
   saveFileAs: (content: string) => Promise<SaveAsResult | null>;
-  openFilePath: (path: string) => Promise<FileResult>;
+  openFilePath: (path: string) => Promise<FileResult | null>;
+  getRecentFiles: () => Promise<string[]>;
+  getFileMtime: (path: string) => Promise<MtimeResult>;
   onOpenFilePath: (cb: (path: string) => void) => void;
   onMenuNew: (cb: () => void) => void;
   onMenuOpen: (cb: () => void) => void;

@@ -18,6 +18,7 @@ export function useFile(
   const setDirty = useStore((s) => s.setDirty);
 
   const suppressDirtyRef = useRef(false);
+  const checkingRef = useRef(false);
 
   const stateRef = useRef({ tabs, activeTabId, getMarkdown, setMarkdown, sourceRef, viewMode });
   useEffect(() => {
@@ -97,20 +98,21 @@ export function useFile(
     if (activeTab && !activeTab.filePath && !activeTab.isDirty && activeTab.sourceContent === '') {
       editorStateCache.delete(activeTab.id);
       suppressDirtyRef.current = true;
-      if (!s.setMarkdown(result.content)) {
-        suppressDirtyRef.current = false;
-      }
-      updateTab(activeTab.id, {
-        filePath: result.path,
-        fileName: result.path.split(/[/\\]/).pop()!,
-        sourceContent: result.content,
-        fileMtime: result.mtime,
-      });
-      return;
-    }
+     if (!s.setMarkdown(result.content)) {
+       suppressDirtyRef.current = false;
+     }
+     updateTab(activeTab.id, {
+       filePath: result.path,
+       fileName: result.path.split(/[/\\]/).pop()!,
+       sourceContent: result.content,
+       fileMtime: result.mtime,
+        isStartPage: false,
+     });
+     return;
+   }
 
-    addTab({ filePath: result.path, content: result.content, fileMtime: result.mtime });
-  }, [addTab, setActiveTab, updateTab]);
+   addTab({ filePath: result.path, content: result.content, fileMtime: result.mtime });
+ }, [addTab, setActiveTab, updateTab]);
 
   const openFilePath = useCallback(
     async (path: string) => {
@@ -121,28 +123,30 @@ export function useFile(
         return;
       }
 
-      const result = await window.inkmark.openFilePath(path);
+   const result = await window.inkmark.openFilePath(path);
+   if (!result) return;
 
-      const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
-      if (
-        activeTab &&
-        !activeTab.filePath &&
-        !activeTab.isDirty &&
-        activeTab.sourceContent === ''
-      ) {
-        editorStateCache.delete(activeTab.id);
-        suppressDirtyRef.current = true;
-        if (!s.setMarkdown(result.content)) {
-          suppressDirtyRef.current = false;
-        }
-        updateTab(activeTab.id, {
-          filePath: result.path,
-          fileName: result.path.split(/[/\\]/).pop()!,
-          sourceContent: result.content,
-          fileMtime: result.mtime,
-        });
-        return;
-      }
+   const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
+   if (
+     activeTab &&
+     !activeTab.filePath &&
+     !activeTab.isDirty &&
+     activeTab.sourceContent === ''
+   ) {
+     editorStateCache.delete(activeTab.id);
+     suppressDirtyRef.current = true;
+     if (!s.setMarkdown(result.content)) {
+       suppressDirtyRef.current = false;
+     }
+     updateTab(activeTab.id, {
+       filePath: result.path,
+       fileName: result.path.split(/[/\\]/).pop()!,
+       sourceContent: result.content,
+       fileMtime: result.mtime,
+        isStartPage: false,
+     });
+     return;
+   }
 
       addTab({ filePath: result.path, content: result.content, fileMtime: result.mtime });
     },
@@ -225,7 +229,65 @@ export function useFile(
       return;
     }
     setDirty(true);
-  }, [setDirty]);
+ }, [setDirty]);
+
+  const reloadTab = useCallback(
+    async (tabId: string): Promise<void> => {
+      const s = stateRef.current;
+      const tab = s.tabs.find((t) => t.id === tabId);
+     if (!tab?.filePath) return;
+     const result = await window.inkmark.openFilePath(tab.filePath);
+     if (!result) return;
+      editorStateCache.delete(tabId);
+     suppressDirtyRef.current = true;
+      if (tabId === s.activeTabId) {
+        if (!s.setMarkdown(result.content)) {
+          suppressDirtyRef.current = false;
+        }
+        if (s.viewMode === 'source' && s.sourceRef.current) {
+          s.sourceRef.current.value = result.content;
+        }
+      }
+      updateTab(tabId, {
+        sourceContent: result.content,
+        fileMtime: result.mtime,
+        isDirty: false,
+      });
+    },
+    [updateTab],
+  );
+
+  const checkExternalChanges = useCallback(async (): Promise<void> => {
+    if (checkingRef.current) return;
+    checkingRef.current = true;
+    try {
+      const s = stateRef.current;
+      await Promise.all(
+        s.tabs.map(async (tab) => {
+          if (!tab.filePath || tab.fileMtime == null) return;
+          const res = await window.inkmark.getFileMtime(tab.filePath);
+          if (res.status === 'ok' && res.mtime !== tab.fileMtime) {
+            if (tab.isDirty) {
+              const choice = await confirmDialog(
+                '文件已被外部修改',
+                `"${tab.fileName}" 已被其他程序修改，是否放弃当前未保存的改动并重载？`,
+                ['重载', '保留我的改动'],
+              );
+              if (choice === 0) {
+                await reloadTab(tab.id);
+              } else {
+                updateTab(tab.id, { fileMtime: res.mtime });
+              }
+            } else {
+              await reloadTab(tab.id);
+            }
+          }
+        }),
+      );
+    } finally {
+      checkingRef.current = false;
+    }
+  }, [reloadTab, updateTab]);
 
   return useMemo(
     () => ({
@@ -237,7 +299,8 @@ export function useFile(
       closeTab,
       closeWindow,
       markDirty,
+      checkExternalChanges,
     }),
-    [newFile, openFile, openFilePath, save, saveAs, closeTab, closeWindow, markDirty],
+    [newFile, openFile, openFilePath, save, saveAs, closeTab, closeWindow, markDirty, checkExternalChanges],
   );
 }

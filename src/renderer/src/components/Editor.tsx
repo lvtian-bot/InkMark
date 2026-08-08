@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { useEditor, Milkdown } from '@milkdown/react';
+import { useEditor, useInstance, Milkdown } from '@milkdown/react';
 import {
   Editor as MilkdownEditor,
   rootCtx,
@@ -30,6 +30,7 @@ import {
 } from '@milkdown/kit/utils';
 import { TextSelection } from '@milkdown/kit/prose/state';
 import { editorHandle } from '../editor-ref';
+import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { useStore } from '../stores/useStore';
 import '../styles/editor.css';
 import '../styles/prism.css';
@@ -52,7 +53,7 @@ export function Editor({ onDocChange }: EditorProps) {
   const contentTheme = useStore((s) => s.contentTheme);
   const theme = useStore((s) => s.theme);
 
-  const { loading, get } = useEditor((root) => {
+  useEditor((root) => {
     return MilkdownEditor.make()
       .config((ctx) => {
         ctx.set(rootCtx, root);
@@ -73,6 +74,7 @@ export function Editor({ onDocChange }: EditorProps) {
       })
       .use(commonmark)
       .use(gfm)
+      .use(taskList)
       .use(history)
       .use(listener)
       .use(block)
@@ -80,6 +82,11 @@ export function Editor({ onDocChange }: EditorProps) {
       .use(upload)
       .use(prism);
   }, []);
+
+  // 不用 useEditor 返回的 get：它每次渲染都是新函数，放进下方 effect 依赖会导致
+  // effect 每次渲染重跑，冷启动回填逻辑会用陈旧的 sourceContent 覆盖用户刚输入的内容。
+  // useInstance 的 get 是稳定引用，effect 只在编辑器就绪时执行一次。
+  const [loading, get] = useInstance();
 
   useEffect(() => {
     let link = document.getElementById(GITHUB_LINK_ID) as HTMLLinkElement | null;
@@ -233,6 +240,13 @@ export function Editor({ onDocChange }: EditorProps) {
           ed.action(callCommand(wrapInOrderedListCommand.key));
         } catch (e) {
           console.error('wrapOrderedList error:', e);
+        }
+      },
+      wrapTaskList: () => {
+        try {
+          ed.action(callCommand(wrapInTaskListCommand.key));
+        } catch (e) {
+          console.error('wrapTaskList error:', e);
         }
       },
       focus: () => {

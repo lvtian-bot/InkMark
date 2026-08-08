@@ -49,6 +49,55 @@ function saveWindowState(win: BrowserWindow): void {
   }
 }
 
+const MAX_RECENT_FILES = 10;
+let recentFilesCache: string[] | null = null;
+
+function getRecentFilesPath(): string {
+  return join(app.getPath('userData'), 'recent-files.json');
+}
+
+function getRecentFiles(): string[] {
+  if (recentFilesCache === null) {
+    try {
+      const recentPath = getRecentFilesPath();
+      if (existsSync(recentPath)) {
+        const data = JSON.parse(readFileSync(recentPath, 'utf-8'));
+        recentFilesCache = Array.isArray(data)
+          ? data.filter((p): p is string => typeof p === 'string')
+          : [];
+      } else {
+        recentFilesCache = [];
+      }
+    } catch {
+      recentFilesCache = [];
+    }
+  }
+  return recentFilesCache;
+}
+
+function addRecentFile(filePath: string): void {
+  recentFilesCache = [filePath, ...getRecentFiles().filter((p) => p !== filePath)].slice(
+    0,
+    MAX_RECENT_FILES,
+  );
+  try {
+    writeFileSync(getRecentFilesPath(), JSON.stringify(recentFilesCache), 'utf-8');
+  } catch {
+    /* ignore write errors */
+  }
+}
+
+function removeRecentFile(filePath: string): void {
+  const next = getRecentFiles().filter((p) => p !== filePath);
+  if (next.length === recentFilesCache!.length) return;
+  recentFilesCache = next;
+  try {
+    writeFileSync(getRecentFilesPath(), JSON.stringify(recentFilesCache), 'utf-8');
+  } catch {
+    /* ignore write errors */
+  }
+}
+
 function getFileFromArgs(argv: string[]): string | null {
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
@@ -300,6 +349,7 @@ ipcMain.handle('dialog:openFile', async () => {
   const filePath = result.filePaths[0];
   const content = readFileSync(filePath, 'utf-8');
   const mtime = statSync(filePath).mtimeMs;
+  addRecentFile(filePath);
   return { path: filePath, content, mtime };
 });
 
@@ -340,9 +390,24 @@ ipcMain.handle('dialog:saveFileAs', async (_event, { content }: { content: strin
 });
 
 ipcMain.handle('file:read', async (_event, { path }: { path: string }) => {
-  const content = readFileSync(path, 'utf-8');
-  const mtime = statSync(path).mtimeMs;
-  return { path, content, mtime };
+  try {
+    const content = readFileSync(path, 'utf-8');
+    const mtime = statSync(path).mtimeMs;
+    addRecentFile(path);
+    return { path, content, mtime };
+  } catch {
+    // 文件已被删除或移动：从最近列表移除死链，避免反复点击失败
+    removeRecentFile(path);
+    return null;
+  }
+});
+
+ipcMain.handle('file:getMtime', async (_event, { path }: { path: string }) => {
+  try {
+    return { status: 'ok' as const, mtime: statSync(path).mtimeMs };
+  } catch {
+    return { status: 'error' as const };
+  }
 });
 
 ipcMain.handle('window:setTitle', (_event, title: string) => {
@@ -352,4 +417,8 @@ ipcMain.handle('window:setTitle', (_event, title: string) => {
 ipcMain.handle('window:close', () => {
   forceClose = true;
   mainWindow?.close();
+});
+
+ipcMain.handle('recent:get', async () => {
+  return getRecentFiles();
 });

@@ -6,6 +6,7 @@ export interface Tab {
   filePath: string | null;
   fileName: string;
   isDirty: boolean;
+  isStartPage: boolean;
   outline: Heading[];
   wordCount: number;
   charCount: number;
@@ -35,6 +36,7 @@ interface InkMarkState {
 
   setFilePath: (path: string | null) => void;
   setDirty: (dirty: boolean) => void;
+  setStartPage: (startPage: boolean) => void;
   setOutline: (outline: Heading[]) => void;
   setWordCount: (words: number, chars: number) => void;
   setSourceContent: (content: string) => void;
@@ -82,8 +84,9 @@ function createTab(init?: {
   return {
     id: nextTabId(),
     filePath,
-    fileName: filePath ? filePath.split(/[/\\]/).pop()! : '未命名',
+    fileName: filePath ? filePath.split(/[/\\]/).pop()! : '新建文档',
     isDirty: false,
+    isStartPage: !filePath,
     outline: [],
     wordCount: 0,
     charCount: 0,
@@ -162,11 +165,16 @@ export const useStore = create<InkMarkState>((set, get) => ({
       filePath: path,
       fileName: path ? path.split(/[/\\]/).pop()! : '未命名',
       isDirty: false,
+      isStartPage: false,
     });
   },
 
   setDirty: (dirty) => {
     get().updateTab(get().activeTabId, { isDirty: dirty });
+  },
+
+  setStartPage: (startPage) => {
+    get().updateTab(get().activeTabId, { isStartPage: startPage });
   },
 
   setOutline: (outline) => {

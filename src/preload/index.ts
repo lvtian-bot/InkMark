@@ -6,6 +6,8 @@ const api = {
     ipcRenderer.invoke('file:save', { content, path, knownMtime, force }),
   saveFileAs: (content: string) => ipcRenderer.invoke('dialog:saveFileAs', { content }),
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
+  getRecentFiles: () => ipcRenderer.invoke('recent:get'),
+  getFileMtime: (path: string) => ipcRenderer.invoke('file:getMtime', { path }),
   onOpenFilePath: (cb: (path: string) => void) => {
     ipcRenderer.removeAllListeners('file:open-path');
     ipcRenderer.on('file:open-path', (_event, path: string) => cb(path));

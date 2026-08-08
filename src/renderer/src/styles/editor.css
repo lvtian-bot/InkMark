@@ -173,3 +173,38 @@
 .source-textarea::placeholder {
   color: var(--text-tertiary);
 }
+
+/* ---- Task list (GFM) ---- */
+.editor-container li[data-item-type='task'] {
+  list-style: none;
+  position: relative;
+}
+.editor-container li[data-item-type='task']::before {
+  content: '';
+  position: absolute;
+  left: -1.5em;
+  top: 0.5em;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--text-tertiary);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.editor-container li[data-item-type='task'][data-checked='true']::before {
+  content: '\2713';
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.editor-container li[data-item-type='task'][data-checked='true'] > p {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+}

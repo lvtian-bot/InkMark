@@ -17,6 +17,7 @@ export interface EditorHandle {
   wrapHeading: (level: number) => void;
   wrapBulletList: () => void;
   wrapOrderedList: () => void;
+  wrapTaskList: () => void;
   focus: () => void;
 }
 

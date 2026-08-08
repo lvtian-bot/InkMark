@@ -6,6 +6,7 @@ import { StatusBar } from './components/StatusBar';
 import { Outline } from './components/Outline';
 import { TabBar } from './components/TabBar';
 import { Toolbar } from './components/Toolbar';
+import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { useTheme } from './hooks/useTheme';
 import { useFile } from './hooks/useFile';
@@ -25,15 +26,19 @@ function AppContent() {
   const fileName = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.fileName ?? '未命名',
   );
-  const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
-  const outlineWidth = useStore((s) => s.outlineWidth);
+ const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
+  const isStartPage = useStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStartPage ?? false,
+  );
+ const outlineWidth = useStore((s) => s.outlineWidth);
   const outlineVisible = useStore((s) => s.outlineVisible);
   const viewMode = useStore((s) => s.viewMode);
   const setOutlineWidth = useStore((s) => s.setOutlineWidth);
   const toggleViewMode = useStore((s) => s.toggleViewMode);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const updateTab = useStore((s) => s.updateTab);
-  const setSourceContent = useStore((s) => s.setSourceContent);
+ const setSourceContent = useStore((s) => s.setSourceContent);
+  const setStartPage = useStore((s) => s.setStartPage);
 
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const switchingRef = useRef(false);
@@ -231,9 +236,41 @@ function AppContent() {
   }, [fileOps]);
 
   useEffect(() => {
+    const onFocus = () => void fileOps.checkExternalChanges();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void fileOps.checkExternalChanges();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [fileOps]);
+
+  useEffect(() => {
     const mark = isDirty ? '\u2022 ' : '';
     window.inkmark.setWindowTitle(`${mark}${fileName} - InkMark`);
-  }, [fileName, isDirty]);
+ }, [fileName, isDirty]);
+
+  const prevStartPageRef = useRef(isStartPage);
+
+  useEffect(() => {
+    // 仅在从起始页切出（isStartPage: true → false）时聚焦，避免切换视图模式时抢焦点
+    if (!prevStartPageRef.current || isStartPage) {
+      prevStartPageRef.current = isStartPage;
+      return;
+    }
+    prevStartPageRef.current = isStartPage;
+    const raf = requestAnimationFrame(() => {
+      if (viewModeRef.current === 'source' && sourceRef.current) {
+        sourceRef.current.focus();
+      } else {
+        editorHandle.current?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isStartPage]);
 
   const [isResizing, setIsResizing] = useState(false);
 
@@ -281,12 +318,21 @@ function AppContent() {
             <div className="resize-handle" onMouseDown={handleResizeStart} />
           </>
         )}
-        <main className="editor-main">
-          <Toolbar sourceRef={sourceRef} />
-          <div className={`editor-view ${viewMode === 'wysiwyg' ? '' : 'is-hidden'}`}>
+       <main className="editor-main">
+          {isStartPage && (
+            <StartPage
+              onCreateBlank={() => setStartPage(false)}
+              onOpenFile={() => void fileOps.openFile()}
+              onOpenPath={(path) => void fileOps.openFilePath(path)}
+            />
+          )}
+          <div className={isStartPage ? 'is-hidden' : ''}>
+            <Toolbar sourceRef={sourceRef} />
+          </div>
+          <div className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}>
             <Editor onDocChange={handleDocChange} />
           </div>
-          <div className={`source-view ${viewMode === 'source' ? '' : 'is-hidden'}`}>
+          <div className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}>
             <SourceEditor ref={sourceRef} onChange={handleSourceChange} />
           </div>
         </main>
