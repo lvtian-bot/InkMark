@@ -1,10 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  DiscardStoredImageRequest,
+  ResolveImageSourceRequest,
+  StoreImageRequest,
+} from '../shared/image-storage';
 
 const api = {
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (content: string, path: string, knownMtime?: number | null, force?: boolean) =>
     ipcRenderer.invoke('file:save', { content, path, knownMtime, force }),
-  saveFileAs: (content: string) => ipcRenderer.invoke('dialog:saveFileAs', { content }),
+  saveFileAs: (content: string, sourcePath?: string | null) =>
+    ipcRenderer.invoke('dialog:saveFileAs', { content, sourcePath }),
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
   getRecentFiles: () => ipcRenderer.invoke('recent:get'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
@@ -83,6 +89,11 @@ const api = {
   popupMenu: () => {
     ipcRenderer.send('menu:popup');
   },
+  storeImage: (request: StoreImageRequest) => ipcRenderer.invoke('image:store', request),
+  discardStoredImage: (request: DiscardStoredImageRequest) =>
+    ipcRenderer.invoke('image:discard', request),
+  resolveImageSource: (request: ResolveImageSourceRequest) =>
+    ipcRenderer.invoke('image:resolveSource', request),
   platform: process.platform,
 };
 

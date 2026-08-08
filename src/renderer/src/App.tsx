@@ -20,6 +20,8 @@ import { useStore } from './stores/useStore';
 import type { ContentTheme } from './types';
 import { editorHandle } from './editor-ref';
 import { editorStateCache } from './editor-state-cache';
+import { confirmDialog } from './confirm-dialog';
+import { isImageUploadInProgress } from './image-upload';
 
 function AppContent() {
   const { theme, setTheme, contentTheme, setContentTheme } = useTheme();
@@ -96,6 +98,11 @@ function AppContent() {
 
   useLayoutEffect(() => {
     if (prevTabIdRef.current === activeTabId) return;
+    if (isImageUploadInProgress()) {
+      setActiveTab(prevTabIdRef.current);
+      void confirmDialog('图片正在保存', '请等待图片插入完成后再切换文档。', ['确定']);
+      return;
+    }
     if (!editorHandle.current) {
       prevTabIdRef.current = activeTabId;
       return;
@@ -151,7 +158,7 @@ function AppContent() {
     });
 
     prevTabIdRef.current = newTabId;
-  }, [activeTabId, updateTab, updateOutline, updateWordCount]);
+  }, [activeTabId, setActiveTab, updateTab, updateOutline, updateWordCount]);
 
   const prevModeRef = useRef(viewMode);
   useEffect(() => {

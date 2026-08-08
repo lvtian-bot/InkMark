@@ -1,3 +1,12 @@
+import type {
+  DiscardStoredImageRequest,
+  DiscardStoredImageResult,
+  ResolveImageSourceRequest,
+  ResolveImageSourceResult,
+  StoreImageRequest,
+  StoreImageResult,
+} from '../../../shared/image-storage';
+
 export interface Heading {
   id: string;
   level: number;
@@ -43,7 +52,7 @@ export interface InkMarkAPI {
     knownMtime?: number | null,
     force?: boolean,
   ) => Promise<SaveResult>;
-  saveFileAs: (content: string) => Promise<SaveAsResult | null>;
+  saveFileAs: (content: string, sourcePath?: string | null) => Promise<SaveAsResult | null>;
   openFilePath: (path: string) => Promise<FileResult | null>;
   getRecentFiles: () => Promise<string[]>;
   getAppInfo: () => Promise<AppInfo>;
@@ -69,6 +78,9 @@ export interface InkMarkAPI {
   syncSourceMode: (checked: boolean) => void;
   syncOutlineVisible: (visible: boolean) => void;
   popupMenu: () => void;
+  storeImage: (request: StoreImageRequest) => Promise<StoreImageResult>;
+  discardStoredImage: (request: DiscardStoredImageRequest) => Promise<DiscardStoredImageResult>;
+  resolveImageSource: (request: ResolveImageSourceRequest) => Promise<ResolveImageSourceResult>;
   platform: string;
 }
 

@@ -32,7 +32,10 @@
 - [ ] 文件树工作区（优先度：中）
   - 边界：只做类似 Typora 的文件夹浏览、文件切换和基础文件操作，不引入知识库、双向链接、标签系统或数据库视图。
   - 开发时一并收敛数据源：sourceContent 作为唯一权威内容，切 tab 始终从 sourceContent 反序列化（setMarkdown），EditorState cache 降级为只恢复 selection 和 scroll。原因：文件树带 watcher 后外部文件变更成为高频操作，当前 App.tsx 的 switchingRef/prevTabIdRef/viewModeRef 手动编排三处真源（sourceContent / editorStateCache / DOM）容易漏同步步骤。
-- [ ] 图片本地存储（优先度：高）
+- [x] 图片本地存储
+  - 已完成：粘贴或拖入图片时统一复制到 `${filename}.assets/` 目录，并插入标准 Markdown 相对路径；未保存文档会先提示保存。
+  - 支持 PNG、JPEG、GIF、WebP 和 SVG，自动处理安全文件名与重名；非法图片、过大图片和写入失败会显示明确提示。
+  - 本地图片通过受控的 `inkmark-local://` 令牌协议显示；切换标签或另存为改变文档路径后会重新解析相对路径。
 - [ ] 数学公式与图表（KaTeX / Mermaid）（优先度：中）
 - [x] 固定格式工具栏（加粗/斜体/标题/列表等，常驻编辑区顶部）
 - [x] 待办任务渲染（GFM task list 复选框 + 点击切换 + 工具栏按钮）

@@ -24,8 +24,11 @@ import { nord } from '@milkdown/theme-nord';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { block } from '@milkdown/plugin-block';
 import { clipboard } from '@milkdown/plugin-clipboard';
-import { upload } from '@milkdown/plugin-upload';
+import { upload, uploadConfig } from '@milkdown/plugin-upload';
 import { prism } from '@milkdown/plugin-prism';
+import { Decoration } from '@milkdown/kit/prose/view';
+import { storeLocalImages } from '../image-upload';
+import { imageView } from '../plugins/image-view';
 import {
   getMarkdown as getMarkdownAction,
   replaceAll as replaceAllAction,
@@ -137,7 +140,20 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(findReplacePlugin)
       .use(block)
       .use(clipboard)
+      .config((ctx) => {
+        ctx.set(uploadConfig.key, {
+          enableHtmlFileUploader: true,
+          uploadWidgetFactory: (pos, spec) => {
+            const widgetDOM = document.createElement('span');
+            widgetDOM.hidden = true;
+            widgetDOM.setAttribute('aria-hidden', 'true');
+            return Decoration.widget(pos, widgetDOM, spec);
+          },
+          uploader: storeLocalImages,
+        });
+      })
       .use(upload)
+      .use(imageView)
       .use(prism);
   }, []);
 

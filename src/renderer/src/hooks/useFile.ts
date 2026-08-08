@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { confirmDialog } from '../confirm-dialog';
+import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
 import type { FileResult, FileWatchEvent, ViewMode } from '../types';
 
 function filePathKey(path: string): string {
@@ -94,7 +95,7 @@ export function useFile(
 
       let saveAsResult;
       try {
-        saveAsResult = await window.inkmark.saveFileAs(content);
+        saveAsResult = await window.inkmark.saveFileAs(content, tab.filePath);
       } catch {
         await confirmDialog('保存失败', `"${tab.fileName}" 保存失败。`, ['确定']);
         return false;
@@ -192,11 +193,16 @@ export function useFile(
   }, [saveTab]);
 
   const saveAs = useCallback(async () => {
+    if (isImageUploadInProgress()) {
+      await confirmDialog('图片正在保存', '请等待图片插入完成后再另存文档。', ['确定']);
+      return;
+    }
     const s = stateRef.current;
     const content = getTabMarkdown(s.activeTabId);
     let result;
     try {
-      result = await window.inkmark.saveFileAs(content);
+      const activeTab = s.tabs.find((tab) => tab.id === s.activeTabId);
+      result = await window.inkmark.saveFileAs(content, activeTab?.filePath);
     } catch {
       await confirmDialog('保存失败', '文件保存失败，请重试。', ['确定']);
       return;
@@ -216,6 +222,10 @@ export function useFile(
     async (tabId?: string): Promise<boolean> => {
       const s = stateRef.current;
       const id = tabId ?? s.activeTabId;
+      if (id === s.activeTabId && isImageUploadInProgress()) {
+        await confirmDialog('图片正在保存', '请等待图片插入完成后再关闭文档。', ['确定']);
+        return false;
+      }
       const tab = s.tabs.find((t) => t.id === id);
       if (!tab) return false;
 
@@ -246,6 +256,10 @@ export function useFile(
   );
 
   const closeWindow = useCallback(async (): Promise<boolean> => {
+    if (isImageUploadInProgress()) {
+      await confirmDialog('图片正在保存', '请等待图片插入完成后再关闭窗口。', ['确定']);
+      return false;
+    }
     const s = stateRef.current;
     const dirtyTabs = s.tabs.filter((t) => t.isDirty);
     for (const tab of dirtyTabs) {
@@ -330,6 +344,7 @@ export function useFile(
       checkingRef.current = true;
       try {
         while (pendingFullCheckRef.current || pendingWatchEventsRef.current.size > 0) {
+          await waitForImageUploads();
           const checkAll = pendingFullCheckRef.current;
           pendingFullCheckRef.current = false;
           const watchEvents = new Map(pendingWatchEventsRef.current);

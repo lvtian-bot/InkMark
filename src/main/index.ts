@@ -1,7 +1,24 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  Menu,
+  nativeTheme,
+  protocol,
+  net,
+  shell,
+} from 'electron';
 import { join, dirname } from 'path';
 import { readFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSync } from 'fs';
+import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
+import { createImageStorage } from './image-storage';
+import type {
+  DiscardStoredImageRequest,
+  ResolveImageSourceRequest,
+  StoreImageRequest,
+} from '../shared/image-storage';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -11,6 +28,7 @@ let currentSourceMode = false;
 let currentOutlineVisible = true;
 const PRODUCT_NAME = 'InkMark';
 const fileWatchManager = createFileWatchManager();
+const imageStorage = createImageStorage();
 
 interface WindowState {
   x?: number;
@@ -190,6 +208,37 @@ function createWindow(): void {
     }
   });
 
+  const isAppNavigation = (url: string): boolean => {
+    const rendererUrl = process.env['ELECTRON_RENDERER_URL'];
+    if (rendererUrl) {
+      try {
+        return new URL(url).origin === new URL(rendererUrl).origin;
+      } catch {
+        return false;
+      }
+    }
+    try {
+      const target = new URL(url);
+      const appPage = new URL(pathToFileURL(join(__dirname, '../renderer/index.html')).toString());
+      return target.protocol === appPage.protocol && target.pathname === appPage.pathname;
+    } catch {
+      return false;
+    }
+  };
+  const openExternalUrl = (url: string): void => {
+    if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url);
+  };
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isAppNavigation(url)) return;
+    event.preventDefault();
+    openExternalUrl(url);
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalUrl(url);
+    return { action: 'deny' };
+  });
+
   mainWindow.on('close', (e) => {
     if (!forceClose) {
       e.preventDefault();
@@ -319,9 +368,27 @@ function createMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'inkmark-local',
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+    },
+  },
+]);
+
 app.whenReady().then(() => {
   applyNativeTheme(currentThemeId);
   createMenu();
+
+  protocol.handle('inkmark-local', (request) => {
+    const filePath = imageStorage.getProtocolFilePath(request.url);
+    if (!filePath) return new Response(null, { status: 404 });
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   createWindow();
   pendingFilePaths = getFileFromArgs(process.argv);
   app.on('activate', () => {
@@ -333,7 +400,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => fileWatchManager.close());
+app.on('before-quit', () => {
+  fileWatchManager.close();
+  imageStorage.close();
+});
 
 ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
   currentThemeId = themeId;
@@ -410,18 +480,22 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('dialog:saveFileAs', async (_event, { content }: { content: string }) => {
-  if (!mainWindow) return null;
-  const result = await dialog.showSaveDialog(mainWindow, {
-    filters: [{ name: 'Markdown', extensions: ['md'] }],
-  });
-  if (result.canceled || !result.filePath) return null;
-  const filePath = result.filePath;
-  const mtime = fileWatchManager.performSelfWrite(filePath, () =>
-    atomicWriteFile(filePath, content),
-  );
-  return { path: filePath, mtime };
-});
+ipcMain.handle(
+  'dialog:saveFileAs',
+  async (_event, { content, sourcePath }: { content: string; sourcePath?: string | null }) => {
+    if (!mainWindow) return null;
+    const result = await dialog.showSaveDialog(mainWindow, {
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    const filePath = result.filePath;
+    imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+    const mtime = fileWatchManager.performSelfWrite(filePath, () =>
+      atomicWriteFile(filePath, content),
+    );
+    return { path: filePath, mtime };
+  },
+);
 
 ipcMain.on('file:watch', (event, { path }: { path: string }) => {
   fileWatchManager.subscribe(event.sender, path);
@@ -469,3 +543,28 @@ ipcMain.handle('app:getInfo', () => ({
   name: PRODUCT_NAME,
   version: app.getVersion(),
 }));
+
+function isTrustedRenderer(event: Electron.IpcMainInvokeEvent): boolean {
+  return event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame;
+}
+
+ipcMain.handle('image:store', (event, request: StoreImageRequest) => {
+  if (!isTrustedRenderer(event)) {
+    return { status: 'error', code: 'storage-failed', message: '图片请求来源无效。' } as const;
+  }
+  return imageStorage.store(request);
+});
+
+ipcMain.handle('image:discard', (event, request: DiscardStoredImageRequest) => {
+  if (!isTrustedRenderer(event)) {
+    return { status: 'error', message: '图片请求来源无效。' } as const;
+  }
+  return imageStorage.discard(request);
+});
+
+ipcMain.handle('image:resolveSource', (event, request: ResolveImageSourceRequest) => {
+  if (!isTrustedRenderer(event)) {
+    return { status: 'error', code: 'invalid-source', message: '图片请求来源无效。' } as const;
+  }
+  return imageStorage.resolveSource(request);
+});
