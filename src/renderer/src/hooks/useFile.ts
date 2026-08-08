@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { confirmDialog } from '../confirm-dialog';
-import type { FileResult, FileWatchEvent } from '../types';
+import type { FileResult, FileWatchEvent, ViewMode } from '../types';
 
 function filePathKey(path: string): string {
   return window.inkmark.platform === 'win32' ? path.toLowerCase() : path;
@@ -12,7 +12,7 @@ export function useFile(
   getMarkdown: () => string,
   setMarkdown: (md: string) => boolean,
   sourceRef: React.RefObject<HTMLTextAreaElement | null>,
-  viewMode: 'wysiwyg' | 'source',
+  viewMode: ViewMode,
 ) {
   const tabs = useStore((s) => s.tabs);
   const activeTabId = useStore((s) => s.activeTabId);

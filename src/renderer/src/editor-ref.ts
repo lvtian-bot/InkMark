@@ -1,4 +1,5 @@
 import type { EditorState } from '@milkdown/kit/prose/state';
+import type { TextMatch } from './find-replace';
 
 export interface EditorHandle {
   getMarkdown: () => string;
@@ -23,6 +24,10 @@ export interface EditorHandle {
   insertCodeBlock: () => void;
   insertLink: (href: string, title?: string) => void;
   insertTable: () => void;
+  findTextMatches: (query: string) => readonly TextMatch[];
+  showTextMatches: (matches: readonly TextMatch[], activeIndex: number) => void;
+  replaceTextMatch: (match: TextMatch, replacement: string) => boolean;
+  replaceAllTextMatches: (matches: readonly TextMatch[], replacement: string) => number;
   focus: () => void;
 }
 

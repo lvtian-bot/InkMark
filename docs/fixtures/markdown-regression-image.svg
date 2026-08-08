@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" role="img" aria-labelledby="title desc">
+  <title id="title">InkMark Markdown regression image</title>
+  <desc id="desc">A local SVG used to verify relative Markdown image paths.</desc>
+  <rect width="320" height="120" rx="12" fill="#f1f5f9" />
+  <rect x="20" y="20" width="80" height="80" rx="10" fill="#2563eb" />
+  <path d="M42 78V42h10v15l14-15h13L64 58l17 20H68L57 65l-5 5v8H42Z" fill="#fff" />
+  <text x="120" y="55" fill="#0f172a" font-family="Arial, sans-serif" font-size="20" font-weight="700">InkMark</text>
+  <text x="120" y="82" fill="#475569" font-family="Arial, sans-serif" font-size="14">Markdown regression fixture</text>
+</svg>

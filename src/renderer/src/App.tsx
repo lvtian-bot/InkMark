@@ -10,8 +10,10 @@ import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { AboutDialog } from './components/AboutDialog';
 import { SettingsDialog } from './components/SettingsDialog';
+import { FindReplaceBar } from './components/FindReplaceBar';
 import { useTheme } from './hooks/useTheme';
 import { useFile } from './hooks/useFile';
+import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
 import { useWordCount } from './hooks/useWordCount';
 import { useStore } from './stores/useStore';
@@ -60,15 +62,23 @@ function AppContent() {
   }, []);
 
   const fileOps = useFile(getMarkdown, setMarkdown, sourceRef, viewMode);
+  const findReplace = useFindReplace({ activeTabId, sourceRef, viewMode });
+  const {
+    close: closeFindReplace,
+    isOpen: isFindReplaceOpen,
+    notifyContentChanged: notifyFindContentChanged,
+    open: openFindReplace,
+  } = findReplace;
 
   const handleDocChange = useCallback(
     (doc: unknown) => {
+      notifyFindContentChanged();
       if (switchingRef.current) return;
       fileOps.markDirty();
       updateOutline(doc);
       updateWordCount(doc);
     },
-    [fileOps, updateOutline, updateWordCount],
+    [fileOps, notifyFindContentChanged, updateOutline, updateWordCount],
   );
 
   const handleDocInit = useCallback(
@@ -81,7 +91,8 @@ function AppContent() {
 
   const handleSourceChange = useCallback(() => {
     fileOps.markDirty();
-  }, [fileOps]);
+    notifyFindContentChanged();
+  }, [fileOps, notifyFindContentChanged]);
 
   useLayoutEffect(() => {
     if (prevTabIdRef.current === activeTabId) return;
@@ -188,6 +199,7 @@ function AppContent() {
       void fileOps.saveAs();
     });
     window.inkmark.onMenuSettings(() => {
+      closeFindReplace();
       setIsAboutOpen(false);
       setIsSettingsOpen(true);
     });
@@ -218,13 +230,48 @@ function AppContent() {
       void fileOps.closeWindow();
     });
     window.inkmark.onMenuAbout(() => {
+      closeFindReplace();
       setIsSettingsOpen(false);
       setIsAboutOpen(true);
     });
     window.inkmark.onOpenFilePath((path: string) => {
       void fileOps.openFilePath(path);
     });
-  }, [fileOps, setContentTheme, setTheme, toggleViewMode]);
+  }, [closeFindReplace, fileOps, setContentTheme, setTheme, toggleViewMode]);
+
+  useEffect(() => {
+    const handleFindShortcut = (event: KeyboardEvent): void => {
+      if (isSettingsOpen || isAboutOpen) return;
+
+      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+        const key = event.key.toLowerCase();
+        if ((key === 'f' || key === 'h') && !isStartPage) {
+          event.preventDefault();
+          openFindReplace(key === 'h');
+          return;
+        }
+      }
+
+      if (event.key === 'Escape' && isFindReplaceOpen) {
+        event.preventDefault();
+        closeFindReplace();
+      }
+    };
+
+    window.addEventListener('keydown', handleFindShortcut);
+    return () => window.removeEventListener('keydown', handleFindShortcut);
+  }, [
+    closeFindReplace,
+    isAboutOpen,
+    isFindReplaceOpen,
+    isSettingsOpen,
+    isStartPage,
+    openFindReplace,
+  ]);
+
+  useEffect(() => {
+    if (isStartPage && isFindReplaceOpen) closeFindReplace();
+  }, [closeFindReplace, isFindReplaceOpen, isStartPage]);
 
   useEffect(() => {
     const themeId = `${contentTheme}-${theme}`;
@@ -347,6 +394,7 @@ function AppContent() {
             />
           )}
           {!isStartPage && <Toolbar sourceRef={sourceRef} />}
+          {!isStartPage && isFindReplaceOpen && <FindReplaceBar controller={findReplace} />}
           <div
             className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}
           >

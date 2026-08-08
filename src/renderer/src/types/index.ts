@@ -5,6 +5,8 @@ export interface Heading {
   pos: number;
 }
 
+export type ViewMode = 'wysiwyg' | 'source';
+
 export interface FileResult {
   path: string;
   content: string;

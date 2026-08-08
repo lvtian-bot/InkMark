@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Heading, ContentTheme } from '../types';
+import type { Heading, ContentTheme, ViewMode } from '../types';
 import { loadSettings, saveSettings, type AppSettings, type AppTheme } from '../settings';
 
 export interface Tab {
@@ -20,7 +20,7 @@ interface InkMarkState extends AppSettings {
   tabs: Tab[];
   activeTabId: string;
 
-  viewMode: 'wysiwyg' | 'source';
+  viewMode: ViewMode;
 
   addTab: (init?: {
     filePath?: string | null;
@@ -44,7 +44,7 @@ interface InkMarkState extends AppSettings {
   setContentTheme: (theme: ContentTheme) => void;
   setOutlineWidth: (width: number) => void;
   setOutlineVisible: (visible: boolean) => void;
-  setViewMode: (mode: 'wysiwyg' | 'source') => void;
+  setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
 }
 

@@ -31,8 +31,13 @@ import {
   replaceAll as replaceAllAction,
   callCommand,
 } from '@milkdown/kit/utils';
-import { TextSelection } from '@milkdown/kit/prose/state';
+import {
+  TextSelection,
+  type EditorState as ProseMirrorEditorState,
+} from '@milkdown/kit/prose/state';
 import { editorHandle } from '../editor-ref';
+import { findLiteralMatches, isValidTextMatch, type TextMatch } from '../find-replace';
+import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { useStore } from '../stores/useStore';
 import '../styles/editor.css';
@@ -42,6 +47,52 @@ import githubLightUrl from 'github-markdown-css/github-markdown-light.css?url';
 import githubDarkUrl from 'github-markdown-css/github-markdown-dark.css?url';
 
 const GITHUB_LINK_ID = 'inkmark-github-theme';
+
+function findTextMatchesInDocument(doc: ProseMirrorEditorState['doc'], query: string): TextMatch[] {
+  if (!query) return [];
+
+  const matches: TextMatch[] = [];
+
+  doc.descendants((block, blockPos) => {
+    if (!block.isTextblock) return true;
+
+    let segmentText = '';
+    let positions: number[] = [];
+    let expectedNextPos: number | null = null;
+
+    const flushSegment = (): void => {
+      for (const match of findLiteralMatches(segmentText, query)) {
+        const from = positions[match.from];
+        const lastPosition = positions[match.to - 1];
+        if (from !== undefined && lastPosition !== undefined) {
+          matches.push({ from, to: lastPosition + 1 });
+        }
+      }
+      segmentText = '';
+      positions = [];
+      expectedNextPos = null;
+    };
+
+    block.descendants((child, relativePos) => {
+      if (!child.isText || !child.text) return true;
+
+      const absolutePos = blockPos + 1 + relativePos;
+      if (expectedNextPos !== null && absolutePos !== expectedNextPos) flushSegment();
+
+      segmentText += child.text;
+      for (let index = 0; index < child.text.length; index += 1) {
+        positions.push(absolutePos + index);
+      }
+      expectedNextPos = absolutePos + child.nodeSize;
+      return false;
+    });
+
+    flushSegment();
+    return false;
+  });
+
+  return matches;
+}
 
 interface EditorProps {
   onDocChange: (doc: unknown) => void;
@@ -83,6 +134,7 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(taskList)
       .use(history)
       .use(listener)
+      .use(findReplacePlugin)
       .use(block)
       .use(clipboard)
       .use(upload)
@@ -291,6 +343,58 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
           view.focus();
         } catch (e) {
           console.error('insertTable error:', e);
+        }
+      },
+      findTextMatches: (query: string) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          return findTextMatchesInDocument(view.state.doc, query);
+        } catch {
+          return [];
+        }
+      },
+      showTextMatches: (matches: readonly TextMatch[], activeIndex: number) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          setFindDecorations(view, matches, activeIndex);
+        } catch (e) {
+          console.error('showTextMatches error:', e);
+        }
+      },
+      replaceTextMatch: (match: TextMatch, replacement: string) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const docSize = view.state.doc.content.size;
+          if (!isValidTextMatch(match, docSize)) return false;
+          view.dispatch(
+            view.state.tr.insertText(replacement, match.from, match.to).scrollIntoView(),
+          );
+          return true;
+        } catch (e) {
+          console.error('replaceTextMatch error:', e);
+          return false;
+        }
+      },
+      replaceAllTextMatches: (matches: readonly TextMatch[], replacement: string) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          let transaction = view.state.tr;
+          let replacementCount = 0;
+
+          for (let index = matches.length - 1; index >= 0; index -= 1) {
+            const match = matches[index];
+            if (!isValidTextMatch(match, view.state.doc.content.size)) {
+              continue;
+            }
+            transaction = transaction.insertText(replacement, match.from, match.to);
+            replacementCount += 1;
+          }
+
+          if (replacementCount > 0) view.dispatch(transaction.scrollIntoView());
+          return replacementCount;
+        } catch (e) {
+          console.error('replaceAllTextMatches error:', e);
+          return 0;
         }
       },
       focus: () => {
