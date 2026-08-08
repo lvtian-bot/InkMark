@@ -5,6 +5,7 @@ import { listItemSchema, bulletListSchema } from '@milkdown/kit/preset/commonmar
 import type { Transaction } from '@milkdown/kit/prose/state';
 
 const taskListKey = new PluginKey('inkmark-task-list');
+const taskListKeymapKey = new PluginKey('inkmark-task-list-keymap');
 
 /// Command: toggle the current block between task list and regular list.
 ///
@@ -124,4 +125,68 @@ export const taskListClickPlugin = $prose(() => {
   });
 });
 
-export const taskList = [wrapInTaskListCommand, taskListClickPlugin];
+/// Plugin: override Delete at the start of a task list item.
+///
+/// Milkdown's commonmark `listItemKeymap` binds Backspace *and* Delete to
+/// `LiftFirstListItem` (→ `joinBackward`).  In a GFM task list this lifts /
+/// joins the whole list item and, because `joinBackward` inherits the
+/// *preceding* item's `checked` attr, a half-finished task can silently flip to
+/// "done" — the user pressed Delete meaning to delete the first character.
+///
+/// This keymap intercepts Delete only when the cursor sits at the start of a
+/// *task* list item (checked != null) that still has text.  In that case we run
+/// the default character deletion instead of the lift, so Delete does what the
+/// user expects: delete the first character of the line.
+///
+/// Backspace is intentionally NOT intercepted: at the start of a line there is
+/// no character to the left, so lifting out of the list is the sensible
+/// behaviour and is how users exit a task list.  Plain (non-task) list items
+/// are left untouched for the same reason — their lift behaviour is standard.
+export const taskListKeymapPlugin = $prose((ctx) => {
+  const listItemType = listItemSchema.type(ctx);
+
+  return new Plugin({
+    key: taskListKeymapKey,
+    props: {
+      handleKeyDown(view, event) {
+        if (event.key !== 'Delete') return false;
+        // Only plain presses (no modifier that changes meaning) are ours.
+        if (event.ctrlKey || event.metaKey || event.altKey) return false;
+
+        const { selection } = view.state;
+        if (!selection.empty) return false;
+
+        const { $from } = selection;
+        // At the very start of the list item's paragraph.
+        if ($from.parentOffset !== 0) return false;
+
+        // Walk up to the nearest list_item.
+        let itemDepth = -1;
+        for (let depth = $from.depth; depth > 0; depth--) {
+          if ($from.node(depth).type === listItemType) {
+            itemDepth = depth;
+            break;
+          }
+        }
+        if (itemDepth < 0) return false;
+
+        const item = $from.node(itemDepth);
+        // Only override *task* items (checked != null). Leave plain lists alone.
+        if (item.attrs.checked == null) return false;
+
+        // Empty task item: let the built-in keymap handle the lift.
+        if (item.textContent.length === 0) return false;
+
+        // Cursor is at the paragraph's first position and the item has text:
+        // delete the first character to the right instead of lifting the whole
+        // list item (which would otherwise inherit the preceding item's
+        // `checked` attr and silently flip this task to done/undone).
+        const tr = view.state.tr.delete($from.pos, $from.pos + 1).scrollIntoView();
+        view.dispatch(tr);
+        return true;
+      },
+    },
+  });
+});
+
+export const taskList = [wrapInTaskListCommand, taskListClickPlugin, taskListKeymapPlugin];
