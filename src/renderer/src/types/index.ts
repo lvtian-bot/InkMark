@@ -15,6 +15,12 @@ export type SaveResult = { status: 'ok'; mtime: number } | { status: 'conflict' 
 
 export type MtimeResult = { status: 'ok'; mtime: number } | { status: 'error' };
 
+export type FileWatchEvent = {
+  path: string;
+  status: 'changed' | 'missing';
+  mtime?: number;
+};
+
 export interface SaveAsResult {
   path: string;
   mtime: number;
@@ -40,11 +46,15 @@ export interface InkMarkAPI {
   getRecentFiles: () => Promise<string[]>;
   getAppInfo: () => Promise<AppInfo>;
   getFileMtime: (path: string) => Promise<MtimeResult>;
+  watchFile: (path: string) => void;
+  unwatchFile: (path: string) => void;
+  onFileWatchEvent: (cb: (event: FileWatchEvent) => void) => () => void;
   onOpenFilePath: (cb: (path: string) => void) => void;
   onMenuNew: (cb: () => void) => void;
   onMenuOpen: (cb: () => void) => void;
   onMenuSave: (cb: () => void) => void;
   onMenuSaveAs: (cb: () => void) => void;
+  onMenuSettings: (cb: () => void) => void;
   onMenuSetTheme: (cb: (themeId: string) => void) => void;
   onMenuClose: (cb: () => void) => void;
   onMenuCloseTab: (cb: () => void) => void;

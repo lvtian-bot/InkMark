@@ -28,6 +28,7 @@ npm run build:win
 | Ctrl+O       | 打开文件     |
 | Ctrl+S       | 保存         |
 | Ctrl+Shift+S | 另存为       |
+| Ctrl+,       | 打开设置     |
 | Ctrl+Shift+T | 切换明暗主题 |
 
 ## 技术栈

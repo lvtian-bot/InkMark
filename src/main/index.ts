@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron';
 import { join, dirname } from 'path';
 import { readFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSync } from 'fs';
+import { createFileWatchManager } from './file-watch-manager';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -9,6 +10,7 @@ let currentThemeId = 'inkmark-light';
 let currentSourceMode = false;
 let currentOutlineVisible = true;
 const PRODUCT_NAME = 'InkMark';
+const fileWatchManager = createFileWatchManager();
 
 interface WindowState {
   x?: number;
@@ -197,6 +199,11 @@ function createWindow(): void {
     }
   });
 
+  mainWindow.on('closed', () => {
+    fileWatchManager.close();
+    mainWindow = null;
+  });
+
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL']);
   } else {
@@ -238,6 +245,12 @@ function createMenu(): void {
           label: '另存为...',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => mainWindow?.webContents.send('menu:saveAs'),
+        },
+        { type: 'separator' },
+        {
+          label: '设置...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => mainWindow?.webContents.send('menu:settings'),
         },
       ],
     },
@@ -320,6 +333,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+app.on('before-quit', () => fileWatchManager.close());
+
 ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
   currentThemeId = themeId;
   applyNativeTheme(themeId);
@@ -390,7 +405,7 @@ ipcMain.handle(
         return { status: 'conflict' as const };
       }
     }
-    const mtime = atomicWriteFile(path, content);
+    const mtime = fileWatchManager.performSelfWrite(path, () => atomicWriteFile(path, content));
     return { status: 'ok' as const, mtime };
   },
 );
@@ -401,8 +416,19 @@ ipcMain.handle('dialog:saveFileAs', async (_event, { content }: { content: strin
     filters: [{ name: 'Markdown', extensions: ['md'] }],
   });
   if (result.canceled || !result.filePath) return null;
-  const mtime = atomicWriteFile(result.filePath, content);
-  return { path: result.filePath, mtime };
+  const filePath = result.filePath;
+  const mtime = fileWatchManager.performSelfWrite(filePath, () =>
+    atomicWriteFile(filePath, content),
+  );
+  return { path: filePath, mtime };
+});
+
+ipcMain.on('file:watch', (event, { path }: { path: string }) => {
+  fileWatchManager.subscribe(event.sender, path);
+});
+
+ipcMain.on('file:unwatch', (event, { path }: { path: string }) => {
+  fileWatchManager.unsubscribe(event.sender.id, path);
 });
 
 ipcMain.handle('file:read', async (_event, { path }: { path: string }) => {

@@ -9,6 +9,7 @@ import { Toolbar } from './components/Toolbar';
 import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { AboutDialog } from './components/AboutDialog';
+import { SettingsDialog } from './components/SettingsDialog';
 import { useTheme } from './hooks/useTheme';
 import { useFile } from './hooks/useFile';
 import { useOutline } from './hooks/useOutline';
@@ -41,6 +42,7 @@ function AppContent() {
   const setSourceContent = useStore((s) => s.setSourceContent);
   const setStartPage = useStore((s) => s.setStartPage);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const switchingRef = useRef(false);
@@ -185,6 +187,10 @@ function AppContent() {
     window.inkmark.onMenuSaveAs(() => {
       void fileOps.saveAs();
     });
+    window.inkmark.onMenuSettings(() => {
+      setIsAboutOpen(false);
+      setIsSettingsOpen(true);
+    });
     if (window.inkmark.onMenuSetTheme) {
       window.inkmark.onMenuSetTheme((themeId) => {
         const dashIdx = themeId.lastIndexOf('-');
@@ -212,6 +218,7 @@ function AppContent() {
       void fileOps.closeWindow();
     });
     window.inkmark.onMenuAbout(() => {
+      setIsSettingsOpen(false);
       setIsAboutOpen(true);
     });
     window.inkmark.onOpenFilePath((path: string) => {
@@ -354,6 +361,7 @@ function AppContent() {
         </main>
       </div>
       <ConfirmDialog />
+      {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
       {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
     </div>
   );

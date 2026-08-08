@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Heading, ContentTheme } from '../types';
+import { loadSettings, saveSettings, type AppSettings, type AppTheme } from '../settings';
 
 export interface Tab {
   id: string;
@@ -15,14 +16,10 @@ export interface Tab {
   fileMtime: number | null;
 }
 
-interface InkMarkState {
+interface InkMarkState extends AppSettings {
   tabs: Tab[];
   activeTabId: string;
 
-  theme: 'light' | 'dark';
-  contentTheme: ContentTheme;
-  outlineWidth: number;
-  outlineVisible: boolean;
   viewMode: 'wysiwyg' | 'source';
 
   addTab: (init?: {
@@ -42,7 +39,8 @@ interface InkMarkState {
   setSourceContent: (content: string) => void;
   setScrollTop: (top: number) => void;
 
-  setTheme: (theme: 'light' | 'dark') => void;
+  applySettings: (settings: AppSettings) => void;
+  setTheme: (theme: AppTheme) => void;
   setContentTheme: (theme: ContentTheme) => void;
   setOutlineWidth: (width: number) => void;
   setOutlineVisible: (visible: boolean) => void;
@@ -50,25 +48,16 @@ interface InkMarkState {
   toggleViewMode: () => void;
 }
 
-const savedTheme =
-  (typeof localStorage !== 'undefined' &&
-    (localStorage.getItem('inkmark-theme') as 'light' | 'dark')) ||
-  'light';
+const initialSettings = loadSettings();
 
-const savedContentTheme =
-  (typeof localStorage !== 'undefined' &&
-    (localStorage.getItem('inkmark-content-theme') as ContentTheme)) ||
-  'inkmark';
-
-const savedOutlineWidth =
-  typeof localStorage !== 'undefined'
-    ? parseInt(localStorage.getItem('inkmark-outline-width') || '240', 10)
-    : 240;
-
-const savedOutlineVisible =
-  typeof localStorage !== 'undefined'
-    ? localStorage.getItem('inkmark-outline-visible') !== 'false'
-    : true;
+function selectSettings(state: AppSettings): AppSettings {
+  return {
+    theme: state.theme,
+    contentTheme: state.contentTheme,
+    outlineWidth: state.outlineWidth,
+    outlineVisible: state.outlineVisible,
+  };
+}
 
 let tabIdCounter = 0;
 function nextTabId(): string {
@@ -102,10 +91,7 @@ export const useStore = create<InkMarkState>((set, get) => ({
   tabs: [initialTab],
   activeTabId: initialTab.id,
 
-  theme: savedTheme,
-  contentTheme: savedContentTheme,
-  outlineWidth: savedOutlineWidth,
-  outlineVisible: savedOutlineVisible,
+  ...initialSettings,
   viewMode: 'wysiwyg',
 
   addTab: (init) => {
@@ -193,24 +179,24 @@ export const useStore = create<InkMarkState>((set, get) => ({
     get().updateTab(get().activeTabId, { scrollTop: top });
   },
 
+  applySettings: (settings) => {
+    set(saveSettings(settings));
+  },
+
   setTheme: (theme) => {
-    localStorage.setItem('inkmark-theme', theme);
-    set({ theme });
+    set(saveSettings({ ...selectSettings(get()), theme }));
   },
 
   setContentTheme: (theme) => {
-    localStorage.setItem('inkmark-content-theme', theme);
-    set({ contentTheme: theme });
+    set(saveSettings({ ...selectSettings(get()), contentTheme: theme }));
   },
 
   setOutlineWidth: (width) => {
-    localStorage.setItem('inkmark-outline-width', String(width));
-    set({ outlineWidth: width });
+    set(saveSettings({ ...selectSettings(get()), outlineWidth: width }));
   },
 
   setOutlineVisible: (visible) => {
-    localStorage.setItem('inkmark-outline-visible', String(visible));
-    set({ outlineVisible: visible });
+    set(saveSettings({ ...selectSettings(get()), outlineVisible: visible }));
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),

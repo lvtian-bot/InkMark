@@ -9,6 +9,18 @@ const api = {
   getRecentFiles: () => ipcRenderer.invoke('recent:get'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getFileMtime: (path: string) => ipcRenderer.invoke('file:getMtime', { path }),
+  watchFile: (path: string) => ipcRenderer.send('file:watch', { path }),
+  unwatchFile: (path: string) => ipcRenderer.send('file:unwatch', { path }),
+  onFileWatchEvent: (
+    cb: (event: { path: string; status: 'changed' | 'missing'; mtime?: number }) => void,
+  ) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      fileEvent: { path: string; status: 'changed' | 'missing'; mtime?: number },
+    ) => cb(fileEvent);
+    ipcRenderer.on('file:watch-event', listener);
+    return () => ipcRenderer.removeListener('file:watch-event', listener);
+  },
   onOpenFilePath: (cb: (path: string) => void) => {
     ipcRenderer.removeAllListeners('file:open-path');
     ipcRenderer.on('file:open-path', (_event, path: string) => cb(path));
@@ -28,6 +40,10 @@ const api = {
   onMenuSaveAs: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:saveAs');
     ipcRenderer.on('menu:saveAs', () => cb());
+  },
+  onMenuSettings: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:settings');
+    ipcRenderer.on('menu:settings', () => cb());
   },
   onMenuSetTheme: (cb: (themeId: string) => void) => {
     ipcRenderer.removeAllListeners('menu:setTheme');
