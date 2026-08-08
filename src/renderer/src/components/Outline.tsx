@@ -18,23 +18,22 @@ export function Outline() {
           tickingRef.current = false;
           return;
         }
-        const headings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        let active: Element | null = null;
+        const domHeadings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        let activeIndex = -1;
         // 判定线以编辑容器顶为基准，与 scrollToPos 的落点同一参照系，
         // 否则点击跳转后目标标题过不了判定线，高亮会落在上一个标题
         const line = container.getBoundingClientRect().top + 80;
-        for (const h of headings) {
+        domHeadings.forEach((h, i) => {
           if (h.getBoundingClientRect().top <= line) {
-            active = h;
+            activeIndex = i;
           }
-        }
+        });
         if (container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
-          active = headings[headings.length - 1] ?? active;
+          activeIndex = domHeadings.length - 1;
         }
-        if (active) {
-          const text = active.textContent || '';
-          const heading = outline.find((h) => h.text === text);
-          if (heading) setActiveId(heading.id);
+        // 按索引匹配而非文本，避免同名标题只能高亮第一个
+        if (activeIndex >= 0 && activeIndex < outline.length) {
+          setActiveId(outline[activeIndex].id);
         }
         tickingRef.current = false;
       });

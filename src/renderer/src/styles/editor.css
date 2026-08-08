@@ -20,7 +20,7 @@
 }
 .editor-container [data-milkdown-root] {
   max-width: var(--editor-max-width);
-  margin: 12px auto 0;
+  margin: 20px auto 0;
   padding: 48px var(--editor-side-padding) 120px;
   min-height: calc(100% - 12px);
   background: var(--bg-primary);
