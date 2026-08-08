@@ -25,6 +25,10 @@ export interface AppInfo {
   version: string;
 }
 
+export interface SaveImageResult {
+  path: string;
+}
+
 export type ContentTheme = 'inkmark' | 'github';
 
 export interface InkMarkAPI {
@@ -57,6 +61,10 @@ export interface InkMarkAPI {
   syncSourceMode: (checked: boolean) => void;
   syncOutlineVisible: (visible: boolean) => void;
   popupMenu: () => void;
+  resolvePath: (basePath: string, relativePath: string) => string;
+  relativePath: (from: string, to: string) => string;
+  dirnamePath: (filePath: string) => string;
+  saveImage: (data: ArrayBuffer, fileName: string, mdFilePath: string) => Promise<SaveImageResult>;
   platform: string;
 }
 

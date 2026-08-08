@@ -1,6 +1,15 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron';
-import { join, dirname } from 'path';
-import { readFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSync } from 'fs';
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, protocol, net } from 'electron';
+import { join, dirname, basename, extname, relative } from 'path';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  statSync,
+  renameSync,
+  unlinkSync,
+  mkdirSync,
+} from 'fs';
+import { pathToFileURL } from 'url';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -306,9 +315,31 @@ function createMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'inkmark-local',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      stream: true,
+    },
+  },
+]);
+
 app.whenReady().then(() => {
   applyNativeTheme(currentThemeId);
   createMenu();
+
+  protocol.handle('inkmark-local', (request) => {
+    const url = new URL(request.url);
+    let filePath = decodeURIComponent(url.pathname.slice(1));
+    if (process.platform === 'win32') {
+      filePath = filePath.replace(/\//g, '\\\\');
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   createWindow();
   pendingFilePaths = getFileFromArgs(process.argv);
   app.on('activate', () => {
@@ -443,3 +474,34 @@ ipcMain.handle('app:getInfo', () => ({
   name: PRODUCT_NAME,
   version: app.getVersion(),
 }));
+
+ipcMain.handle(
+  'image:save',
+  async (
+    _event,
+    { data, fileName, mdFilePath }: { data: ArrayBuffer; fileName: string; mdFilePath: string },
+  ) => {
+    const mdDir = dirname(mdFilePath);
+    const mdBaseName = basename(mdFilePath, extname(mdFilePath));
+    const assetsDir = join(mdDir, `${mdBaseName}.assets`);
+
+    if (!existsSync(assetsDir)) {
+      mkdirSync(assetsDir, { recursive: true });
+    }
+
+    let targetName = fileName;
+    let targetPath = join(assetsDir, targetName);
+    let counter = 1;
+    const ext = extname(fileName);
+    const base = basename(fileName, ext);
+    while (existsSync(targetPath)) {
+      targetName = `${base}-${counter}${ext}`;
+      targetPath = join(assetsDir, targetName);
+      counter++;
+    }
+
+    writeFileSync(targetPath, Buffer.from(data));
+    const relativePath = relative(mdDir, targetPath).replace(/\\/g, '/');
+    return { path: relativePath };
+  },
+);

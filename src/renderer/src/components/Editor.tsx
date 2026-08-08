@@ -24,8 +24,11 @@ import { nord } from '@milkdown/theme-nord';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { block } from '@milkdown/plugin-block';
 import { clipboard } from '@milkdown/plugin-clipboard';
-import { upload } from '@milkdown/plugin-upload';
+import { upload, uploadConfig } from '@milkdown/plugin-upload';
 import { prism } from '@milkdown/plugin-prism';
+import { Fragment, type Node } from '@milkdown/kit/prose/model';
+import { Decoration } from '@milkdown/kit/prose/view';
+import { imageView } from '../plugins/image-view';
 import {
   getMarkdown as getMarkdownAction,
   replaceAll as replaceAllAction,
@@ -85,7 +88,54 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(listener)
       .use(block)
       .use(clipboard)
+      .config((ctx) => {
+        ctx.set(uploadConfig.key, {
+          enableHtmlFileUploader: true,
+          uploadWidgetFactory: (pos, spec) => {
+            const widgetDOM = document.createElement('span');
+            widgetDOM.textContent = '正在保存图片...';
+            return Decoration.widget(pos, widgetDOM, spec);
+          },
+          uploader: async (files, schema) => {
+            const state = useStore.getState();
+            const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+            const mdPath = activeTab?.filePath ?? null;
+
+            const nodes: Node[] = [];
+            for (let i = 0; i < files.length; i++) {
+              const file = files.item(i);
+              if (!file || !file.type.includes('image')) continue;
+
+              let src: string;
+              const electronFile = file as File & { path?: string };
+              if (electronFile.path) {
+                if (mdPath) {
+                  const mdDir = window.inkmark.dirnamePath(mdPath);
+                  src = window.inkmark.relativePath(mdDir, electronFile.path).replace(/\\/g, '/');
+                } else {
+                  src = electronFile.path;
+                }
+              } else if (mdPath) {
+                const buffer = await file.arrayBuffer();
+                const result = await window.inkmark.saveImage(buffer, file.name, mdPath);
+                src = result.path;
+              } else {
+                src = await new Promise<string>((resolve) => {
+                  const reader = new FileReader();
+                  reader.addEventListener('load', () => resolve(reader.result as string), false);
+                  reader.readAsDataURL(file);
+                });
+              }
+
+              const imageNode = schema.nodes.image.createAndFill({ src, alt: file.name });
+              if (imageNode) nodes.push(imageNode);
+            }
+            return Fragment.from(nodes);
+          },
+        });
+      })
       .use(upload)
+      .use(imageView)
       .use(prism);
   }, []);
 

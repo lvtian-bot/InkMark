@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { resolve, relative, dirname } from 'path';
 
 const api = {
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
@@ -67,6 +68,11 @@ const api = {
   popupMenu: () => {
     ipcRenderer.send('menu:popup');
   },
+  resolvePath: (basePath: string, relativePath: string) => resolve(basePath, relativePath),
+  relativePath: (from: string, to: string) => relative(from, to),
+  dirnamePath: (filePath: string) => dirname(filePath),
+  saveImage: (data: ArrayBuffer, fileName: string, mdFilePath: string) =>
+    ipcRenderer.invoke('image:save', { data, fileName, mdFilePath }),
   platform: process.platform,
 };
 
