@@ -178,7 +178,7 @@
   width: 100%;
   flex: 1 0 auto;
   max-width: var(--editor-max-width);
-  margin: 12px auto 0;
+  margin: 20px auto 0;
   padding: 48px var(--editor-side-padding) 120px;
   border: none;
   outline: none;
@@ -199,15 +199,25 @@
 /* ---- Task list (GFM) ---- */
 .editor-container li[data-item-type='task'] {
   list-style: none;
-  position: relative;
 }
-.editor-container li[data-item-type='task']::before {
+/* 复选框以 inline-block 进入行内流，垂直对齐交给浏览器（vertical-align），
+   避免绝对定位手算坐标、无法跟随字号的问题。
+   悬挂缩进：p 负 margin + 负 text-indent 把复选框送进 ul 的 gutter，
+   首行文字与换行行对齐；24px 需与 ul/ol 的 padding-left 保持同步。 */
+.editor-container li[data-item-type='task'] > p {
+  margin-left: -24px;
+  padding-left: 24px;
+  text-indent: -24px;
+}
+.editor-container li[data-item-type='task'] > p::before {
   content: '';
-  position: absolute;
-  left: -1.5em;
-  top: 0.5em;
+  display: inline-block;
   width: 16px;
   height: 16px;
+  margin-right: 8px;
+  vertical-align: text-bottom;
+  /* text-indent 可继承：p 的悬挂缩进会传进伪元素，把 ✓ 推出盒子，须在此清零 */
+  text-indent: 0;
   border: 1.5px solid var(--text-tertiary);
   border-radius: 3px;
   background: transparent;
@@ -216,12 +226,13 @@
     background 0.15s,
     border-color 0.15s;
 }
-.editor-container li[data-item-type='task'][data-checked='true']::before {
+/* inline-block 是原子行内级盒子，p 的删除线不会传播进复选框 */
+.editor-container li[data-item-type='task'][data-checked='true'] > p::before {
   content: '\2713';
   color: #fff;
   font-size: 12px;
   font-weight: 700;
-  line-height: 14px;
+  line-height: 13px;
   text-align: center;
   background: var(--accent);
   border-color: var(--accent);

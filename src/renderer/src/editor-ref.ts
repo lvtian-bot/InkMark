@@ -20,6 +20,9 @@ export interface EditorHandle {
   wrapBulletList: () => void;
   wrapOrderedList: () => void;
   wrapTaskList: () => void;
+  insertCodeBlock: () => void;
+  insertLink: (href: string, title?: string) => void;
+  insertTable: () => void;
   focus: () => void;
 }
 

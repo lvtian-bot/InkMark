@@ -20,10 +20,15 @@ export interface SaveAsResult {
   mtime: number;
 }
 
+export interface AppInfo {
+  name: string;
+  version: string;
+}
+
 export type ContentTheme = 'inkmark' | 'github';
 
 export interface InkMarkAPI {
-  openFileDialog: () => Promise<FileResult | null>;
+  openFileDialog: () => Promise<FileResult[] | null>;
   saveFile: (
     content: string,
     path: string,
@@ -33,6 +38,7 @@ export interface InkMarkAPI {
   saveFileAs: (content: string) => Promise<SaveAsResult | null>;
   openFilePath: (path: string) => Promise<FileResult | null>;
   getRecentFiles: () => Promise<string[]>;
+  getAppInfo: () => Promise<AppInfo>;
   getFileMtime: (path: string) => Promise<MtimeResult>;
   onOpenFilePath: (cb: (path: string) => void) => void;
   onMenuNew: (cb: () => void) => void;
@@ -42,6 +48,7 @@ export interface InkMarkAPI {
   onMenuSetTheme: (cb: (themeId: string) => void) => void;
   onMenuClose: (cb: () => void) => void;
   onMenuCloseTab: (cb: () => void) => void;
+  onMenuAbout: (cb: () => void) => void;
   onMenuToggleSource: (cb: () => void) => void;
   onMenuToggleOutline: (cb: () => void) => void;
   setWindowTitle: (title: string) => Promise<void>;

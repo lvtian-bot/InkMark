@@ -4,10 +4,11 @@ import { readFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSy
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
-let pendingFilePath: string | null = null;
+let pendingFilePaths: string[] = [];
 let currentThemeId = 'inkmark-light';
 let currentSourceMode = false;
 let currentOutlineVisible = true;
+const PRODUCT_NAME = 'InkMark';
 
 interface WindowState {
   x?: number;
@@ -98,14 +99,15 @@ function removeRecentFile(filePath: string): void {
   }
 }
 
-function getFileFromArgs(argv: string[]): string | null {
+function getFileFromArgs(argv: string[]): string[] {
+  const files: string[] = [];
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
     if (!arg.startsWith('-') && !arg.startsWith('--') && /\.(md|markdown|txt)$/i.test(arg)) {
-      return arg;
+      files.push(arg);
     }
   }
-  return null;
+  return files;
 }
 
 function atomicWriteFile(filePath: string, content: string): number {
@@ -132,10 +134,10 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', (_event, argv) => {
-    const filePath = getFileFromArgs(argv);
+    const filePaths = getFileFromArgs(argv);
     if (mainWindow) {
-      if (filePath) {
-        mainWindow.webContents.send('file:open-path', filePath);
+      for (const fp of filePaths) {
+        mainWindow.webContents.send('file:open-path', fp);
       }
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -154,11 +156,11 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    title: 'InkMark',
+    title: PRODUCT_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       height: 36,
-      color: '#e4eefa',
+      color: '#eef4f9',
       symbolColor: '#6b6b6b',
     },
     webPreferences: {
@@ -178,9 +180,11 @@ function createWindow(): void {
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
-    if (pendingFilePath) {
-      mainWindow?.webContents.send('file:open-path', pendingFilePath);
-      pendingFilePath = null;
+    if (pendingFilePaths.length > 0) {
+      for (const fp of pendingFilePaths) {
+        mainWindow?.webContents.send('file:open-path', fp);
+      }
+      pendingFilePaths = [];
     }
   });
 
@@ -290,7 +294,12 @@ function createMenu(): void {
     },
     {
       label: '帮助',
-      submenu: [{ label: '关于 InkMark', role: 'about' }],
+      submenu: [
+        {
+          label: `关于 ${PRODUCT_NAME}`,
+          click: () => mainWindow?.webContents.send('menu:about'),
+        },
+      ],
     },
   ];
   Menu.buildFromTemplate(template);
@@ -301,7 +310,7 @@ app.whenReady().then(() => {
   applyNativeTheme(currentThemeId);
   createMenu();
   createWindow();
-  pendingFilePath = getFileFromArgs(process.argv);
+  pendingFilePaths = getFileFromArgs(process.argv);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -317,7 +326,7 @@ ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
   createMenu();
   const isDark = themeId.endsWith('-dark');
   mainWindow?.setTitleBarOverlay({
-    color: isDark ? '#181825' : '#e4eefa',
+    color: isDark ? '#181825' : '#eef4f9',
     symbolColor: isDark ? '#a6adc8' : '#6b6b6b',
   });
 });
@@ -343,14 +352,21 @@ ipcMain.handle('dialog:openFile', async () => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  const filePath = result.filePaths[0];
-  const content = readFileSync(filePath, 'utf-8');
-  const mtime = statSync(filePath).mtimeMs;
-  addRecentFile(filePath);
-  return { path: filePath, content, mtime };
+  const files: { path: string; content: string; mtime: number }[] = [];
+  for (const filePath of result.filePaths) {
+    try {
+      const content = readFileSync(filePath, 'utf-8');
+      const mtime = statSync(filePath).mtimeMs;
+      addRecentFile(filePath);
+      files.push({ path: filePath, content, mtime });
+    } catch {
+      /* skip unreadable files */
+    }
+  }
+  return files.length > 0 ? files : null;
 });
 
 ipcMain.handle(
@@ -422,3 +438,8 @@ ipcMain.handle('window:close', () => {
 ipcMain.handle('recent:get', async () => {
   return getRecentFiles();
 });
+
+ipcMain.handle('app:getInfo', () => ({
+  name: PRODUCT_NAME,
+  version: app.getVersion(),
+}));

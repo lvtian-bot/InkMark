@@ -6,7 +6,8 @@
   --text-secondary: #6b6b6b;
   --text-tertiary: #9a9a9a;
   --border-color: #e2e2e4;
-  --tab-bar-bg: #e4eefa;
+  --tab-bar-bg: #eef4f9;
+  --tab-hover-bg: #d4e3f8;
   --canvas-bg: #ffffff;
   --scrollbar-w: 10px;
   --accent: #5b8def;
@@ -26,6 +27,7 @@
   --text-tertiary: #7f849c;
   --border-color: #313244;
   --tab-bar-bg: var(--bg-secondary);
+  --tab-hover-bg: #283349;
   --canvas-bg: #11111b;
   --accent: #89b4fa;
   --accent-hover: #74a0f7;

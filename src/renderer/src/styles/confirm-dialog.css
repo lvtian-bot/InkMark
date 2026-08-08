@@ -62,3 +62,19 @@
   background: var(--accent-hover);
   border-color: var(--accent-hover);
 }
+.prompt-input {
+  width: 100%;
+  margin-top: 12px;
+  height: 30px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+}
+.prompt-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

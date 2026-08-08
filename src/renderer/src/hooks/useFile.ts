@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { confirmDialog } from '../confirm-dialog';
+import type { FileResult } from '../types';
 
 export function useFile(
   getMarkdown: () => string,
@@ -46,7 +47,17 @@ export function useFile(
       const content = getTabMarkdown(tabId);
 
       if (tab.filePath) {
-        const result = await window.inkmark.saveFile(content, tab.filePath, tab.fileMtime);
+        let result;
+        try {
+          result = await window.inkmark.saveFile(content, tab.filePath, tab.fileMtime);
+        } catch {
+          await confirmDialog(
+            '保存失败',
+            `"${tab.fileName}" 保存失败，请检查文件是否被设为只读或磁盘空间是否充足。`,
+            ['确定'],
+          );
+          return false;
+        }
         if (result.status === 'conflict') {
           const choice = await confirmDialog(
             '文件已被外部修改',
@@ -54,7 +65,13 @@ export function useFile(
             ['覆盖', '取消'],
           );
           if (choice !== 0) return false;
-          const forceResult = await window.inkmark.saveFile(content, tab.filePath, null, true);
+          let forceResult;
+          try {
+            forceResult = await window.inkmark.saveFile(content, tab.filePath, null, true);
+          } catch {
+            await confirmDialog('保存失败', `"${tab.fileName}" 保存失败。`, ['确定']);
+            return false;
+          }
           if (forceResult.status === 'ok') {
             updateTab(tabId, { isDirty: false, fileMtime: forceResult.mtime });
             return true;
@@ -65,7 +82,13 @@ export function useFile(
         return true;
       }
 
-      const saveAsResult = await window.inkmark.saveFileAs(content);
+      let saveAsResult;
+      try {
+        saveAsResult = await window.inkmark.saveFileAs(content);
+      } catch {
+        await confirmDialog('保存失败', `"${tab.fileName}" 保存失败。`, ['确定']);
+        return false;
+      }
       if (saveAsResult) {
         updateTab(tabId, {
           filePath: saveAsResult.path,
@@ -84,73 +107,73 @@ export function useFile(
     addTab();
   }, [addTab]);
 
-  const openFile = useCallback(async () => {
-    const result = await window.inkmark.openFileDialog();
-    if (!result) return;
-    const s = stateRef.current;
-    const existing = s.tabs.find((t) => t.filePath === result.path);
-    if (existing) {
-      setActiveTab(existing.id);
-      return;
-    }
-
-    const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
-    if (activeTab && !activeTab.filePath && !activeTab.isDirty && activeTab.sourceContent === '') {
-      editorStateCache.delete(activeTab.id);
-      suppressDirtyRef.current = true;
-     if (!s.setMarkdown(result.content)) {
-       suppressDirtyRef.current = false;
-     }
-     updateTab(activeTab.id, {
-       filePath: result.path,
-       fileName: result.path.split(/[/\\]/).pop()!,
-       sourceContent: result.content,
-       fileMtime: result.mtime,
-        isStartPage: false,
-     });
-     return;
-   }
-
-   addTab({ filePath: result.path, content: result.content, fileMtime: result.mtime });
- }, [addTab, setActiveTab, updateTab]);
-
-  const openFilePath = useCallback(
-    async (path: string) => {
+  const openFileResult = useCallback(
+    async (result: FileResult): Promise<void> => {
       const s = stateRef.current;
-      const existing = s.tabs.find((t) => t.filePath === path);
+      const { tabs, activeTabId } = useStore.getState();
+      const existing = tabs.find((t) => t.filePath === result.path);
       if (existing) {
         setActiveTab(existing.id);
         return;
       }
 
-   const result = await window.inkmark.openFilePath(path);
-   if (!result) return;
-
-   const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
-   if (
-     activeTab &&
-     !activeTab.filePath &&
-     !activeTab.isDirty &&
-     activeTab.sourceContent === ''
-   ) {
-     editorStateCache.delete(activeTab.id);
-     suppressDirtyRef.current = true;
-     if (!s.setMarkdown(result.content)) {
-       suppressDirtyRef.current = false;
-     }
-     updateTab(activeTab.id, {
-       filePath: result.path,
-       fileName: result.path.split(/[/\\]/).pop()!,
-       sourceContent: result.content,
-       fileMtime: result.mtime,
-        isStartPage: false,
-     });
-     return;
-   }
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      if (
+        activeTab &&
+        !activeTab.filePath &&
+        !activeTab.isDirty &&
+        activeTab.sourceContent === ''
+      ) {
+        editorStateCache.delete(activeTab.id);
+        suppressDirtyRef.current = true;
+        if (!s.setMarkdown(result.content)) {
+          suppressDirtyRef.current = false;
+        }
+        updateTab(activeTab.id, {
+          filePath: result.path,
+          fileName: result.path.split(/[/\\]/).pop()!,
+          sourceContent: result.content,
+          fileMtime: result.mtime,
+          isStartPage: false,
+        });
+        return;
+      }
 
       addTab({ filePath: result.path, content: result.content, fileMtime: result.mtime });
     },
     [addTab, setActiveTab, updateTab],
+  );
+
+  const openFile = useCallback(async () => {
+    let results;
+    try {
+      results = await window.inkmark.openFileDialog();
+    } catch {
+      await confirmDialog('打开失败', '无法打开文件对话框，请重试。', ['确定']);
+      return;
+    }
+    if (!results || results.length === 0) return;
+    for (const result of results) {
+      await openFileResult(result);
+    }
+  }, [openFileResult]);
+
+  const openFilePath = useCallback(
+    async (path: string) => {
+      let result;
+      try {
+        result = await window.inkmark.openFilePath(path);
+      } catch {
+        await confirmDialog('打开失败', `"${path}" 无法打开。`, ['确定']);
+        return;
+      }
+      if (!result) {
+        await confirmDialog('打开失败', `"${path}" 可能已被删除或移动。`, ['确定']);
+        return;
+      }
+      await openFileResult(result);
+    },
+    [openFileResult],
   );
 
   const save = useCallback(async () => {
@@ -160,7 +183,13 @@ export function useFile(
   const saveAs = useCallback(async () => {
     const s = stateRef.current;
     const content = getTabMarkdown(s.activeTabId);
-    const result = await window.inkmark.saveFileAs(content);
+    let result;
+    try {
+      result = await window.inkmark.saveFileAs(content);
+    } catch {
+      await confirmDialog('保存失败', '文件保存失败，请重试。', ['确定']);
+      return;
+    }
     if (result) {
       updateTab(s.activeTabId, {
         filePath: result.path,
@@ -229,17 +258,17 @@ export function useFile(
       return;
     }
     setDirty(true);
- }, [setDirty]);
+  }, [setDirty]);
 
   const reloadTab = useCallback(
     async (tabId: string): Promise<void> => {
       const s = stateRef.current;
       const tab = s.tabs.find((t) => t.id === tabId);
-     if (!tab?.filePath) return;
-     const result = await window.inkmark.openFilePath(tab.filePath);
-     if (!result) return;
+      if (!tab?.filePath) return;
+      const result = await window.inkmark.openFilePath(tab.filePath);
+      if (!result) return;
       editorStateCache.delete(tabId);
-     suppressDirtyRef.current = true;
+      suppressDirtyRef.current = true;
       if (tabId === s.activeTabId) {
         if (!s.setMarkdown(result.content)) {
           suppressDirtyRef.current = false;

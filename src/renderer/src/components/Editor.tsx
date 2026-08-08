@@ -15,8 +15,10 @@ import {
   wrapInHeadingCommand,
   wrapInBulletListCommand,
   wrapInOrderedListCommand,
+  createCodeBlockCommand,
+  toggleLinkCommand,
 } from '@milkdown/kit/preset/commonmark';
-import { gfm, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
+import { gfm, toggleStrikethroughCommand, createTable } from '@milkdown/kit/preset/gfm';
 import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history';
 import { nord } from '@milkdown/theme-nord';
 import { listener, listenerCtx } from '@milkdown/plugin-listener';
@@ -43,13 +45,16 @@ const GITHUB_LINK_ID = 'inkmark-github-theme';
 
 interface EditorProps {
   onDocChange: (doc: unknown) => void;
+  onDocInit: (doc: unknown) => void;
 }
 
-export function Editor({ onDocChange }: EditorProps) {
+export function Editor({ onDocChange, onDocInit }: EditorProps) {
   const onDocChangeRef = useRef(onDocChange);
+  const onDocInitRef = useRef(onDocInit);
   useEffect(() => {
     onDocChangeRef.current = onDocChange;
-  }, [onDocChange]);
+    onDocInitRef.current = onDocInit;
+  }, [onDocChange, onDocInit]);
   const armedRef = useRef(false);
   const contentTheme = useStore((s) => s.contentTheme);
   const theme = useStore((s) => s.theme);
@@ -264,6 +269,30 @@ export function Editor({ onDocChange }: EditorProps) {
           console.error('wrapTaskList error:', e);
         }
       },
+      insertCodeBlock: () => {
+        try {
+          ed.action(callCommand(createCodeBlockCommand.key));
+        } catch (e) {
+          console.error('insertCodeBlock error:', e);
+        }
+      },
+      insertLink: (href: string, title?: string) => {
+        try {
+          ed.action(callCommand(toggleLinkCommand.key, { href, title }));
+        } catch (e) {
+          console.error('insertLink error:', e);
+        }
+      },
+      insertTable: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const table = createTable(ed.ctx, 3, 3);
+          view.dispatch(view.state.tr.replaceSelectionWith(table).scrollIntoView());
+          view.focus();
+        } catch (e) {
+          console.error('insertTable error:', e);
+        }
+      },
       focus: () => {
         try {
           const view = ed.ctx.get(editorViewCtx);
@@ -279,6 +308,8 @@ export function Editor({ onDocChange }: EditorProps) {
     const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
     if (activeTab && activeTab.sourceContent) {
       ed.action(replaceAllAction(activeTab.sourceContent, true));
+      const view = ed.ctx.get(editorViewCtx);
+      onDocInitRef.current(view.state.doc);
     }
 
     armedRef.current = true;

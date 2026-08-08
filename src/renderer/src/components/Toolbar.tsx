@@ -1,7 +1,8 @@
 import { type RefObject } from 'react';
-import { Bold, CircleCheck, Code, Italic, List, Redo2, Strikethrough, Undo2 } from 'lucide-react';
+import { Bold, CircleCheck, Code, Code2, Italic, Link2, List, Redo2, Strikethrough, Table, Undo2 } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
+import { promptDialog } from '../confirm-dialog';
 import '../styles/toolbar.css';
 
 interface ToolbarProps {
@@ -194,6 +195,59 @@ export function Toolbar({ sourceRef }: ToolbarProps) {
     }
   };
 
+  const handleCodeBlock = (): void => {
+    if (isWysiwyg) {
+      editorHandle.current?.insertCodeBlock();
+    } else if (sourceRef.current) {
+      const ta = sourceRef.current;
+      const start = ta.selectionStart;
+      const text = ta.value;
+      const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+      const needsNewline = lineStart > 0 && text[lineStart - 1] !== '\n';
+      const prefix = needsNewline ? '\n' : '';
+      const block = prefix + '```\n\n```\n';
+      const newValue = text.slice(0, lineStart) + block + text.slice(lineStart);
+      const cursorPos = lineStart + prefix.length + 4;
+      updateTextareaValue(ta, newValue, cursorPos, cursorPos);
+    }
+  };
+
+  const handleLink = async (): Promise<void> => {
+    const href = await promptDialog('插入链接', '请输入链接地址：', {
+      placeholder: 'https://',
+      confirmLabel: '插入',
+    });
+    if (!href) return;
+    if (isWysiwyg) {
+      editorHandle.current?.insertLink(href);
+    } else if (sourceRef.current) {
+      const ta = sourceRef.current;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const text = ta.value;
+      const selected = text.slice(start, end) || '链接文本';
+      const insert = '[' + selected + '](' + href + ')';
+      updateTextareaValue(ta, text.slice(0, start) + insert + text.slice(end), start + 1, start + 1 + selected.length);
+    }
+  };
+
+  const handleTable = (): void => {
+    if (isWysiwyg) {
+      editorHandle.current?.insertTable();
+    } else if (sourceRef.current) {
+      const ta = sourceRef.current;
+      const start = ta.selectionStart;
+      const text = ta.value;
+      const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+      const needsNewline = lineStart > 0 && text[lineStart - 1] !== '\n';
+      const prefix = needsNewline ? '\n' : '';
+      const table = prefix + '| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n';
+      const newValue = text.slice(0, lineStart) + table + text.slice(lineStart);
+      const cursorPos = lineStart + table.length;
+      updateTextareaValue(ta, newValue, cursorPos, cursorPos);
+    }
+  };
+
   return (
     <div className="toolbar">
       <div className="toolbar-group">
@@ -247,6 +301,17 @@ export function Toolbar({ sourceRef }: ToolbarProps) {
         </button>
         <button className="toolbar-btn" onClick={handleTaskList} title="待办任务">
           <CircleCheck size={16} />
+        </button>
+      </div>
+      <div className="toolbar-group">
+        <button className="toolbar-btn" onClick={handleCodeBlock} title="代码块">
+          <Code2 size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={handleLink} title="链接">
+          <Link2 size={16} />
+        </button>
+        <button className="toolbar-btn" onClick={handleTable} title="表格">
+          <Table size={16} />
         </button>
       </div>
     </div>

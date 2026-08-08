@@ -8,6 +8,7 @@ import { TabBar } from './components/TabBar';
 import { Toolbar } from './components/Toolbar';
 import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { AboutDialog } from './components/AboutDialog';
 import { useTheme } from './hooks/useTheme';
 import { useFile } from './hooks/useFile';
 import { useOutline } from './hooks/useOutline';
@@ -39,6 +40,7 @@ function AppContent() {
   const updateTab = useStore((s) => s.updateTab);
   const setSourceContent = useStore((s) => s.setSourceContent);
   const setStartPage = useStore((s) => s.setStartPage);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const switchingRef = useRef(false);
@@ -65,6 +67,14 @@ function AppContent() {
       updateWordCount(doc);
     },
     [fileOps, updateOutline, updateWordCount],
+  );
+
+  const handleDocInit = useCallback(
+    (doc: unknown) => {
+      updateOutline(doc);
+      updateWordCount(doc, true);
+    },
+    [updateOutline, updateWordCount],
   );
 
   const handleSourceChange = useCallback(() => {
@@ -119,7 +129,7 @@ function AppContent() {
       const doc = editorHandle.current.getEditorState()?.doc;
       if (doc) {
         updateOutline(doc);
-        updateWordCount(doc);
+        updateWordCount(doc, true);
       }
     }
 
@@ -200,6 +210,9 @@ function AppContent() {
     }
     window.inkmark.onMenuClose(() => {
       void fileOps.closeWindow();
+    });
+    window.inkmark.onMenuAbout(() => {
+      setIsAboutOpen(true);
     });
     window.inkmark.onOpenFilePath((path: string) => {
       void fileOps.openFilePath(path);
@@ -330,7 +343,7 @@ function AppContent() {
           <div
             className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}
           >
-            <Editor onDocChange={handleDocChange} />
+            <Editor onDocChange={handleDocChange} onDocInit={handleDocInit} />
           </div>
           <div
             className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}
@@ -341,6 +354,7 @@ function AppContent() {
         </main>
       </div>
       <ConfirmDialog />
+      {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
     </div>
   );
 }

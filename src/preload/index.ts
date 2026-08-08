@@ -7,6 +7,7 @@ const api = {
   saveFileAs: (content: string) => ipcRenderer.invoke('dialog:saveFileAs', { content }),
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
   getRecentFiles: () => ipcRenderer.invoke('recent:get'),
+  getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getFileMtime: (path: string) => ipcRenderer.invoke('file:getMtime', { path }),
   onOpenFilePath: (cb: (path: string) => void) => {
     ipcRenderer.removeAllListeners('file:open-path');
@@ -43,6 +44,10 @@ const api = {
   onMenuCloseTab: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:closeTab');
     ipcRenderer.on('menu:closeTab', () => cb());
+  },
+  onMenuAbout: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:about');
+    ipcRenderer.on('menu:about', () => cb());
   },
   onMenuClose: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:close');
