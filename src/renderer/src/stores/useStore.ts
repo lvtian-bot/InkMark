@@ -37,6 +37,7 @@ interface InkMarkState extends AppSettings {
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   updateTab: (id: string, updates: Partial<Omit<Tab, 'id'>>) => void;
+  moveTab: (activeId: string, overId: string, position: 'before' | 'after') => void;
 
   setFilePath: (path: string | null) => void;
   setDirty: (dirty: boolean) => void;
@@ -161,6 +162,22 @@ export const useStore = create<InkMarkState>((set, get) => ({
     set((state) => {
       const tabs = state.tabs.map((t) => (t.id === id ? { ...t, ...updates } : t));
       return { tabs };
+    });
+  },
+
+  moveTab: (activeId, overId, position) => {
+    set((state) => {
+      if (activeId === overId) return state;
+      const fromIdx = state.tabs.findIndex((t) => t.id === activeId);
+      const overIdx = state.tabs.findIndex((t) => t.id === overId);
+      if (fromIdx === -1 || overIdx === -1) return state;
+      const next = state.tabs.slice();
+      const [moved] = next.splice(fromIdx, 1);
+      // 取出后 overId 的索引可能左移一位，重新定位后再按 position 偏移。
+      const adjustedOverIdx = next.findIndex((t) => t.id === overId);
+      const insertAt = position === 'before' ? adjustedOverIdx : adjustedOverIdx + 1;
+      next.splice(insertAt, 0, moved);
+      return { tabs: next };
     });
   },
 

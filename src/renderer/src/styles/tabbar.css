@@ -85,6 +85,18 @@
   background: var(--bg-primary);
 }
 
+.tab.dragging {
+  opacity: 0.4;
+}
+
+.tab.drop-before {
+  box-shadow: -2px 0 0 var(--accent);
+}
+
+.tab.drop-after {
+  box-shadow: 2px 0 0 var(--accent);
+}
+
 .tab-title {
   flex: 1;
   overflow: hidden;

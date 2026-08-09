@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useStore } from '../stores/useStore';
 import '../styles/tabbar.css';
 
@@ -7,9 +8,17 @@ interface TabBarProps {
   onNewTab: () => void;
 }
 
+interface DropTarget {
+  id: string;
+  position: 'before' | 'after';
+}
+
 export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
   const tabs = useStore((s) => s.tabs);
   const activeTabId = useStore((s) => s.activeTabId);
+  const moveTab = useStore((s) => s.moveTab);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
   const handleClose = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -21,6 +30,47 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
       e.preventDefault();
       onCloseTab(id);
     }
+  };
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    if (!draggingId || draggingId === id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position: 'before' | 'after' =
+      e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+    setDropTarget((prev) =>
+      prev && prev.id === id && prev.position === position ? prev : { id, position },
+    );
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+    setDropTarget(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (draggingId && draggingId !== id && dropTarget) {
+      moveTab(draggingId, dropTarget.id, dropTarget.position);
+    }
+    setDraggingId(null);
+    setDropTarget(null);
+  };
+
+  const tabClassName = (tab: { id: string }): string => {
+    const classes = ['tab'];
+    if (tab.id === activeTabId) classes.push('active');
+    if (tab.id === draggingId) classes.push('dragging');
+    if (dropTarget && dropTarget.id === tab.id) {
+      classes.push(dropTarget.position === 'before' ? 'drop-before' : 'drop-after');
+    }
+    return classes.join(' ');
   };
 
   return (
@@ -36,9 +86,14 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
         {tabs.map((tab) => (
           <div
             key={tab.id}
-            className={`tab ${tab.id === activeTabId ? 'active' : ''}`}
+            className={tabClassName(tab)}
             onClick={() => onSelectTab(tab.id)}
             onMouseDown={(e) => handleMouseDown(e, tab.id)}
+            onDragStart={(e) => handleDragStart(e, tab.id)}
+            onDragOver={(e) => handleDragOver(e, tab.id)}
+            onDrop={(e) => handleDrop(e, tab.id)}
+            onDragEnd={handleDragEnd}
+            draggable
             title={tab.filePath ?? tab.fileName}
           >
             <div className="tab-body">
