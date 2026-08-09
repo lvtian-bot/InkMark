@@ -5,6 +5,11 @@ import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { buildConflictDiff } from '../conflict-diff';
+import {
+  decideCloseDirty,
+  decideExternalChange,
+  resolveConflictChoice,
+} from '../file-conflict-decision';
 import type { FileResult, FileWatchEvent, ViewMode } from '../types';
 
 function filePathKey(path: string): string {
@@ -233,8 +238,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           '不保存',
           '取消',
         ]);
-        if (choice === 2) return false;
-        if (choice === 0) {
+        const closeDecision = decideCloseDirty({ isDirty: true, choice });
+        if (closeDecision === 'cancel') return false;
+        if (closeDecision === 'save') {
           const saved = await saveTab(id);
           if (!saved) return false;
         }
@@ -265,8 +271,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         '不保存',
         '取消',
       ]);
-      if (choice === 2) return false;
-      if (choice === 0) {
+      const closeDecision = decideCloseDirty({ isDirty: true, choice });
+      if (closeDecision === 'cancel') return false;
+      if (closeDecision === 'save') {
         const saved = await saveTab(tab.id);
         if (!saved) return false;
       }
@@ -370,9 +377,15 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
             missingNotifiedTabIdsRef.current.delete(snapshotTab.id);
             const currentTab = stateRef.current.tabs.find((tab) => tab.id === snapshotTab.id);
-            if (!currentTab?.filePath || res.mtime === currentTab.fileMtime) continue;
+            if (!currentTab?.filePath) continue;
+            const changeDecision = decideExternalChange({
+              fileMtime: currentTab.fileMtime,
+              diskMtime: res.mtime,
+              isDirty: currentTab.isDirty,
+            });
+            if (changeDecision === 'noop') continue;
 
-            if (currentTab.isDirty) {
+            if (changeDecision === 'conflict') {
               const diskVersion = await window.inkmark.openFilePath(currentTab.filePath);
               if (!diskVersion) {
                 await notifyMissingFile(currentTab.id, currentTab.fileName);
@@ -388,13 +401,14 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                   diff: buildConflictDiff(diskVersion.content, getTabMarkdown(currentTab.id)),
                 },
               );
-              if (choice === 0) {
+              const conflictAction = resolveConflictChoice(choice);
+              if (conflictAction === 'reload') {
                 const reloaded = await reloadTab(currentTab.id);
                 if (!reloaded) {
                   const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
                   if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
                 }
-              } else if (choice === 1) {
+              } else if (conflictAction === 'keep-and-override') {
                 updateTab(currentTab.id, { fileMtime: diskVersion.mtime });
               }
             } else {
