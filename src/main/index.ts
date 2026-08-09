@@ -9,7 +9,7 @@ import {
   net,
   shell,
 } from 'electron';
-import { join, dirname } from 'path';
+import { join, dirname, isAbsolute } from 'path';
 import { readFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
@@ -19,6 +19,7 @@ import type {
   ResolveImageSourceRequest,
   StoreImageRequest,
 } from '../shared/image-storage';
+import { isThemeId } from '../shared/theme';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -30,12 +31,57 @@ const PRODUCT_NAME = 'InkMark';
 const fileWatchManager = createFileWatchManager();
 const imageStorage = createImageStorage();
 
+app.enableSandbox();
+
 interface WindowState {
   x?: number;
   y?: number;
   width: number;
   height: number;
   isMaximized: boolean;
+}
+
+interface SaveFileRequest {
+  content: string;
+  path: string;
+  knownMtime?: number | null;
+  force?: boolean;
+}
+
+interface SaveAsRequest {
+  content: string;
+  sourcePath?: string | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isDocumentPath(value: unknown): value is string {
+  return typeof value === 'string' && isAbsolute(value) && /\.(md|markdown|txt)$/i.test(value);
+}
+
+function isSaveFileRequest(value: unknown): value is SaveFileRequest {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.content === 'string' &&
+    isDocumentPath(value.path) &&
+    (value.knownMtime === undefined ||
+      value.knownMtime === null ||
+      (typeof value.knownMtime === 'number' && Number.isFinite(value.knownMtime))) &&
+    (value.force === undefined || typeof value.force === 'boolean')
+  );
+}
+
+function isSaveAsRequest(value: unknown): value is SaveAsRequest {
+  if (!isRecord(value) || typeof value.content !== 'string') return false;
+  return (
+    value.sourcePath === undefined || value.sourcePath === null || isDocumentPath(value.sourcePath)
+  );
+}
+
+function isTrustedRenderer(event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean {
+  return event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame;
 }
 
 function getWindowStatePath(): string {
@@ -187,7 +233,7 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
 
@@ -405,7 +451,8 @@ app.on('before-quit', () => {
   imageStorage.close();
 });
 
-ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
+ipcMain.on('theme:syncThemeId', (event, themeId: unknown) => {
+  if (!isTrustedRenderer(event) || !isThemeId(themeId)) return;
   currentThemeId = themeId;
   applyNativeTheme(themeId);
   createMenu();
@@ -416,24 +463,28 @@ ipcMain.on('theme:syncThemeId', (_event, themeId: string) => {
   });
 });
 
-ipcMain.on('menu:syncSource', (_event, checked: boolean) => {
+ipcMain.on('menu:syncSource', (event, checked: unknown) => {
+  if (!isTrustedRenderer(event) || typeof checked !== 'boolean') return;
   currentSourceMode = checked;
   createMenu();
 });
 
-ipcMain.on('menu:syncOutline', (_event, visible: boolean) => {
+ipcMain.on('menu:syncOutline', (event, visible: unknown) => {
+  if (!isTrustedRenderer(event) || typeof visible !== 'boolean') return;
   currentOutlineVisible = visible;
   createMenu();
 });
 
-ipcMain.on('menu:popup', () => {
+ipcMain.on('menu:popup', (event) => {
+  if (!isTrustedRenderer(event)) return;
   const menu = Menu.getApplicationMenu();
   if (menu && mainWindow) {
     menu.popup();
   }
 });
 
-ipcMain.handle('dialog:openFile', async () => {
+ipcMain.handle('dialog:openFile', async (event) => {
+  if (!isTrustedRenderer(event)) return null;
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
@@ -454,58 +505,60 @@ ipcMain.handle('dialog:openFile', async () => {
   return files.length > 0 ? files : null;
 });
 
-ipcMain.handle(
-  'file:save',
-  async (
-    _event,
-    {
-      content,
-      path,
-      knownMtime,
-      force,
-    }: { content: string; path: string; knownMtime?: number | null; force?: boolean },
-  ) => {
-    if (!force && knownMtime != null) {
-      try {
-        const currentMtime = statSync(path).mtimeMs;
-        if (currentMtime !== knownMtime) {
-          return { status: 'conflict' as const };
-        }
-      } catch {
+ipcMain.handle('file:save', async (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isSaveFileRequest(request)) {
+    throw new Error('无效的文件保存请求。');
+  }
+  const { content, path, knownMtime, force } = request;
+  if (!force && knownMtime != null) {
+    try {
+      const currentMtime = statSync(path).mtimeMs;
+      if (currentMtime !== knownMtime) {
         return { status: 'conflict' as const };
       }
+    } catch {
+      return { status: 'conflict' as const };
     }
-    const mtime = fileWatchManager.performSelfWrite(path, () => atomicWriteFile(path, content));
-    return { status: 'ok' as const, mtime };
-  },
-);
+  }
+  const mtime = fileWatchManager.performSelfWrite(path, () => atomicWriteFile(path, content));
+  return { status: 'ok' as const, mtime };
+});
 
-ipcMain.handle(
-  'dialog:saveFileAs',
-  async (_event, { content, sourcePath }: { content: string; sourcePath?: string | null }) => {
-    if (!mainWindow) return null;
-    const result = await dialog.showSaveDialog(mainWindow, {
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
-    });
-    if (result.canceled || !result.filePath) return null;
-    const filePath = result.filePath;
-    imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
-    const mtime = fileWatchManager.performSelfWrite(filePath, () =>
-      atomicWriteFile(filePath, content),
-    );
-    return { path: filePath, mtime };
-  },
-);
+ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isSaveAsRequest(request)) {
+    throw new Error('无效的另存为请求。');
+  }
+  const { content, sourcePath } = request;
+  if (!mainWindow) return null;
+  const result = await dialog.showSaveDialog(mainWindow, {
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  });
+  if (result.canceled || !result.filePath) return null;
+  const filePath = result.filePath;
+  imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+  const mtime = fileWatchManager.performSelfWrite(filePath, () =>
+    atomicWriteFile(filePath, content),
+  );
+  return { path: filePath, mtime };
+});
 
-ipcMain.on('file:watch', (event, { path }: { path: string }) => {
+ipcMain.on('file:watch', (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isDocumentPath(request.path)) return;
+  const { path } = request;
   fileWatchManager.subscribe(event.sender, path);
 });
 
-ipcMain.on('file:unwatch', (event, { path }: { path: string }) => {
+ipcMain.on('file:unwatch', (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isDocumentPath(request.path)) return;
+  const { path } = request;
   fileWatchManager.unsubscribe(event.sender.id, path);
 });
 
-ipcMain.handle('file:read', async (_event, { path }: { path: string }) => {
+ipcMain.handle('file:read', async (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isDocumentPath(request.path)) {
+    return null;
+  }
+  const { path } = request;
   try {
     const content = readFileSync(path, 'utf-8');
     const mtime = statSync(path).mtimeMs;
@@ -518,7 +571,11 @@ ipcMain.handle('file:read', async (_event, { path }: { path: string }) => {
   }
 });
 
-ipcMain.handle('file:getMtime', async (_event, { path }: { path: string }) => {
+ipcMain.handle('file:getMtime', async (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isDocumentPath(request.path)) {
+    return { status: 'error' as const };
+  }
+  const { path } = request;
   try {
     return { status: 'ok' as const, mtime: statSync(path).mtimeMs };
   } catch {
@@ -526,24 +583,29 @@ ipcMain.handle('file:getMtime', async (_event, { path }: { path: string }) => {
   }
 });
 
-ipcMain.handle('window:setTitle', (_event, title: string) => {
+ipcMain.handle('window:setTitle', (event, title: unknown) => {
+  if (!isTrustedRenderer(event) || typeof title !== 'string' || title.length > 500) return;
   mainWindow?.setTitle(title);
 });
 
-ipcMain.handle('window:close', () => {
+ipcMain.handle('window:close', (event) => {
+  if (!isTrustedRenderer(event)) return;
   forceClose = true;
   mainWindow?.close();
 });
 
-ipcMain.handle('recent:get', async () => {
+ipcMain.handle('recent:get', async (event) => {
+  if (!isTrustedRenderer(event)) return [];
   return getRecentFiles();
 });
 
-ipcMain.handle('recent:remove', async (_event, filePath: string) => {
+ipcMain.handle('recent:remove', async (event, filePath: unknown) => {
+  if (!isTrustedRenderer(event) || !isDocumentPath(filePath)) return;
   removeRecentFile(filePath);
 });
 
-ipcMain.handle('recent:clear', async () => {
+ipcMain.handle('recent:clear', async (event) => {
+  if (!isTrustedRenderer(event)) return;
   recentFilesCache = [];
   try {
     writeFileSync(getRecentFilesPath(), JSON.stringify(recentFilesCache), 'utf-8');
@@ -552,14 +614,11 @@ ipcMain.handle('recent:clear', async () => {
   }
 });
 
-ipcMain.handle('app:getInfo', () => ({
-  name: PRODUCT_NAME,
-  version: app.getVersion(),
-}));
-
-function isTrustedRenderer(event: Electron.IpcMainInvokeEvent): boolean {
-  return event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame;
-}
+ipcMain.handle('app:getInfo', (event) =>
+  isTrustedRenderer(event)
+    ? { name: PRODUCT_NAME, version: app.getVersion() }
+    : { name: PRODUCT_NAME, version: '' },
+);
 
 ipcMain.handle('image:store', (event, request: StoreImageRequest) => {
   if (!isTrustedRenderer(event)) {
