@@ -6,6 +6,14 @@ import type {
   StoreImageRequest,
   StoreImageResult,
 } from '../../../shared/image-storage';
+export {
+  isThemeId,
+  parseThemeId,
+  THEME_IDS,
+  type AppTheme,
+  type ContentTheme,
+  type ThemeId,
+} from '../../../shared/theme';
 
 export interface Heading {
   id: string;
@@ -40,32 +48,6 @@ export interface SaveAsResult {
 export interface AppInfo {
   name: string;
   version: string;
-}
-
-export type ContentTheme = 'inkmark' | 'github';
-export type AppTheme = 'light' | 'dark';
-
-// 主题是“内容排版风格 + 明暗”的组合，与菜单栏的 4 选 1 单选一一对应；
-// themeId 是唯一权威主题标识，theme/contentTheme 均由它派生。
-export type ThemeId = `${ContentTheme}-${AppTheme}`;
-
-export const THEME_IDS: readonly ThemeId[] = [
-  'inkmark-light',
-  'inkmark-dark',
-  'github-light',
-  'github-dark',
-];
-
-export function isThemeId(value: unknown): value is ThemeId {
-  return typeof value === 'string' && (THEME_IDS as readonly string[]).includes(value);
-}
-
-export function parseThemeId(themeId: ThemeId): { contentTheme: ContentTheme; theme: AppTheme } {
-  const dashIdx = themeId.lastIndexOf('-');
-  return {
-    contentTheme: themeId.slice(0, dashIdx) as ContentTheme,
-    theme: themeId.slice(dashIdx + 1) as AppTheme,
-  };
 }
 
 export interface InkMarkAPI {
