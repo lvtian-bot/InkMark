@@ -539,6 +539,19 @@ ipcMain.handle('recent:get', async () => {
   return getRecentFiles();
 });
 
+ipcMain.handle('recent:remove', async (_event, filePath: string) => {
+  removeRecentFile(filePath);
+});
+
+ipcMain.handle('recent:clear', async () => {
+  recentFilesCache = [];
+  try {
+    writeFileSync(getRecentFilesPath(), JSON.stringify(recentFilesCache), 'utf-8');
+  } catch {
+    /* ignore write errors */
+  }
+});
+
 ipcMain.handle('app:getInfo', () => ({
   name: PRODUCT_NAME,
   version: app.getVersion(),

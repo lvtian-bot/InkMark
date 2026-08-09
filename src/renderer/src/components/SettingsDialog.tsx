@@ -3,11 +3,10 @@ import {
   OUTLINE_WIDTH_MAX,
   OUTLINE_WIDTH_MIN,
   type AppSettings,
-  type AppTheme,
   type ToolbarWidth,
 } from '../settings';
 import { useStore } from '../stores/useStore';
-import type { ContentTheme } from '../types';
+import { isThemeId } from '../types';
 import '../styles/settings-dialog.css';
 
 interface SettingsDialogProps {
@@ -16,12 +15,12 @@ interface SettingsDialogProps {
 
 function currentSettings(): AppSettings {
   const state = useStore.getState();
- return {
-   theme: state.theme,
-   contentTheme: state.contentTheme,
-   outlineWidth: state.outlineWidth,
-   outlineVisible: state.outlineVisible,
+  return {
+    themeId: state.themeId,
+    outlineWidth: state.outlineWidth,
+    outlineVisible: state.outlineVisible,
     toolbarWidth: state.toolbarWidth,
+    startPageOnLaunch: state.startPageOnLaunch,
   };
 }
 
@@ -92,7 +91,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               设置
             </h2>
             <p id={descriptionId} className="settings-description">
-              调整 InkMark 的外观和大纲显示方式。
+              调整 InkMark 的外观、大纲与启动页面。
             </p>
           </div>
           <button
@@ -110,40 +109,23 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             <legend>外观</legend>
             <label className="settings-field">
               <span className="settings-field-copy">
-                <span className="settings-field-label">界面主题</span>
-                <span className="settings-field-hint">控制窗口、菜单和侧边栏的明暗配色。</span>
+                <span className="settings-field-label">主题</span>
+                <span className="settings-field-hint">控制整体明暗与正文排版风格，与主题菜单一致。</span>
               </span>
               <select
                 ref={firstControlRef}
-                value={draft.theme}
-                onChange={(event) =>
-                  setDraft((settings) => ({
-                    ...settings,
-                    theme: event.target.value as AppTheme,
-                  }))
-                }
+                value={draft.themeId}
+                onChange={(event) => {
+                  const themeId = event.target.value;
+                  if (isThemeId(themeId)) {
+                    setDraft((settings) => ({ ...settings, themeId }));
+                  }
+                }}
               >
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-              </select>
-            </label>
-
-            <label className="settings-field">
-              <span className="settings-field-copy">
-                <span className="settings-field-label">内容主题</span>
-                <span className="settings-field-hint">控制 Markdown 正文的排版风格。</span>
-              </span>
-              <select
-                value={draft.contentTheme}
-                onChange={(event) =>
-                  setDraft((settings) => ({
-                    ...settings,
-                    contentTheme: event.target.value as ContentTheme,
-                  }))
-                }
-              >
-               <option value="inkmark">InkMark</option>
-               <option value="github">GitHub</option>
+                <option value="inkmark-light">InkMark 亮色</option>
+                <option value="inkmark-dark">InkMark 暗色</option>
+                <option value="github-light">GitHub 亮色</option>
+                <option value="github-dark">GitHub 暗色</option>
               </select>
             </label>
 
@@ -164,6 +146,30 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 <option value="wide">宽</option>
                 <option value="medium">适中</option>
                 <option value="narrow">窄</option>
+              </select>
+            </label>
+          </fieldset>
+
+          <fieldset className="settings-group">
+            <legend>启动</legend>
+            <label className="settings-field">
+              <span className="settings-field-copy">
+                <span className="settings-field-label">启动初始页</span>
+                <span className="settings-field-hint">
+                  应用启动时显示开始页还是空白编辑器；新建标签页始终显示开始页。
+                </span>
+              </span>
+              <select
+                value={draft.startPageOnLaunch ? 'start' : 'blank'}
+                onChange={(event) =>
+                  setDraft((settings) => ({
+                    ...settings,
+                    startPageOnLaunch: event.target.value === 'start',
+                  }))
+                }
+              >
+                <option value="start">开始页</option>
+                <option value="blank">空白页</option>
               </select>
             </label>
           </fieldset>

@@ -3,94 +3,187 @@
   overflow: auto;
   display: flex;
   justify-content: center;
-  padding: 80px 24px 48px;
+  align-items: flex-start;
+  padding: 88px 32px 64px;
   background: var(--bg-primary);
+  box-sizing: border-box;
 }
 
 .start-content {
   width: 100%;
-  max-width: 480px;
+  max-width: 840px;
 }
 
-.start-title {
+.start-brand {
   font-size: 28px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
-  margin-bottom: 32px;
+  margin: 0 0 36px 0;
 }
 
-.start-actions {
+.start-cols {
   display: flex;
-  gap: 12px;
-  margin-bottom: 48px;
-  flex-wrap: wrap;
+  gap: 64px;
 }
 
-.start-btn {
-  font-family: var(--font-family);
-  font-size: 14px;
-  padding: 10px 20px;
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s;
+.start-col {
+  flex: 0 0 auto;
 }
 
-.start-btn:hover {
-  border-color: var(--accent);
+.start-col:first-child {
+  width: 200px;
 }
 
-.start-btn--primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.start-col--recent {
+  flex: 1;
+  min-width: 0;
 }
 
-.start-btn--primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+.start-col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
 }
 
-.start-recent-title {
-  font-size: 13px;
+.start-col-title {
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.start-recent-list {
+.start-clear {
+  font-family: var(--font-family);
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.start-clear:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.start-list {
   list-style: none;
-}
-
-.start-recent-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.start-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.15s;
+  position: relative;
 }
 
-.start-recent-item:hover {
+.start-row:hover {
   background: var(--bg-secondary);
 }
 
-.start-recent-name {
-  font-size: 14px;
-  color: var(--text-primary);
+.start-row-icon {
+  flex-shrink: 0;
+  display: flex;
+  color: var(--text-tertiary);
 }
 
-.start-recent-dir {
+.start-row--primary .start-row-icon {
+  color: var(--accent);
+}
+
+.start-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.start-row-text--inline {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.start-row-name {
+  font-size: 14px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.start-row--recent .start-row-name {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.start-row--recent:hover .start-row-name {
+  text-decoration: underline;
+}
+
+.start-row--recent .start-row-dir {
   font-size: 12px;
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.start-row-remove {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 6px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+}
+
+.start-row:hover .start-row-remove {
+  opacity: 1;
+}
+
+.start-row-remove:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.start-empty-hint {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  padding: 9px 10px;
 }

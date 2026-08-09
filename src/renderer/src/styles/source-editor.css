@@ -29,7 +29,7 @@
   max-width: var(--editor-max-width);
   width: 100%;
   margin: 0 auto;
-  padding: 48px var(--editor-side-padding) 120px;
+  padding: 24px var(--editor-side-padding) 120px;
   font-family: var(--font-family);
   caret-color: var(--accent);
 }
@@ -38,8 +38,59 @@
   padding: 0;
 }
 
-/* 标记淡化：Markdown 语法标记符号用较淡的颜色，正文保持正常对比度 */
+/* 语法符号淡化：# * ` > []() - 等渲染成较淡的装饰色，让正文更突出 */
 .source-container .cm-mark-faded {
+  color: var(--text-tertiary);
+}
+
+/* 标题文字：加粗、保持正文色，层级清晰 */
+.source-container .cm-md-heading {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* 加粗 */
+.source-container .cm-md-strong {
+  font-weight: 700;
+}
+
+/* 斜体 */
+.source-container .cm-md-emphasis {
+  font-style: italic;
+}
+
+/* 删除线 */
+.source-container .cm-md-strike {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+/* 行内代码：等宽字体 + 淡背景（不加 padding，避免影响光标测量） */
+.source-container .cm-md-code {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: 3px;
+}
+
+/* 链接显示文字：强调色 */
+.source-container .cm-md-link {
+  color: var(--accent);
+}
+
+/* 链接原始地址：次级色，略退后 */
+.source-container .cm-md-url {
+  color: var(--text-secondary);
+}
+
+/* 引用：次级色 + 斜体 */
+.source-container .cm-md-quote {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* 分隔线 */
+.source-container .cm-md-sep {
   color: var(--text-tertiary);
 }
 

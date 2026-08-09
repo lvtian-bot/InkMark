@@ -17,7 +17,7 @@ import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
 import { useWordCount } from './hooks/useWordCount';
 import { useStore } from './stores/useStore';
-import type { ContentTheme } from './types';
+import { isThemeId } from './types';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
@@ -25,7 +25,7 @@ import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 
 function AppContent() {
-  const { theme, setTheme, contentTheme, setContentTheme } = useTheme();
+  const { themeId, setThemeId } = useTheme();
   const { updateOutline } = useOutline();
   const { updateWordCount } = useWordCount();
 
@@ -209,12 +209,8 @@ function AppContent() {
       setIsSettingsOpen(true);
     });
     if (window.inkmark.onMenuSetTheme) {
-      window.inkmark.onMenuSetTheme((themeId) => {
-        const dashIdx = themeId.lastIndexOf('-');
-        const ct = themeId.slice(0, dashIdx) as ContentTheme;
-        const t = themeId.slice(dashIdx + 1) as 'light' | 'dark';
-        setContentTheme(ct);
-        setTheme(t);
+      window.inkmark.onMenuSetTheme((id) => {
+        if (isThemeId(id)) setThemeId(id);
       });
     }
     if (window.inkmark.onMenuToggleSource) {
@@ -242,7 +238,7 @@ function AppContent() {
     window.inkmark.onOpenFilePath((path: string) => {
       void fileOps.openFilePath(path);
     });
-  }, [closeFindReplace, fileOps, setContentTheme, setTheme, toggleViewMode]);
+  }, [closeFindReplace, fileOps, setThemeId, toggleViewMode]);
 
   useEffect(() => {
     const handleFindShortcut = (event: KeyboardEvent): void => {
@@ -275,15 +271,40 @@ function AppContent() {
   ]);
 
   useEffect(() => {
+    // 切换源码模式快捷键：Ctrl+/（与菜单「视图 → 源码模式」等效）与 Alt+E。
+    // 用捕获阶段监听，确保在 CodeMirror（Mod-/ = 注释）和 ProseMirror（Mod-/ = 选中父节点）
+    // 等编辑器 keymap 之前拦截，避免按键被编辑器消费导致"按了没反应"。
+    const handleToggleSourceShortcut = (event: KeyboardEvent): void => {
+      const key = event.key.toLowerCase();
+      const isCtrlSlash =
+        (event.ctrlKey || event.metaKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        key === '/';
+      const isAltE =
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.shiftKey &&
+        key === 'e';
+      if (!isCtrlSlash && !isAltE) return;
+      event.preventDefault();
+      event.stopPropagation();
+      toggleViewMode();
+    };
+    window.addEventListener('keydown', handleToggleSourceShortcut, true);
+    return () => window.removeEventListener('keydown', handleToggleSourceShortcut, true);
+  }, [toggleViewMode]);
+
+  useEffect(() => {
     if (isStartPage && isFindReplaceOpen) closeFindReplace();
   }, [closeFindReplace, isFindReplaceOpen, isStartPage]);
 
   useEffect(() => {
-    const themeId = `${contentTheme}-${theme}`;
     if (window.inkmark.syncThemeId) {
       window.inkmark.syncThemeId(themeId);
     }
-  }, [contentTheme, theme]);
+  }, [themeId]);
 
   useEffect(() => {
     const handleDrop = async (e: DragEvent): Promise<void> => {

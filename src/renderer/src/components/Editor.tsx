@@ -42,7 +42,7 @@ import { editorHandle } from '../editor-ref';
 import { findLiteralMatches, isValidTextMatch, type TextMatch } from '../find-replace';
 import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
-import { useStore } from '../stores/useStore';
+import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import '../styles/editor.css';
 import '../styles/prism.css';
 import '../styles/themes/github.css';
@@ -110,8 +110,8 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
     onDocInitRef.current = onDocInit;
   }, [onDocChange, onDocInit]);
   const armedRef = useRef(false);
-  const contentTheme = useStore((s) => s.contentTheme);
-  const theme = useStore((s) => s.theme);
+  const contentTheme = useStore(selectContentTheme);
+  const theme = useStore(selectAppTheme);
 
   useEditor((root) => {
     return MilkdownEditor.make()

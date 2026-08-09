@@ -1,3 +1,4 @@
+import { ChevronLeft, ListTree, Settings } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import '../styles/status-bar.css';
 
@@ -17,11 +18,11 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
     <footer className="status-bar">
       <div className="status-left">
         <button
-          className={`status-toggle-btn ${outlineVisible ? 'active' : ''}`}
+          className="status-toggle-btn"
           onClick={() => setOutlineVisible(!outlineVisible)}
           title={outlineVisible ? '\u9690\u85cf\u5927\u7eb2' : '\u663e\u793a\u5927\u7eb2'}
         >
-          {'\u2630'}
+          {outlineVisible ? <ChevronLeft size={14} /> : <ListTree size={14} />}
         </button>
         <button
           className={`status-mode-btn ${viewMode === 'source' ? 'active' : ''}`}
@@ -37,7 +38,7 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
           title={'\u8bbe\u7f6e'}
           aria-label={'\u8bbe\u7f6e'}
         >
-          {'\u2699'}
+          <Settings size={14} />
         </button>
       </div>
       <div className="status-counts">

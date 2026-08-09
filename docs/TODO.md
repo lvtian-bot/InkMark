@@ -47,6 +47,9 @@
 * [ ] 文件树工作区（优先度：中）
   * 边界：只做类似 Typora 的文件夹浏览、文件切换和基础文件操作，不引入知识库、双向链接、标签系统或数据库视图。
   * 开发时一并收敛数据源：sourceContent 作为唯一权威内容，切 tab 始终从 sourceContent 反序列化（setMarkdown），EditorState cache 降级为只恢复 selection 和 scroll。原因：文件树带 watcher 后外部文件变更成为高频操作，当前 App.tsx 的 switchingRef/prevTabIdRef/viewModeRef 手动编排三处真源（sourceContent / editorStateCache / DOM）容易漏同步步骤。
+* [x] 启动默认页设置（优先度：低）
+  * 已实现：设置新增「启动初始页」（开始页 / 空白页），仅控制应用启动时的首页；新建标签页始终显示开始页（作为新建/最近文件/打开的入口）。默认值保持开始页以兼容旧行为。
+  * 改动：`settings.ts` 增加 `startPageOnLaunch` 字段与归一化；`useStore.ts` 的 `createTab` 默认按该设置决定无路径标签页的 `isStartPage`（启动首标签走默认），但 `addTab` 与空标签兜底强制 `isStartPage: true`；`selectSettings` 同步保留该字段；`SettingsDialog` 新增「启动」分组下拉。
 
 ## 代码质量与架构
 
@@ -68,6 +71,9 @@
   * 已实现：窗口 focus / visibilitychange 时遍历所有打开的标签页比对 mtime；干净标签页静默重载，有未保存改动时弹窗询问"重载 / 保留我的改动"。
   * 现状：编辑期间文件被其他程序修改，用户一直不会察觉，直到按保存才看到冲突弹窗。
   * 方案：窗口重新获得焦点时重新检查文件的最后修改时间，发现外部修改就询问是否重载。
+* [x] 主题模型统一：设置面板的"界面主题"与"内容主题"合并为单一组合主题
+  * 现状：菜单栏用 4 选 1 的 themeId（inkmark-light/dark、github-light/dark），设置面板却拆成"界面主题(light/dark)"+"内容主题(inkmark/github)"两个独立下拉，App.tsx 在两个方向上做 themeId↔(theme,contentTheme) 翻译，两套概念并存。
+  * 已实现：数据层引入 ThemeId 作为唯一权威字段（types/index.ts），AppSettings/store 仅持有 themeId，theme/contentTheme 退化为派生 selector（selectAppTheme/selectContentTheme）；设置面板合并为一个"主题"下拉，4 选项与菜单栏完全一致；CSS 的 data-theme 与 theme-${contentTheme} 由派生值驱动，旧 theme+contentTheme 拆分存储自动迁移为 themeId。
 
 ##
 

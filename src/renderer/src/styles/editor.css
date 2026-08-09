@@ -20,9 +20,9 @@
 }
 .editor-container [data-milkdown-root] {
   max-width: var(--editor-max-width);
-  margin: 20px auto 0;
-  padding: 48px var(--editor-side-padding) 120px;
-  min-height: calc(100% - 12px);
+  margin: 0 auto;
+  padding: 24px var(--editor-side-padding) 120px;
+  min-height: calc(100% - 24px);
 }
 .editor-container [data-milkdown-root]:focus {
   outline: none;
@@ -175,8 +175,8 @@
   width: 100%;
   flex: 1 0 auto;
   max-width: var(--editor-max-width);
-  margin: 20px auto 0;
-  padding: 48px var(--editor-side-padding) 120px;
+  margin: 0 auto;
+  padding: 24px var(--editor-side-padding) 120px;
   border: none;
   outline: none;
   resize: none;

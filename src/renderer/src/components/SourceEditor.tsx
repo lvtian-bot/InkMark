@@ -10,7 +10,7 @@ import {
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
-import { useStore } from '../stores/useStore';
+import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
 import '../styles/source-editor.css';
 
@@ -18,36 +18,44 @@ interface SourceEditorProps {
   onChange: () => void;
 }
 
-// iA Writer 风格的标记淡化：把 Markdown 语法标记（# * ` - > [] 等）渲染成
-// 较淡的颜色，正文保持正常对比度。只淡化标记，不改变正文字号/字体（无衬线）。
+// iA Writer 风格：语法符号淡化成装饰色，正文按语义加粗/强调，结构清晰、内容突出。
+// 语法符号（# * ` > []() - 等）在 @lezer/markdown 中统一标为 tags.processingInstruction，
+// 文字内容则标为 heading/strong/emphasis/link/monospace/quote 等，两者要分开处理。
 const fadedMarksHighlight = HighlightStyle.define([
-  // 标题标记 # ## ###
-  { tag: tags.heading1, class: 'cm-mark-faded' },
-  { tag: tags.heading2, class: 'cm-mark-faded' },
-  { tag: tags.heading3, class: 'cm-mark-faded' },
-  { tag: tags.heading4, class: 'cm-mark-faded' },
-  { tag: tags.heading5, class: 'cm-mark-faded' },
-  { tag: tags.heading6, class: 'cm-mark-faded' },
- // 强调标记 * _ ** **
-  { tag: tags.emphasis, class: 'cm-mark-faded' },
-  { tag: tags.strong, class: 'cm-mark-faded' },
- { tag: tags.strikethrough, class: 'cm-mark-faded' },
-  // 行内代码 ` `
-  { tag: tags.monospace, class: 'cm-mark-faded' },
-  // 链接/图片 [ ] ( )
-  { tag: tags.link, class: 'cm-mark-faded' },
-  { tag: tags.url, class: 'cm-mark-faded' },
-  // 列表与任务标记 - * + []
-  { tag: tags.list, class: 'cm-mark-faded' },
-  // 引用 >
-  { tag: tags.quote, class: 'cm-mark-faded' },
-  // 分隔线 ---
-  { tag: tags.separator, class: 'cm-mark-faded' },
+  // 语法符号：淡化为装饰色，让正文更突出
+  { tag: tags.processingInstruction, class: 'cm-mark-faded' },
+
+  // 标题文字：加粗、保持正文色，层级一眼可读
+  { tag: tags.heading1, class: 'cm-md-heading' },
+  { tag: tags.heading2, class: 'cm-md-heading' },
+  { tag: tags.heading3, class: 'cm-md-heading' },
+  { tag: tags.heading4, class: 'cm-md-heading' },
+  { tag: tags.heading5, class: 'cm-md-heading' },
+  { tag: tags.heading6, class: 'cm-md-heading' },
+
+  // 强调
+  { tag: tags.strong, class: 'cm-md-strong' },
+  { tag: tags.emphasis, class: 'cm-md-emphasis' },
+  { tag: tags.strikethrough, class: 'cm-md-strike' },
+
+  // 行内代码
+  { tag: tags.monospace, class: 'cm-md-code' },
+
+  // 链接：显示文字用强调色，原始地址用次级色稍退后
+  { tag: tags.link, class: 'cm-md-link' },
+  { tag: tags.url, class: 'cm-md-url' },
+
+  // 引用
+  { tag: tags.quote, class: 'cm-md-quote' },
+
+  // 分隔线
+  { tag: tags.contentSeparator, class: 'cm-md-sep' },
+  // 列表项文字（tags.list）保持正文色，不加样式
 ]);
 
 export function SourceEditor({ onChange }: SourceEditorProps) {
-  const contentTheme = useStore((s) => s.contentTheme);
-  const theme = useStore((s) => s.theme);
+  const contentTheme = useStore(selectContentTheme);
+  const theme = useStore(selectAppTheme);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -74,7 +82,7 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
         history(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
         markdown({ base: markdownLanguage, codeLanguages: languages }),
-        syntaxHighlighting(fadedMarksHighlight, { fallback: true }),
+        syntaxHighlighting(fadedMarksHighlight),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         EditorView.lineWrapping,
         updateListener,

@@ -1,12 +1,13 @@
 import { create } from 'zustand';
-import type { Heading, ContentTheme, ViewMode } from '../types';
 import {
-  loadSettings,
-  saveSettings,
-  type AppSettings,
+  parseThemeId,
   type AppTheme,
-  type ToolbarWidth,
-} from '../settings';
+  type ContentTheme,
+  type Heading,
+  type ThemeId,
+  type ViewMode,
+} from '../types';
+import { loadSettings, saveSettings, type AppSettings, type ToolbarWidth } from '../settings';
 
 export interface Tab {
   id: string;
@@ -46,8 +47,7 @@ interface InkMarkState extends AppSettings {
   setScrollTop: (top: number) => void;
 
   applySettings: (settings: AppSettings) => void;
-  setTheme: (theme: AppTheme) => void;
-  setContentTheme: (theme: ContentTheme) => void;
+  setThemeId: (themeId: ThemeId) => void;
   setOutlineWidth: (width: number) => void;
   setOutlineVisible: (visible: boolean) => void;
   setToolbarWidth: (width: ToolbarWidth) => void;
@@ -57,13 +57,19 @@ interface InkMarkState extends AppSettings {
 
 const initialSettings = loadSettings();
 
+// themeId 是唯一权威主题字段；theme/contentTheme 仅为派生值，供需要明暗或排版风格
+// 的组件读取（CSS 仍依赖 data-theme 与 theme-${contentTheme} class）。
+export const selectAppTheme = (s: AppSettings): AppTheme => parseThemeId(s.themeId).theme;
+export const selectContentTheme = (s: AppSettings): ContentTheme =>
+  parseThemeId(s.themeId).contentTheme;
+
 function selectSettings(state: AppSettings): AppSettings {
   return {
-    theme: state.theme,
-    contentTheme: state.contentTheme,
+    themeId: state.themeId,
     outlineWidth: state.outlineWidth,
     outlineVisible: state.outlineVisible,
     toolbarWidth: state.toolbarWidth,
+    startPageOnLaunch: state.startPageOnLaunch,
   };
 }
 
@@ -72,18 +78,26 @@ function nextTabId(): string {
   return `tab-${Date.now()}-${tabIdCounter++}`;
 }
 
-function createTab(init?: {
-  filePath?: string | null;
-  content?: string;
-  fileMtime?: number | null;
-}): Tab {
+function createTab(
+  init?: {
+    filePath?: string | null;
+    content?: string;
+    fileMtime?: number | null;
+  },
+  startPageOnLaunch: boolean = initialSettings.startPageOnLaunch,
+): Tab {
   const filePath = init?.filePath ?? null;
+  const isStartPage = filePath ? false : startPageOnLaunch;
   return {
     id: nextTabId(),
     filePath,
-    fileName: filePath ? filePath.split(/[/\\]/).pop()! : '新建文档',
+    fileName: filePath
+      ? filePath.split(/[/\\]/).pop()!
+      : isStartPage
+        ? '欢迎'
+        : '新建文档',
     isDirty: false,
-    isStartPage: !filePath,
+    isStartPage,
     outline: [],
     wordCount: 0,
     charCount: 0,
@@ -103,7 +117,7 @@ export const useStore = create<InkMarkState>((set, get) => ({
   viewMode: 'wysiwyg',
 
   addTab: (init) => {
-    const tab = createTab(init);
+    const tab = createTab(init, true);
     set({
       tabs: [...get().tabs, tab],
       activeTabId: tab.id,
@@ -118,7 +132,7 @@ export const useStore = create<InkMarkState>((set, get) => ({
       const tabs = state.tabs.filter((t) => t.id !== id);
 
       if (tabs.length === 0) {
-        const newTab = createTab();
+        const newTab = createTab(undefined, true);
         return {
           tabs: [newTab],
           activeTabId: newTab.id,
@@ -168,7 +182,10 @@ export const useStore = create<InkMarkState>((set, get) => ({
   },
 
   setStartPage: (startPage) => {
-    get().updateTab(get().activeTabId, { isStartPage: startPage });
+    get().updateTab(get().activeTabId, {
+      isStartPage: startPage,
+      fileName: startPage ? '欢迎' : '新建文档',
+    });
   },
 
   setOutline: (outline) => {
@@ -191,12 +208,8 @@ export const useStore = create<InkMarkState>((set, get) => ({
     set(saveSettings(settings));
   },
 
-  setTheme: (theme) => {
-    set(saveSettings({ ...selectSettings(get()), theme }));
-  },
-
-  setContentTheme: (theme) => {
-    set(saveSettings({ ...selectSettings(get()), contentTheme: theme }));
+  setThemeId: (themeId) => {
+    set(saveSettings({ ...selectSettings(get()), themeId }));
   },
 
   setOutlineWidth: (width) => {

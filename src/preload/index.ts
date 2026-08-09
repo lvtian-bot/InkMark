@@ -13,6 +13,8 @@ const api = {
     ipcRenderer.invoke('dialog:saveFileAs', { content, sourcePath }),
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
   getRecentFiles: () => ipcRenderer.invoke('recent:get'),
+  removeRecentFile: (path: string) => ipcRenderer.invoke('recent:remove', path),
+  clearRecentFiles: () => ipcRenderer.invoke('recent:clear'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getFileMtime: (path: string) => ipcRenderer.invoke('file:getMtime', { path }),
   watchFile: (path: string) => ipcRenderer.send('file:watch', { path }),

@@ -1,25 +1,26 @@
-import type { ContentTheme } from './types';
+import { isThemeId, type ThemeId } from './types';
 
-export type AppTheme = 'light' | 'dark';
+// AppTheme 已迁移至 ./types，这里 re-export 以保持现有 import 路径稳定。
+export type { AppTheme } from './types';
 export type ToolbarWidth = 'wide' | 'medium' | 'narrow';
 
 export interface AppSettings {
-  theme: AppTheme;
-  contentTheme: ContentTheme;
+  themeId: ThemeId;
   outlineWidth: number;
   outlineVisible: boolean;
   toolbarWidth: ToolbarWidth;
+  startPageOnLaunch: boolean;
 }
 
 export const OUTLINE_WIDTH_MIN = 150;
 export const OUTLINE_WIDTH_MAX = 500;
 
 export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
-  theme: 'light',
-  contentTheme: 'inkmark',
+  themeId: 'inkmark-light',
   outlineWidth: 240,
   outlineVisible: true,
   toolbarWidth: 'wide',
+  startPageOnLaunch: true,
 };
 
 const SETTINGS_STORAGE_KEY = 'inkmark-settings';
@@ -52,29 +53,40 @@ function normalizeOutlineWidth(value: unknown): number {
   return Math.round(Math.min(OUTLINE_WIDTH_MAX, Math.max(OUTLINE_WIDTH_MIN, value)));
 }
 
+// 优先使用新版的 themeId；若配置来自旧版（theme + contentTheme 拆分存储）则合成 themeId，
+// 保证升级后旧设置无缝映射到统一的组合主题模型。
+function resolveThemeId(candidate: Record<string, unknown>): ThemeId {
+  if (isThemeId(candidate.themeId)) return candidate.themeId;
+  const { theme, contentTheme } = candidate;
+  if (
+    (theme === 'light' || theme === 'dark') &&
+    (contentTheme === 'inkmark' || contentTheme === 'github')
+  ) {
+    return `${contentTheme}-${theme}` as ThemeId;
+  }
+  return DEFAULT_SETTINGS.themeId;
+}
+
 function normalizeSettings(value: unknown): AppSettings {
   const candidate = isRecord(value) ? value : {};
 
   return {
-    theme:
-      candidate.theme === 'light' || candidate.theme === 'dark'
-        ? candidate.theme
-        : DEFAULT_SETTINGS.theme,
-    contentTheme:
-      candidate.contentTheme === 'inkmark' || candidate.contentTheme === 'github'
-        ? candidate.contentTheme
-        : DEFAULT_SETTINGS.contentTheme,
+    themeId: resolveThemeId(candidate),
     outlineWidth: normalizeOutlineWidth(candidate.outlineWidth),
-   outlineVisible:
-     typeof candidate.outlineVisible === 'boolean'
-       ? candidate.outlineVisible
-       : DEFAULT_SETTINGS.outlineVisible,
+    outlineVisible:
+      typeof candidate.outlineVisible === 'boolean'
+        ? candidate.outlineVisible
+        : DEFAULT_SETTINGS.outlineVisible,
     toolbarWidth:
       candidate.toolbarWidth === 'wide' ||
       candidate.toolbarWidth === 'medium' ||
       candidate.toolbarWidth === 'narrow'
         ? candidate.toolbarWidth
         : DEFAULT_SETTINGS.toolbarWidth,
+    startPageOnLaunch:
+      typeof candidate.startPageOnLaunch === 'boolean'
+        ? candidate.startPageOnLaunch
+        : DEFAULT_SETTINGS.startPageOnLaunch,
   };
 }
 

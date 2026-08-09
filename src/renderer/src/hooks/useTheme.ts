@@ -1,15 +1,15 @@
 import { useEffect } from 'react';
-import { useStore } from '../stores/useStore';
+import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 
 export function useTheme() {
-  const theme = useStore((s) => s.theme);
-  const setTheme = useStore((s) => s.setTheme);
-  const contentTheme = useStore((s) => s.contentTheme);
-  const setContentTheme = useStore((s) => s.setContentTheme);
+  const themeId = useStore((s) => s.themeId);
+  const setThemeId = useStore((s) => s.setThemeId);
+  const theme = useStore(selectAppTheme);
+  const contentTheme = useStore(selectContentTheme);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  return { theme, setTheme, contentTheme, setContentTheme };
+  return { themeId, setThemeId, theme, contentTheme };
 }
