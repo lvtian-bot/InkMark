@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { EditorState as SourceEditorState } from '@codemirror/state';
 import { MilkdownProvider } from '@milkdown/react';
 import { Editor } from './components/Editor';
 import { SourceEditor } from './components/SourceEditor';
@@ -26,8 +27,8 @@ import { isImageUploadInProgress } from './image-upload';
 
 function AppContent() {
   const { themeId, setThemeId } = useTheme();
-  const { updateOutline } = useOutline();
-  const { updateWordCount } = useWordCount();
+  const { updateOutline, updateSourceOutline } = useOutline();
+  const { updateWordCount, updateSourceWordCount } = useWordCount();
 
   const activeTabId = useStore((s) => s.activeTabId);
   const fileName = useStore(
@@ -56,14 +57,13 @@ function AppContent() {
     viewModeRef.current = viewMode;
   }, [viewMode]);
 
-  const getMarkdown = useCallback(() => editorHandle.current?.getMarkdown() ?? '', []);
   const setMarkdown = useCallback((md: string) => {
     if (!editorHandle.current) return false;
     editorHandle.current.setMarkdown(md);
     return true;
   }, []);
 
-  const fileOps = useFile(getMarkdown, setMarkdown, viewMode);
+  const fileOps = useFile(setMarkdown, viewMode);
   const findReplace = useFindReplace({ activeTabId, viewMode });
   const {
     close: closeFindReplace,
@@ -76,11 +76,12 @@ function AppContent() {
     (doc: unknown) => {
       notifyFindContentChanged();
       if (switchingRef.current) return;
+      setSourceContent(editorHandle.current?.getMarkdown() ?? '');
       fileOps.markDirty();
       updateOutline(doc);
       updateWordCount(doc);
     },
-    [fileOps, notifyFindContentChanged, updateOutline, updateWordCount],
+    [fileOps, notifyFindContentChanged, setSourceContent, updateOutline, updateWordCount],
   );
 
   const handleDocInit = useCallback(
@@ -91,10 +92,22 @@ function AppContent() {
     [updateOutline, updateWordCount],
   );
 
-  const handleSourceChange = useCallback(() => {
-    fileOps.markDirty();
-    notifyFindContentChanged();
-  }, [fileOps, notifyFindContentChanged]);
+  const handleSourceChange = useCallback(
+    (state: SourceEditorState) => {
+      setSourceContent(state.doc.toString());
+      fileOps.markDirty();
+      notifyFindContentChanged();
+      updateSourceOutline(state);
+      updateSourceWordCount(state);
+    },
+    [
+      fileOps,
+      notifyFindContentChanged,
+      setSourceContent,
+      updateSourceOutline,
+      updateSourceWordCount,
+    ],
+  );
 
   useLayoutEffect(() => {
     if (prevTabIdRef.current === activeTabId) return;
@@ -117,35 +130,49 @@ function AppContent() {
     }
 
     if (oldTabId) {
-      const state = editorHandle.current.getEditorState();
-      if (state) editorStateCache.set(oldTabId, state);
       const scrollTop = editorHandle.current.getScrollTop();
       const vm = viewModeRef.current;
       const sourceContent =
         vm === 'source'
-          ? sourceEditorHandle.current?.getValue() ?? ''
+          ? (sourceEditorHandle.current?.getValue() ?? '')
           : editorHandle.current.getMarkdown();
+      if (vm === 'source') {
+        const state = sourceEditorHandle.current?.getEditorState();
+        if (state) editorStateCache.capture(oldTabId, 'source', sourceContent, state);
+      } else {
+        const state = editorHandle.current.getEditorState();
+        if (state) editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
+      }
       updateTab(oldTabId, { sourceContent, scrollTop });
     }
 
     switchingRef.current = true;
 
-    const savedState = editorStateCache.get(newTabId);
+    const savedState = editorStateCache.restore(newTabId, 'wysiwyg', newTab.sourceContent);
     if (savedState) {
       editorHandle.current.setEditorState(savedState);
     } else {
       editorHandle.current.setMarkdown(newTab.sourceContent);
-      const newState = editorHandle.current.getEditorState();
-      if (newState) editorStateCache.set(newTabId, newState);
     }
 
     if (viewModeRef.current === 'source') {
-      sourceEditorHandle.current?.setValue(newTab.sourceContent);
+      const savedSourceState = editorStateCache.restore(newTabId, 'source', newTab.sourceContent);
+      if (savedSourceState) {
+        sourceEditorHandle.current?.setEditorState(savedSourceState);
+      } else {
+        sourceEditorHandle.current?.setValue(newTab.sourceContent);
+      }
     }
 
     switchingRef.current = false;
 
-    if (!savedState) {
+    if (viewModeRef.current === 'source') {
+      const sourceState = sourceEditorHandle.current?.getEditorState();
+      if (sourceState) {
+        updateSourceOutline(sourceState);
+        updateSourceWordCount(sourceState, true);
+      }
+    } else {
       const doc = editorHandle.current.getEditorState()?.doc;
       if (doc) {
         updateOutline(doc);
@@ -158,25 +185,68 @@ function AppContent() {
     });
 
     prevTabIdRef.current = newTabId;
-  }, [activeTabId, setActiveTab, updateTab, updateOutline, updateWordCount]);
+  }, [
+    activeTabId,
+    setActiveTab,
+    updateTab,
+    updateOutline,
+    updateSourceOutline,
+    updateSourceWordCount,
+    updateWordCount,
+  ]);
 
   const prevModeRef = useRef(viewMode);
   useEffect(() => {
     const prev = prevModeRef.current;
     if (prev === viewMode) return;
     prevModeRef.current = viewMode;
+    const tabId = useStore.getState().activeTabId;
+    switchingRef.current = true;
     if (viewMode === 'source') {
       const md = editorHandle.current?.getMarkdown() ?? '';
-      sourceEditorHandle.current?.setValue(md);
+      const state = editorHandle.current?.getEditorState();
+      if (state) editorStateCache.capture(tabId, 'wysiwyg', md, state);
       setSourceContent(md);
+      const sourceState = editorStateCache.restore(tabId, 'source', md);
+      if (sourceState) {
+        sourceEditorHandle.current?.setEditorState(sourceState);
+      } else {
+        sourceEditorHandle.current?.setValue(md);
+      }
     } else {
       const md = sourceEditorHandle.current?.getValue() ?? '';
-      const current = editorHandle.current?.getMarkdown() ?? '';
-      if (md !== current) {
+      const state = sourceEditorHandle.current?.getEditorState();
+      if (state) editorStateCache.capture(tabId, 'source', md, state);
+      setSourceContent(md);
+      const wysiwygState = editorStateCache.restore(tabId, 'wysiwyg', md);
+      if (wysiwygState) {
+        editorHandle.current?.setEditorState(wysiwygState);
+      } else {
         editorHandle.current?.setMarkdown(md);
       }
     }
-  }, [viewMode, setSourceContent]);
+    switchingRef.current = false;
+    if (viewMode === 'source') {
+      const state = sourceEditorHandle.current?.getEditorState();
+      if (state) {
+        updateSourceOutline(state);
+        updateSourceWordCount(state, true);
+      }
+    } else {
+      const doc = editorHandle.current?.getEditorState()?.doc;
+      if (doc) {
+        updateOutline(doc);
+        updateWordCount(doc, true);
+      }
+    }
+  }, [
+    setSourceContent,
+    updateOutline,
+    updateSourceOutline,
+    updateSourceWordCount,
+    updateWordCount,
+    viewMode,
+  ]);
 
   useEffect(() => {
     if (window.inkmark.syncSourceMode) {
@@ -277,16 +347,9 @@ function AppContent() {
     const handleToggleSourceShortcut = (event: KeyboardEvent): void => {
       const key = event.key.toLowerCase();
       const isCtrlSlash =
-        (event.ctrlKey || event.metaKey) &&
-        !event.altKey &&
-        !event.shiftKey &&
-        key === '/';
+        (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === '/';
       const isAltE =
-        event.altKey &&
-        !event.ctrlKey &&
-        !event.metaKey &&
-        !event.shiftKey &&
-        key === 'e';
+        event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && key === 'e';
       if (!isCtrlSlash && !isAltE) return;
       event.preventDefault();
       event.stopPropagation();

@@ -27,7 +27,7 @@ export function ConfirmDialog() {
   }, [request, promptRequest]);
 
   if (request) {
-    const { title, message, buttons, defaultId, cancelId } = request;
+    const { title, message, buttons, defaultId, cancelId, diff } = request;
 
     const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
       if (event.key === 'Escape') {
@@ -53,7 +53,7 @@ export function ConfirmDialog() {
       <div className="confirm-overlay">
         <div
           ref={dialogRef}
-          className="confirm-dialog"
+          className={`confirm-dialog ${diff ? 'confirm-dialog-wide' : ''}`}
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="confirm-dialog-title"
@@ -66,6 +66,32 @@ export function ConfirmDialog() {
           <div id="confirm-dialog-message" className="confirm-message">
             {message}
           </div>
+          {diff && (
+            <div className="confirm-diff" aria-label="磁盘版本与当前编辑版本的差异">
+              <div className="confirm-diff-legend">
+                <span className="confirm-diff-removed">− 磁盘版本</span>
+                <span className="confirm-diff-added">+ 当前编辑版本</span>
+              </div>
+              <pre className="confirm-diff-content">
+                {diff.map((part, index) => {
+                  const prefix =
+                    part.kind === 'added' ? '+ ' : part.kind === 'removed' ? '- ' : '  ';
+                  const lines = part.value.split('\n');
+                  const display = lines
+                    .map((line, lineIndex) => {
+                      if (lineIndex === lines.length - 1 && line === '') return '';
+                      return `${prefix}${line}\n`;
+                    })
+                    .join('');
+                  return (
+                    <span key={index} className={`confirm-diff-${part.kind}`}>
+                      {display}
+                    </span>
+                  );
+                })}
+              </pre>
+            </div>
+          )}
           <div className="confirm-actions">
             {buttons.map((label, index) => (
               <button

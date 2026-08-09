@@ -24,14 +24,16 @@ npm run build:win
 
 | 快捷键       | 功能         |
 | ------------ | ------------ |
-| Ctrl+N       | 新建文件     |
+| Ctrl+T       | 新建标签页   |
 | Ctrl+O       | 打开文件     |
+| Ctrl+W       | 关闭标签页   |
 | Ctrl+S       | 保存         |
 | Ctrl+Shift+S | 另存为       |
 | Ctrl+F       | 查找         |
 | Ctrl+H       | 查找与替换   |
 | Ctrl+,       | 打开设置     |
-| Ctrl+Shift+T | 切换明暗主题 |
+| Ctrl+/       | 切换源码模式 |
+| Alt+E        | 切换源码模式 |
 
 ## 技术栈
 

@@ -2,11 +2,7 @@ import { useEffect, useRef } from 'react';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, undo, redo } from '@codemirror/commands';
-import {
-  HighlightStyle,
-  syntaxHighlighting,
-  defaultHighlightStyle,
-} from '@codemirror/language';
+import { HighlightStyle, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
@@ -15,7 +11,7 @@ import { sourceEditorHandle } from '../source-editor-ref';
 import '../styles/source-editor.css';
 
 interface SourceEditorProps {
-  onChange: () => void;
+  onChange: (state: EditorState) => void;
 }
 
 // iA Writer 风格：语法符号淡化成装饰色，正文按语义加粗/强调，结构清晰、内容突出。
@@ -72,33 +68,36 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
 
     const updateListener = EditorView.updateListener.of((vu) => {
       if (vu.docChanged && !suppressRef.current) {
-        onChangeRef.current();
+        onChangeRef.current(vu.state);
       }
     });
 
-    const state = EditorState.create({
-      doc: '',
-      extensions: [
-        history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        markdown({ base: markdownLanguage, codeLanguages: languages }),
-        syntaxHighlighting(fadedMarksHighlight),
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        EditorView.lineWrapping,
-        updateListener,
-      ],
-    });
+    const createState = (doc: string) =>
+      EditorState.create({
+        doc,
+        extensions: [
+          history(),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
+          markdown({ base: markdownLanguage, codeLanguages: languages }),
+          syntaxHighlighting(fadedMarksHighlight),
+          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          EditorView.lineWrapping,
+          updateListener,
+        ],
+      });
+
+    const state = createState('');
 
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
 
     sourceEditorHandle.current = {
       getValue: () => view.state.doc.toString(),
+      getEditorState: () => view.state,
+      setEditorState: (state) => view.setState(state),
       setValue: (value) => {
         suppressRef.current = true;
-        view.dispatch({
-          changes: { from: 0, to: view.state.doc.length, insert: value },
-        });
+        view.setState(createState(value));
         suppressRef.current = false;
       },
       focus: () => view.focus(),
@@ -107,7 +106,7 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
         to: view.state.selection.main.to,
       }),
       setSelection: (from, to) => {
-        view.dispatch({ selection: { anchor: from, head: to } });
+        view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
         view.focus();
       },
       replaceRange: (from, to, text) => {
@@ -132,6 +131,7 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
         );
         suppressRef.current = false;
       },
+      notifyChange: () => onChangeRef.current(view.state),
       undo: () => undo(view),
       redo: () => redo(view),
     };
@@ -144,9 +144,6 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
   }, []);
 
   return (
-    <div
-      className={`source-container theme-${contentTheme} cm-theme-${theme}`}
-      ref={hostRef}
-    />
+    <div className={`source-container theme-${contentTheme} cm-theme-${theme}`} ref={hostRef} />
   );
 }

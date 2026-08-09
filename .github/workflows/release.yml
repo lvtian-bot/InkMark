@@ -22,10 +22,13 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Quality checks
+        run: npm run check
 
       - name: Build Windows installer
-        run: npm run build && npx electron-builder --win --publish never
+        run: npx electron-builder --win --publish never
 
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2

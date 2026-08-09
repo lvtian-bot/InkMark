@@ -101,11 +101,7 @@ export const taskListClickPlugin = $prose(() => {
             const $liPos = view.state.doc.resolve(liPos);
             const liNode = $liPos.nodeAfter;
 
-            if (
-              !liNode ||
-              liNode.type.name !== 'list_item' ||
-              liNode.attrs.checked == null
-            ) {
+            if (!liNode || liNode.type.name !== 'list_item' || liNode.attrs.checked == null) {
               return false;
             }
 

@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
+import type { EditorState } from '@codemirror/state';
 import { useStore } from '../stores/useStore';
 import type { Heading } from '../types';
+import { extractSourceHeadings } from '../source-document';
 
 interface DocLike {
   descendants: (
@@ -57,5 +59,12 @@ export function useOutline() {
     [setOutline],
   );
 
-  return { outline, updateOutline };
+  const updateSourceOutline = useCallback(
+    (state: EditorState) => {
+      setOutline(extractSourceHeadings(state));
+    },
+    [setOutline],
+  );
+
+  return { outline, updateOutline, updateSourceOutline };
 }

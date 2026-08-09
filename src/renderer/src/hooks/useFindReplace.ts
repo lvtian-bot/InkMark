@@ -73,9 +73,12 @@ function createSourceAdapter(focusQueryInput: () => void): FindReplaceAdapter {
         const match = matches[index];
         handle.replaceRangeQuiet(match.from, match.to, replacement);
       }
+      handle.notifyChange();
     },
     replaceCurrent: (match, replacement) => {
-      sourceEditorHandle.current?.replaceRangeQuiet(match.from, match.to, replacement);
+      const handle = sourceEditorHandle.current;
+      handle?.replaceRangeQuiet(match.from, match.to, replacement);
+      handle?.notifyChange();
     },
     select: (match) => {
       editorHandle.current?.showTextMatches([], -1);
@@ -114,9 +117,7 @@ export function useFindReplace({
 
   useEffect(() => {
     adapterRef.current =
-      viewMode === 'wysiwyg'
-        ? createWysiwygAdapter()
-        : createSourceAdapter(focusQueryInput);
+      viewMode === 'wysiwyg' ? createWysiwygAdapter() : createSourceAdapter(focusQueryInput);
   }, [focusQueryInput, viewMode]);
 
   useEffect(() => {

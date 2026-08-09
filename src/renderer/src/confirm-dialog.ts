@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import type { ConflictDiffPart } from './conflict-diff';
 
 export interface ConfirmRequest {
   title: string;
@@ -6,6 +7,7 @@ export interface ConfirmRequest {
   buttons: string[];
   defaultId: number;
   cancelId: number;
+  diff?: ConflictDiffPart[];
 }
 
 export interface PromptRequest {
@@ -33,7 +35,7 @@ export function confirmDialog(
   title: string,
   message: string,
   buttons: string[],
-  options?: { defaultId?: number; cancelId?: number },
+  options?: { defaultId?: number; cancelId?: number; diff?: ConflictDiffPart[] },
 ): Promise<number> {
   return new Promise<number>((resolve) => {
     // 已有对话框打开时，先按取消处理旧的，避免 Promise 悬挂
@@ -45,6 +47,7 @@ export function confirmDialog(
       buttons,
       defaultId: options?.defaultId ?? 0,
       cancelId: options?.cancelId ?? buttons.length - 1,
+      diff: options?.diff,
     };
     resolver = resolve;
     emit();

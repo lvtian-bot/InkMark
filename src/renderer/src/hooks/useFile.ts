@@ -4,17 +4,14 @@ import { editorStateCache } from '../editor-state-cache';
 import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
 import { sourceEditorHandle } from '../source-editor-ref';
+import { buildConflictDiff } from '../conflict-diff';
 import type { FileResult, FileWatchEvent, ViewMode } from '../types';
 
 function filePathKey(path: string): string {
   return window.inkmark.platform === 'win32' ? path.toLowerCase() : path;
 }
 
-export function useFile(
-  getMarkdown: () => string,
-  setMarkdown: (md: string) => boolean,
-  viewMode: ViewMode,
-) {
+export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode) {
   const tabs = useStore((s) => s.tabs);
   const activeTabId = useStore((s) => s.activeTabId);
   const addTab = useStore((s) => s.addTab);
@@ -30,27 +27,19 @@ export function useFile(
   const watchedPathsRef = useRef(new Map<string, string>());
   const missingNotifiedTabIdsRef = useRef(new Set<string>());
 
-  const stateRef = useRef({ tabs, activeTabId, getMarkdown, setMarkdown, viewMode });
+  const stateRef = useRef({ tabs, activeTabId, setMarkdown, viewMode });
   useEffect(() => {
-    stateRef.current = { tabs, activeTabId, getMarkdown, setMarkdown, viewMode };
+    stateRef.current = { tabs, activeTabId, setMarkdown, viewMode };
   });
 
   const getTabMarkdown = useCallback((tabId: string): string => {
-    const s = stateRef.current;
-    if (tabId === s.activeTabId) {
-      if (s.viewMode === 'source') {
-        return sourceEditorHandle.current?.getValue() ?? '';
-      }
-      return s.getMarkdown();
-    }
-    const tab = s.tabs.find((t) => t.id === tabId);
+    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
     return tab?.sourceContent ?? '';
   }, []);
 
   const saveTab = useCallback(
     async (tabId: string): Promise<boolean> => {
-      const s = stateRef.current;
-      const tab = s.tabs.find((t) => t.id === tabId);
+      const tab = useStore.getState().tabs.find((t) => t.id === tabId);
       if (!tab) return false;
 
       const content = getTabMarkdown(tabId);
@@ -68,10 +57,16 @@ export function useFile(
           return false;
         }
         if (result.status === 'conflict') {
+          const diskVersion = await window.inkmark.openFilePath(tab.filePath);
           const choice = await confirmDialog(
             '文件已被外部修改',
-            `"${tab.fileName}" 已被其他程序修改，是否覆盖？`,
-            ['覆盖', '取消'],
+            `下方显示磁盘版本与当前编辑版本的差异。覆盖后，磁盘上的外部修改将被替换。`,
+            ['覆盖磁盘版本', '取消'],
+            {
+              defaultId: 1,
+              cancelId: 1,
+              diff: diskVersion ? buildConflictDiff(diskVersion.content, content) : undefined,
+            },
           );
           if (choice !== 0) return false;
           let forceResult;
@@ -136,10 +131,13 @@ export function useFile(
         !activeTab.isDirty &&
         activeTab.sourceContent === ''
       ) {
-        editorStateCache.delete(activeTab.id);
+        editorStateCache.dispose(activeTab.id);
         suppressDirtyRef.current = true;
         if (!s.setMarkdown(result.content)) {
           suppressDirtyRef.current = false;
+        }
+        if (s.viewMode === 'source') {
+          sourceEditorHandle.current?.setValue(result.content);
         }
         updateTab(activeTab.id, {
           filePath: result.path,
@@ -189,7 +187,7 @@ export function useFile(
   );
 
   const save = useCallback(async () => {
-    await saveTab(stateRef.current.activeTabId);
+    await saveTab(useStore.getState().activeTabId);
   }, [saveTab]);
 
   const saveAs = useCallback(async () => {
@@ -197,19 +195,19 @@ export function useFile(
       await confirmDialog('图片正在保存', '请等待图片插入完成后再另存文档。', ['确定']);
       return;
     }
-    const s = stateRef.current;
-    const content = getTabMarkdown(s.activeTabId);
+    const currentState = useStore.getState();
+    const content = getTabMarkdown(currentState.activeTabId);
     let result;
     try {
-      const activeTab = s.tabs.find((tab) => tab.id === s.activeTabId);
+      const activeTab = currentState.tabs.find((tab) => tab.id === currentState.activeTabId);
       result = await window.inkmark.saveFileAs(content, activeTab?.filePath);
     } catch {
       await confirmDialog('保存失败', '文件保存失败，请重试。', ['确定']);
       return;
     }
     if (result) {
-      missingNotifiedTabIdsRef.current.delete(s.activeTabId);
-      updateTab(s.activeTabId, {
+      missingNotifiedTabIdsRef.current.delete(currentState.activeTabId);
+      updateTab(currentState.activeTabId, {
         filePath: result.path,
         fileName: result.path.split(/[/\\]/).pop()!,
         isDirty: false,
@@ -220,13 +218,13 @@ export function useFile(
 
   const closeTab = useCallback(
     async (tabId?: string): Promise<boolean> => {
-      const s = stateRef.current;
-      const id = tabId ?? s.activeTabId;
-      if (id === s.activeTabId && isImageUploadInProgress()) {
+      const currentState = useStore.getState();
+      const id = tabId ?? currentState.activeTabId;
+      if (id === currentState.activeTabId && isImageUploadInProgress()) {
         await confirmDialog('图片正在保存', '请等待图片插入完成后再关闭文档。', ['确定']);
         return false;
       }
-      const tab = s.tabs.find((t) => t.id === id);
+      const tab = currentState.tabs.find((t) => t.id === id);
       if (!tab) return false;
 
       if (tab.isDirty) {
@@ -242,9 +240,9 @@ export function useFile(
         }
       }
 
-      editorStateCache.delete(id);
+      editorStateCache.dispose(id);
 
-      if (s.tabs.length <= 1) {
+      if (useStore.getState().tabs.length <= 1) {
         await window.inkmark.closeWindow();
         return true;
       }
@@ -260,8 +258,7 @@ export function useFile(
       await confirmDialog('图片正在保存', '请等待图片插入完成后再关闭窗口。', ['确定']);
       return false;
     }
-    const s = stateRef.current;
-    const dirtyTabs = s.tabs.filter((t) => t.isDirty);
+    const dirtyTabs = useStore.getState().tabs.filter((t) => t.isDirty);
     for (const tab of dirtyTabs) {
       const choice = await confirmDialog('未保存的更改', `是否保存"${tab.fileName}"的更改？`, [
         '保存',
@@ -300,7 +297,7 @@ export function useFile(
       if (!result) return false;
       const current = stateRef.current;
       if (!current.tabs.some((currentTab) => currentTab.id === tabId)) return false;
-      editorStateCache.delete(tabId);
+      editorStateCache.dispose(tabId);
       suppressDirtyRef.current = true;
       if (tabId === current.activeTabId) {
         if (!current.setMarkdown(result.content)) {
@@ -376,10 +373,20 @@ export function useFile(
             if (!currentTab?.filePath || res.mtime === currentTab.fileMtime) continue;
 
             if (currentTab.isDirty) {
+              const diskVersion = await window.inkmark.openFilePath(currentTab.filePath);
+              if (!diskVersion) {
+                await notifyMissingFile(currentTab.id, currentTab.fileName);
+                continue;
+              }
               const choice = await confirmDialog(
                 '文件已被外部修改',
-                `"${currentTab.fileName}" 已被其他程序修改，是否放弃当前未保存的改动并重载？`,
-                ['重载', '保留我的改动'],
+                `下方显示磁盘版本与当前编辑版本的差异。请选择使用哪个版本。`,
+                ['使用磁盘版本', '保留并在下次保存时覆盖', '取消'],
+                {
+                  defaultId: 2,
+                  cancelId: 2,
+                  diff: buildConflictDiff(diskVersion.content, getTabMarkdown(currentTab.id)),
+                },
               );
               if (choice === 0) {
                 const reloaded = await reloadTab(currentTab.id);
@@ -387,8 +394,8 @@ export function useFile(
                   const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
                   if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
                 }
-              } else {
-                updateTab(currentTab.id, { fileMtime: res.mtime });
+              } else if (choice === 1) {
+                updateTab(currentTab.id, { fileMtime: diskVersion.mtime });
               }
             } else {
               const reloaded = await reloadTab(currentTab.id);
@@ -403,7 +410,7 @@ export function useFile(
         checkingRef.current = false;
       }
     },
-    [notifyMissingFile, reloadTab, updateTab],
+    [getTabMarkdown, notifyMissingFile, reloadTab, updateTab],
   );
 
   useEffect(() => {

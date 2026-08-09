@@ -1,3 +1,5 @@
+import type { EditorState } from '@codemirror/state';
+
 export interface SourceSelection {
   from: number;
   to: number;
@@ -11,6 +13,8 @@ export interface SourceSelection {
 export interface SourceEditorHandle {
   /// Current full document text.
   getValue: () => string;
+  getEditorState: () => EditorState;
+  setEditorState: (state: EditorState) => void;
   /// Replace the whole document.  Used when switching tabs / reloading from
   /// disk.  Does NOT fire the user-edit callback path - callers set the store
   /// themselves.
@@ -27,6 +31,7 @@ export interface SourceEditorHandle {
   /// Replace [from, to) with `text` WITHOUT firing the normal change callback.
   /// Used by find/replace which manages its own dirty/refresh signalling.
   replaceRangeQuiet: (from: number, to: number, text: string) => void;
+  notifyChange: () => void;
   /// Undo / redo (history is managed by CodeMirror).
   undo: () => void;
   redo: () => void;

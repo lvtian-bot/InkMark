@@ -16,6 +16,9 @@
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
+.confirm-dialog-wide {
+  width: min(760px, calc(100vw - 48px));
+}
 .confirm-title {
   font-size: 14px;
   font-weight: 600;
@@ -27,6 +30,46 @@
   line-height: 1.6;
   color: var(--text-secondary);
   overflow-wrap: anywhere;
+}
+.confirm-diff {
+  margin-top: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.confirm-diff-legend {
+  display: flex;
+  gap: 16px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+.confirm-diff-content {
+  max-height: min(52vh, 480px);
+  margin: 0;
+  padding: 10px 0;
+  overflow: auto;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.confirm-diff-content span {
+  display: block;
+  padding: 0 10px;
+}
+.confirm-diff-added {
+  color: #1f7a3f;
+  background: rgba(46, 160, 67, 0.12);
+}
+.confirm-diff-removed {
+  color: #b42318;
+  background: rgba(248, 81, 73, 0.12);
 }
 .confirm-actions {
   margin-top: 20px;

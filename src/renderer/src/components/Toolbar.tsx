@@ -1,4 +1,16 @@
-import { Bold, CircleCheck, Code, Code2, Italic, Link2, List, Redo2, Strikethrough, Table, Undo2 } from 'lucide-react';
+import {
+  Bold,
+  CircleCheck,
+  Code,
+  Code2,
+  Italic,
+  Link2,
+  List,
+  Redo2,
+  Strikethrough,
+  Table,
+  Undo2,
+} from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle, type SourceSelection } from '../source-editor-ref';
@@ -60,7 +72,10 @@ function toggleLinePrefix(prefix: string): SourceEdit | null {
     const newLine = line.slice(prefix.length);
     return {
       text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-      selection: { from: Math.max(lineStart, from - prefix.length), to: Math.max(lineStart, from - prefix.length) },
+      selection: {
+        from: Math.max(lineStart, from - prefix.length),
+        to: Math.max(lineStart, from - prefix.length),
+      },
     };
   }
   return {

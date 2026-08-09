@@ -110,7 +110,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             <label className="settings-field">
               <span className="settings-field-copy">
                 <span className="settings-field-label">主题</span>
-                <span className="settings-field-hint">控制整体明暗与正文排版风格，与主题菜单一致。</span>
+                <span className="settings-field-hint">
+                  控制整体明暗与正文排版风格，与主题菜单一致。
+                </span>
               </span>
               <select
                 ref={firstControlRef}

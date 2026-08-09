@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
+import { sourceEditorHandle } from '../source-editor-ref';
 import '../styles/outline.css';
 
 export function Outline() {
   const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
+  const viewMode = useStore((s) => s.viewMode);
   const [activeId, setActiveId] = useState<string | null>(null);
   const tickingRef = useRef(false);
 
@@ -50,7 +52,11 @@ export function Outline() {
   }, [outline]);
 
   const handleClick = (pos: number): void => {
-    editorHandle.current?.scrollToPos(pos);
+    if (viewMode === 'source') {
+      sourceEditorHandle.current?.setSelection(pos, pos);
+    } else {
+      editorHandle.current?.scrollToPos(pos);
+    }
   };
 
   if (outline.length === 0) {

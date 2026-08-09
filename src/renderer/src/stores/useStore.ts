@@ -91,11 +91,7 @@ function createTab(
   return {
     id: nextTabId(),
     filePath,
-    fileName: filePath
-      ? filePath.split(/[/\\]/).pop()!
-      : isStartPage
-        ? '欢迎'
-        : '新建文档',
+    fileName: filePath ? filePath.split(/[/\\]/).pop()! : isStartPage ? '欢迎' : '新建文档',
     isDirty: false,
     isStartPage,
     outline: [],
