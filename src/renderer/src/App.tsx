@@ -13,6 +13,7 @@ import { AboutDialog } from './components/AboutDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { FindReplaceBar } from './components/FindReplaceBar';
 import { useTheme } from './hooks/useTheme';
+import { useEditorFont } from './hooks/useEditorFont';
 import { useFile } from './hooks/useFile';
 import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
@@ -27,6 +28,7 @@ import { isImageUploadInProgress } from './image-upload';
 
 function AppContent() {
   const { themeId, setThemeId } = useTheme();
+  useEditorFont();
   const { updateOutline, updateSourceOutline } = useOutline();
   const { updateWordCount, updateSourceWordCount } = useWordCount();
 

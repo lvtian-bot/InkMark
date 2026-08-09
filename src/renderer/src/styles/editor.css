@@ -30,6 +30,8 @@
 .editor-container .ProseMirror {
   outline: none;
   caret-color: var(--accent);
+  font-family: var(--editor-font-family);
+  font-size: var(--editor-font-size);
 }
 /* 编辑器功能性样式：原由 nord 样式表提供，视觉层不再加载后由此接管 */
 .editor-container .ProseMirror-selectednode {

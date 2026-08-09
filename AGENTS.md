@@ -1,5 +1,9 @@
 # InkMark 项目规范
 
+## 项目定位
+
+InkMark 是一个面向本地 `.md` 文件的所见即所得 Markdown 桌面编辑器。产品取舍、能力边界和长期方向以 [`docs/product-positioning.md`](docs/product-positioning.md) 为准；新增产品功能、文件树或导出能力前必须先读该文档。
+
 ## 工作纪律
 
 ### 核心铁律
@@ -8,61 +12,47 @@
 
 ### 工作规范
 
-- 项目待办记录在 `docs/TODO.md`，开始开发前先读它。每完成一项就将对应条目勾选为 [x]，不要删除；新增需求时追加到末尾，保持文件与实际进度一致。
-- 并行任务中，边界明确且可独立验收的实现、文档整理和机械验证默认交给 `luna_worker`；代码审查、架构设计、复杂状态与高风险判断由默认代理或主代理负责。Luna 缺少上下文时提供自包含任务说明，不因上下文继承方式受限而退回默认代理；主代理负责最终审查、整合与验收。
+- 开始开发前先读 `docs/TODO.md`。新增事项按该文件的分类和记录规则追加；完成已有事项只更新勾选状态与完成日期，不删除、不重复记录。
+- 并行任务中，边界明确且可独立验收的实现、文档整理和机械验证默认交给 `luna_worker`；代码审查、架构设计、复杂状态与高风险判断由默认代理或主代理负责。主代理负责最终审查、整合与验收。
+- 工作区经常存在并行改动。修改前先检查 `git status` 和目标文件差异，只处理本任务范围，保留其他代理或用户的未提交改动。
+- 依赖管理统一使用 npm。完整质量门禁运行 `npm run check`；具体脚本与当前依赖版本以 `package.json` 为唯一来源。
 
 ### 沟通规范
 
-用户提出的需求分两类，区别对待：
+- 用户负责产品目标、使用场景、体验判断和重要取舍；Agent 负责技术可行性判断与全部工程实现。会显著影响产品体验、支持平台或长期维护的技术路线，由 Agent 讲清影响并提出建议后交用户确认；不产生产品差异的实现细节由 Agent 自主决定。
+- 用户提出的技术方案是讨论输入，不自动视为执行指令。需要用户确认时，将技术问题转换为可感知的产品效果、使用代价和取舍选项。
+- 当需求无法可靠实现，或成本、风险、维护负担明显高于收益时，Agent 必须说明实际机制和用户可见后果。
 
-- **产品功能**（想要什么效果、什么体验）是沟通重点——主动确认边界、场景与优先级，确认清楚再动手。
-- **技术方案**（顺带提的实现思路、架构选择）只供探讨，不当作执行指令；除非用户明确要求按某个方案做，否则按自己的专业判断选最优解，并在落地前简要说明理由。
-
-与维护者讨论问题（bug、风险、审查意见）时，先用场景说明影响，不要堆代码：
+与用户讨论问题（bug、风险、审查意见）时，先用场景说明影响，不要堆代码：
 
 - 先讲清楚三件事：用户做什么操作会触发、触发后的实际后果是什么、这个场景是日常普遍的还是极端少见的。
 - 描述问题时避免罗列函数名、变量名和内部实现概念；用界面和用户可见的行为来表述（例如"标题栏显示文件名，但编辑区是空白的"）。
 - 场景和影响讲清楚之后，再给出具体的代码位置和修复方案。
 
-### 产品边界
-
-- 只支持 Markdown 标准语法。下划线、文字颜色、高亮等没有 Markdown 语法的格式不硬加，不往文档里插 HTML 标签。
-
-InkMark 是一个所见即所得的 Markdown 桌面编辑器，基于 Electron 43、React 18 与 Milkdown 7，使用 electron-vite 构建。
-
 ## 项目结构与模块组织
 
-仓库采用 electron-vite 标准的三进程布局：
+仓库采用 electron-vite 的三进程布局，并有跨进程共享层：
 
-- `src/main/index.ts` — Electron 主进程（窗口生命周期、文件关联、窗口状态持久化）。
-- `src/preload/index.ts` — 预加载脚本，向渲染进程暴露安全的 IPC 桥接。
-- `src/renderer/` — 由 Vite 提供的 React 界面。
-  - `components/` — `Editor`、`Outline`、`TitleBar`（PascalCase 命名）。
-  - `hooks/` — `useFile`、`useOutline`、`useTheme`（统一 `use` 前缀）。
-  - `stores/useStore.ts` — 全局状态（Zustand）。
-  - `styles/` — 就近放置的纯 CSS（`global.css`、`editor.css`、`outline.css`）。
-  - `types/index.ts` — 共享的 TypeScript 类型定义。
-- `build/` — 打包资源（应用/文件图标）。`out/` 为 Vite 构建产物，`dist/` 为打包后的应用。
+- `src/main/`：Electron 主进程，负责窗口生命周期、本地文件读写、文件监听、文件关联与原生能力。
+- `src/preload/`：安全 IPC 桥接，只暴露渲染进程确实需要的窄接口。
+- `src/renderer/`：React 界面；所见即所得模式使用 Milkdown，源码模式使用 CodeMirror 6。
+- `src/shared/`：主进程、预加载与渲染进程共用的纯类型和无环境依赖逻辑。
+- `build/`：打包资源；`out/` 和 `dist/` 均为生成产物，不手工编辑。
 
-## 待办与进度
+### 架构约束
 
-项目待办记录在 `docs/TODO.md`。开始开发前先读它，了解当前进度和接下来要做的功能。
+- 保持 `contextIsolation: true`、`nodeIntegration: false` 和 renderer sandbox；渲染进程不得绕过 preload 直接使用 Node 能力。新增 IPC 时同步维护参数校验、可信发送方检查和 preload 类型。
+- 文档内容以标签页的 `sourceContent` 为单一真源；Milkdown、CodeMirror、字数、大纲和保存状态均从它同步或派生，不新增顶层镜像状态。
+- 编辑器状态与撤销历史按标签页和模式隔离；关闭、复用或切换标签时同步处理对应缓存，避免跨文档恢复陈旧状态。
+- 外部文件变化必须区分干净文档和未保存文档：干净文档可刷新，冲突文档必须让使用者明确选择，不能静默覆盖。
+- 修改主题、Markdown 正文样式或窗口标题栏颜色前，先读 [`docs/theme-architecture.md`](docs/theme-architecture.md)，遵守外壳主题与内容主题分层以及原生标题栏同步点。
+- 修改解析、序列化、剪贴板、图片、任务列表、源码模式或可能替换编辑器内容的流程后，按 [`docs/markdown-compatibility.md`](docs/markdown-compatibility.md) 对临时副本执行完整 Markdown 回归。
 
-## 构建、测试与开发命令
+## 开发与质量门禁
 
-```bash
-npm install        # 安装依赖，使用 npm，不要用 pnpm
-npm run dev        # 启动 electron-vite 开发模式，支持热重载
-npm run build      # 生产构建，输出到 out/
-npm run preview    # 预览生产构建
-npm run build:win  # 构建并打包 Windows NSIS 安装包到 dist/
-npm run lint       # ESLint 代码检查
-npm run lint:fix   # ESLint 自动修复
-npm run format     # Prettier 格式化全部文件
-npm run format:check  # Prettier 检查格式（不写入）
-```
-
-目前尚未配置测试套件，没有测试运行器。
+- 依赖和脚本以 `package.json` 为准，统一使用 npm。代码任务完成前运行 `npm run check`。
+- 只改文档时至少对目标文件运行 Prettier 检查，并运行 `git diff --check`。
+- UI 行为无法由现有单元测试覆盖时，除自动门禁外还要说明并执行必要的 Electron 手动验证；不能用“构建通过”代替交互验收。
 
 ## 代码风格与命名约定
 
@@ -74,10 +64,12 @@ npm run format:check  # Prettier 检查格式（不写入）
 
 ## 测试规范
 
-当前没有测试框架。新增测试时优先选用 Vitest（与 Vite 工具链匹配），测试文件以 `*.test.ts(x)` 形式与源码就近放置，并在声明覆盖率前先添加 `npm test` 脚本。
+- 项目使用 Vitest，测试文件以 `*.test.ts(x)` 与源码就近放置。
+- 修复可稳定复现的逻辑缺陷时，在真实调用接缝补回归测试；没有合适接缝时说明原因并采用针对性的可重复验证。
+- 涉及文档内容安全、标签/模式隔离、外部冲突决策、源码大纲或序列化的改动，必须运行相关定向测试和 `npm run check`。
 
 ## 提交与 Pull Request 规范
 
 - 遵循现有的 Conventional Commits 风格：`feat:`、`fix:`、`chore:`、`docs:`（如 `feat: resizable/toggleable outline`）。
 - 标题使用祈使句，长度不超过 72 个字符。
-- PR 提交到 `main` 分支，包含简要说明以及界面/窗口行为的必要手动验证步骤。
+- PR 目标分支为 `master`，包含简要说明以及界面/窗口行为的必要手动验证步骤。

@@ -7,7 +7,13 @@ import {
   type ThemeId,
   type ViewMode,
 } from '../types';
-import { loadSettings, saveSettings, type AppSettings, type ToolbarWidth } from '../settings';
+import {
+  loadSettings,
+  saveSettings,
+  selectSettings,
+  type AppSettings,
+  type ToolbarWidth,
+} from '../settings';
 
 export interface Tab {
   id: string;
@@ -63,16 +69,6 @@ const initialSettings = loadSettings();
 export const selectAppTheme = (s: AppSettings): AppTheme => parseThemeId(s.themeId).theme;
 export const selectContentTheme = (s: AppSettings): ContentTheme =>
   parseThemeId(s.themeId).contentTheme;
-
-function selectSettings(state: AppSettings): AppSettings {
-  return {
-    themeId: state.themeId,
-    outlineWidth: state.outlineWidth,
-    outlineVisible: state.outlineVisible,
-    toolbarWidth: state.toolbarWidth,
-    startPageOnLaunch: state.startPageOnLaunch,
-  };
-}
 
 let tabIdCounter = 0;
 function nextTabId(): string {

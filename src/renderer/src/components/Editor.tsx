@@ -6,6 +6,7 @@ import {
   defaultValueCtx,
   editorViewCtx,
   serializerCtx,
+  remarkStringifyOptionsCtx,
 } from '@milkdown/kit/core';
 import {
   commonmark,
@@ -48,6 +49,7 @@ import '../styles/prism.css';
 import '../styles/themes/github.css';
 import githubLightUrl from 'github-markdown-css/github-markdown-light.css?url';
 import githubDarkUrl from 'github-markdown-css/github-markdown-dark.css?url';
+import { markdownStringifyOverrides } from '../markdown-stringify-options';
 
 const GITHUB_LINK_ID = 'inkmark-github-theme';
 
@@ -118,6 +120,11 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .config((ctx) => {
         ctx.set(rootCtx, root);
         ctx.set(defaultValueCtx, '');
+        // 与默认的 handlers/encode 合并，不能覆盖，否则会丢掉 Milkdown 内置的序列化处理器。
+        ctx.update(remarkStringifyOptionsCtx, (options) => ({
+          ...options,
+          ...markdownStringifyOverrides,
+        }));
       })
       .config((ctx) => {
         const manager = ctx.get(listenerCtx);

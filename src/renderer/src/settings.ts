@@ -1,14 +1,26 @@
 import { isThemeId, type ThemeId } from './types';
+import {
+  isFontPresetId,
+  isFontSizePresetId,
+  type FontPresetId,
+  type FontSizePresetId,
+} from './font-presets';
 
 // AppTheme 已迁移至 ./types，这里 re-export 以保持现有 import 路径稳定。
 export type { AppTheme } from './types';
 export type ToolbarWidth = 'wide' | 'medium' | 'narrow';
+
+export function isToolbarWidth(value: unknown): value is ToolbarWidth {
+  return value === 'wide' || value === 'medium' || value === 'narrow';
+}
 
 export interface AppSettings {
   themeId: ThemeId;
   outlineWidth: number;
   outlineVisible: boolean;
   toolbarWidth: ToolbarWidth;
+  fontPreset: FontPresetId;
+  fontSizePreset: FontSizePresetId;
   startPageOnLaunch: boolean;
 }
 
@@ -20,8 +32,22 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   outlineWidth: 240,
   outlineVisible: true,
   toolbarWidth: 'wide',
+  fontPreset: 'system',
+  fontSizePreset: 'medium',
   startPageOnLaunch: true,
 };
+
+export function selectSettings(settings: AppSettings): AppSettings {
+  return {
+    themeId: settings.themeId,
+    outlineWidth: settings.outlineWidth,
+    outlineVisible: settings.outlineVisible,
+    toolbarWidth: settings.toolbarWidth,
+    fontPreset: settings.fontPreset,
+    fontSizePreset: settings.fontSizePreset,
+    startPageOnLaunch: settings.startPageOnLaunch,
+  };
+}
 
 const SETTINGS_STORAGE_KEY = 'inkmark-settings';
 const LEGACY_STORAGE_KEYS = {
@@ -77,12 +103,15 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.outlineVisible === 'boolean'
         ? candidate.outlineVisible
         : DEFAULT_SETTINGS.outlineVisible,
-    toolbarWidth:
-      candidate.toolbarWidth === 'wide' ||
-      candidate.toolbarWidth === 'medium' ||
-      candidate.toolbarWidth === 'narrow'
-        ? candidate.toolbarWidth
-        : DEFAULT_SETTINGS.toolbarWidth,
+    toolbarWidth: isToolbarWidth(candidate.toolbarWidth)
+      ? candidate.toolbarWidth
+      : DEFAULT_SETTINGS.toolbarWidth,
+    fontPreset: isFontPresetId(candidate.fontPreset)
+      ? candidate.fontPreset
+      : DEFAULT_SETTINGS.fontPreset,
+    fontSizePreset: isFontSizePresetId(candidate.fontSizePreset)
+      ? candidate.fontSizePreset
+      : DEFAULT_SETTINGS.fontSizePreset,
     startPageOnLaunch:
       typeof candidate.startPageOnLaunch === 'boolean'
         ? candidate.startPageOnLaunch
