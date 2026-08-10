@@ -80,7 +80,9 @@ npm run check
 npm run build:win
 ```
 
-安装包输出到 `dist/`。当前进度与待办见 [`docs/TODO.md`](docs/TODO.md)，涉及编辑器行为的改动还应执行 [`docs/markdown-compatibility.md`](docs/markdown-compatibility.md) 中的手动回归。
+安装包输出到 `dist/`。当前进度与待办见 [`docs/TODO.md`](docs/TODO.md)。
+
+正式版本通过版本标签触发 GitHub Actions 自动打包和发布。完整步骤、本地安装包留存要求及自动发布机制见 [`docs/release.md`](docs/release.md)。Markdown 兼容性清单用于核心编辑链路的专项验证，不要求每次发布都执行完整人工回归。
 
 ## 问题反馈
 

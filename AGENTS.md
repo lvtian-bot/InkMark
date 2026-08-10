@@ -16,6 +16,8 @@ InkMark 是一个面向本地 `.md` 文件的所见即所得 Markdown 桌面编�
 - 并行任务中，边界明确且可独立验收的实现、文档整理和机械验证默认交给 `luna_worker`；代码审查、架构设计、复杂状态与高风险判断由默认代理或主代理负责。主代理负责最终审查、整合与验收。
 - 工作区经常存在并行改动。修改前先检查 `git status` 和目标文件差异，只处理本任务范围，保留其他代理或用户的未提交改动。
 - 依赖管理统一使用 npm。完整质量门禁运行 `npm run check`；具体脚本与当前依赖版本以 `package.json` 为唯一来源。
+- 准备版本发布、创建版本标签或处理 GitHub Release 时，按 [`docs/release.md`](docs/release.md) 执行。
+- 技术方案如果有行业最佳实践，尽量采用行业最佳实践。
 
 ### 沟通规范
 
@@ -46,13 +48,13 @@ InkMark 是一个面向本地 `.md` 文件的所见即所得 Markdown 桌面编�
 - 编辑器状态与撤销历史按标签页和模式隔离；关闭、复用或切换标签时同步处理对应缓存，避免跨文档恢复陈旧状态。
 - 外部文件变化必须区分干净文档和未保存文档：干净文档可刷新，冲突文档必须让使用者明确选择，不能静默覆盖。
 - 修改主题、Markdown 正文样式或窗口标题栏颜色前，先读 [`docs/theme-architecture.md`](docs/theme-architecture.md)，遵守外壳主题与内容主题分层以及原生标题栏同步点。
-- 修改解析、序列化、剪贴板、图片、任务列表、源码模式或可能替换编辑器内容的流程后，按 [`docs/markdown-compatibility.md`](docs/markdown-compatibility.md) 对临时副本执行完整 Markdown 回归。
+- 修改解析、序列化等 Markdown 核心链路时，按风险选取 [`docs/markdown-compatibility.md`](docs/markdown-compatibility.md) 中直接相关的场景验证；只有编辑器内核升级、核心链路大范围调整或兼容性缺陷专项修复才执行完整回归。
 
 ## 开发与质量门禁
 
 - 依赖和脚本以 `package.json` 为准，统一使用 npm。代码任务完成前运行 `npm run check`。
 - 只改文档时至少对目标文件运行 Prettier 检查，并运行 `git diff --check`。
-- UI 行为无法由现有单元测试覆盖时，除自动门禁外还要说明并执行必要的 Electron 手动验证；不能用“构建通过”代替交互验收。
+- 人工验证保持轻量：仅在当前环境能够可靠控制 Electron 界面，且改动确实依赖交互表现时，验证少量直接相关操作。无法可靠控制时记录未验证项，交由用户实际体验；不得为完成手测临时搭建截图识别或模拟键鼠流程。
 
 ## 代码风格与命名约定
 
@@ -72,4 +74,4 @@ InkMark 是一个面向本地 `.md` 文件的所见即所得 Markdown 桌面编�
 
 - 遵循现有的 Conventional Commits 风格：`feat:`、`fix:`、`chore:`、`docs:`（如 `feat: resizable/toggleable outline`）。
 - 标题使用祈使句，长度不超过 72 个字符。
-- PR 目标分支为 `master`，包含简要说明以及界面/窗口行为的必要手动验证步骤。
+- PR 目标分支为 `master`，包含简要说明、自动检查结果，以及已完成或留待实际体验的界面验证项。
