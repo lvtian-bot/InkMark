@@ -11,8 +11,8 @@
 5. **主动跟踪 Release workflow**：推送标签后，执行人必须通过 `gh run list` / `gh run watch` 或 GitHub 页面实时跟踪 Release 工作流执行过程，直至所有步骤全部完成。严禁推完标签不跟踪；若工作流失败，必须立即介入排查处理。
 6. 确认 GitHub Release 页面已成功生成该版本，且包含 `.exe` 安装包、`.exe.blockmap` 和 `latest.yml` 完整发布产物。
 7. 在本地保留同版本安装包，以下两种方式任选其一：
-   - 从 GitHub Release 下载已发布的 `.exe` 安装包；
-   - 运行 `npm run build:win`，保留 `dist/` 中生成的同版本安装包。
+   - **通过 GitHub CLI 直接下载（推荐）**：运行 `gh release download <tag> --dir dist`，直接将远端正式发布的安装包同步到本地 `dist/`；
+   - **本地构建**：运行 `npm run build:win`，保留本地 `dist/` 中生成的同版本安装包。
 
 完成标准：GitHub Actions Release 工作流成功执行、GitHub Release 发布成功且产物完整，并且本地能够找到同版本的 Windows 安装包。仅创建标签、仅推送远端、仅通过本地构建或工作流中途失败均不视为完成发布。
 
