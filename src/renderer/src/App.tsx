@@ -83,6 +83,7 @@ function AppContent() {
 
   const fileOps = useFile(setMarkdown, viewMode);
   const fileTree = useFileTree(activeFilePath);
+  const { closeRoot: closeFileTreeRoot } = fileTree;
   const findReplace = useFindReplace({ activeTabId, viewMode });
   const {
     close: closeFindReplace,
@@ -492,6 +493,17 @@ function AppContent() {
     });
     return () => cancelAnimationFrame(raf);
   }, [isStartPage]);
+
+  // 回到欢迎页(最后一个文档标签关闭)时清空文件树内容,让面板回到"未打开文件夹"引导态。
+  // 面板可见性仍由设置控制,这里只清空内部记录的根目录与展开状态。
+  const prevHadDocRef = useRef(!isStartPage);
+  useEffect(() => {
+    const hadDoc = prevHadDocRef.current;
+    prevHadDocRef.current = !isStartPage;
+    if (hadDoc && isStartPage) {
+      closeFileTreeRoot();
+    }
+  }, [isStartPage, closeFileTreeRoot]);
 
   const outlinePanel = useResizablePanel({
     width: outlineWidth,

@@ -1,43 +1,41 @@
 .start-page {
   flex: 1;
   overflow: auto;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 88px 32px 64px;
   background: var(--bg-primary);
   box-sizing: border-box;
 }
 
 .start-content {
   width: 100%;
-  max-width: 840px;
+  height: 100%;
+  padding: 88px 0 64px;
+  box-sizing: border-box;
 }
 
 .start-brand {
   font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1.2;
   color: var(--text-primary);
-  margin: 0 0 36px 0;
+  margin: 0 0 32px 0;
+}
+
+.start-brand-placeholder {
+  font-size: 28px;
+  line-height: 1.2;
+  margin: 0 0 32px 0;
+  visibility: hidden;
 }
 
 .start-cols {
   display: flex;
-  gap: 64px;
-}
-
-.start-col {
-  flex: 0 0 auto;
+  justify-content: space-evenly;
+  align-items: flex-start;
 }
 
 .start-col:first-child {
-  width: 200px;
-}
-
-.start-col--recent {
-  flex: 1;
-  min-width: 0;
+  width: 160px;
 }
 
 .start-col-head {

@@ -51,9 +51,9 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
   return (
     <div className="start-page">
       <div className="start-content">
-        <h1 className="start-brand">{appName}</h1>
         <div className="start-cols">
           <section className="start-col">
+            <h1 className="start-brand">{appName}</h1>
             <div className="start-col-head">
               <h2 className="start-col-title">新建</h2>
             </div>
@@ -88,6 +88,9 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
           </section>
 
           <section className="start-col start-col--recent">
+            <div className="start-brand-placeholder" aria-hidden="true">
+              InkMark
+            </div>
             <div className="start-col-head">
               <h2 className="start-col-title">最近打开</h2>
               {recent.length > 0 && (
