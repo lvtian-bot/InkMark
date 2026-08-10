@@ -13,6 +13,7 @@
 
 .settings-dialog {
   width: 640px;
+  height: 560px;
   max-width: calc(100vw - 48px);
   max-height: calc(100vh - 48px);
   overflow: hidden;
@@ -139,6 +140,13 @@
 
 .settings-group + .settings-group {
   margin-top: 4px;
+  border-top: 1px solid var(--border-color);
+}
+
+.settings-group-divider {
+  height: 1px;
+  margin: 8px 0;
+  border: 0;
   border-top: 1px solid var(--border-color);
 }
 

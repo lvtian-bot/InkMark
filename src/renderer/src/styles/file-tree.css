@@ -1,0 +1,194 @@
+.file-tree {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* 右侧时边框改为左侧,避免与编辑器之间出现双线 */
+.file-tree.side-right {
+  border-right: none;
+  border-left: 1px solid var(--border-color);
+}
+
+.file-tree-header {
+  height: var(--panel-header-height);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--panel-header-pad-x);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.file-tree-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tree-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.file-tree-action:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.file-tree-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.file-tree-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.file-tree-body::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.file-tree-list,
+.file-tree-children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 顶部留白与大纲对齐,避免首行紧贴分隔线 */
+.file-tree-list {
+  padding-top: var(--panel-list-pad-top);
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--panel-row-gap);
+  margin: 0 var(--panel-row-margin-x);
+  border-radius: var(--panel-row-radius);
+  padding: var(--panel-row-pad-y) var(--panel-row-pad-x);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text-primary);
+  transition:
+    background 0.12s,
+    color 0.12s;
+  overflow: hidden;
+}
+
+.file-tree-row:hover {
+  background: var(--panel-row-hover);
+  color: var(--text-primary);
+}
+
+.file-tree-row.active {
+  color: var(--text-primary);
+  background: var(--panel-row-active);
+}
+
+.file-tree-chevron {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 0.12s;
+}
+
+.file-tree-chevron.open {
+  transform: rotate(90deg);
+}
+
+.file-tree-icon {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.file-tree-icon--file {
+  color: var(--text-secondary);
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.file-tree-spinner {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  animation: file-tree-spin 1s linear infinite;
+}
+
+@keyframes file-tree-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.file-tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--text-tertiary);
+}
+
+.file-tree-empty-icon {
+  opacity: 0.5;
+}
+
+.file-tree-empty-text {
+  margin: 0;
+  font-size: 13px;
+  text-align: center;
+}
+
+.file-tree-empty-btn {
+  margin-top: 4px;
+  padding: 6px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.file-tree-empty-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+}

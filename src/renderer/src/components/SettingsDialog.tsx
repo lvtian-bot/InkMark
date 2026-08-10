@@ -1,11 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import {
-  OUTLINE_WIDTH_MAX,
-  OUTLINE_WIDTH_MIN,
-  isToolbarWidth,
-  selectSettings,
-  type AppSettings,
-} from '../settings';
+import { isPanelLayout, isToolbarWidth, selectSettings, type AppSettings } from '../settings';
 import {
   FONT_PRESETS,
   FONT_SIZE_PRESETS,
@@ -255,29 +249,46 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     />
                   </label>
 
-                  <label className="settings-field">
+                  <div className="settings-group-divider" role="separator" />
+
+                  <label className="settings-field settings-field-checkbox">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">大纲宽度</span>
+                      <span className="settings-field-label">显示文件树</span>
                       <span className="settings-field-hint">
-                        可设置 {OUTLINE_WIDTH_MIN}–{OUTLINE_WIDTH_MAX} 像素，也可在主界面拖动调整。
+                        打开后可浏览文件夹内的 Markdown 文档，默认从状态栏或视图菜单切换。
                       </span>
                     </span>
-                    <span className="settings-number-control">
-                      <input
-                        type="number"
-                        min={OUTLINE_WIDTH_MIN}
-                        max={OUTLINE_WIDTH_MAX}
-                        step="1"
-                        value={draft.outlineWidth}
-                        onChange={(event) => {
-                          const outlineWidth = event.target.valueAsNumber;
-                          if (!Number.isNaN(outlineWidth)) {
-                            setDraft((settings) => ({ ...settings, outlineWidth }));
-                          }
-                        }}
-                      />
-                      <span aria-hidden="true">px</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.fileTreeVisible}
+                      onChange={(event) =>
+                        setDraft((settings) => ({
+                          ...settings,
+                          fileTreeVisible: event.target.checked,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">面板布局</span>
+                      <span className="settings-field-hint">
+                        选择大纲靠左还是靠右，文件树自动放在另一侧。是否显示由上面的开关单独控制。
+                      </span>
                     </span>
+                    <select
+                      value={draft.panelLayout}
+                      onChange={(event) => {
+                        const panelLayout = event.target.value;
+                        if (isPanelLayout(panelLayout)) {
+                          setDraft((settings) => ({ ...settings, panelLayout }));
+                        }
+                      }}
+                    >
+                      <option value="outline-left">大纲左 / 文件树右</option>
+                      <option value="outline-right">大纲右 / 文件树左</option>
+                    </select>
                   </label>
                 </fieldset>
               )}

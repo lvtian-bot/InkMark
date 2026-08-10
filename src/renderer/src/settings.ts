@@ -14,6 +14,12 @@ export function isToolbarWidth(value: unknown): value is ToolbarWidth {
   return value === 'wide' || value === 'medium' || value === 'narrow';
 }
 
+export type PanelLayout = 'outline-left' | 'outline-right';
+
+export function isPanelLayout(value: unknown): value is PanelLayout {
+  return value === 'outline-left' || value === 'outline-right';
+}
+
 export interface AppSettings {
   themeId: ThemeId;
   outlineWidth: number;
@@ -22,10 +28,15 @@ export interface AppSettings {
   fontPreset: FontPresetId;
   fontSizePreset: FontSizePresetId;
   startPageOnLaunch: boolean;
+  fileTreeVisible: boolean;
+  panelLayout: PanelLayout;
+  fileTreeWidth: number;
 }
 
 export const OUTLINE_WIDTH_MIN = 150;
 export const OUTLINE_WIDTH_MAX = 500;
+export const FILE_TREE_WIDTH_MIN = 150;
+export const FILE_TREE_WIDTH_MAX = 500;
 
 export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   themeId: 'inkmark-light',
@@ -35,6 +46,9 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   fontPreset: 'system',
   fontSizePreset: 'medium',
   startPageOnLaunch: true,
+  fileTreeVisible: false,
+  panelLayout: 'outline-left',
+  fileTreeWidth: 240,
 };
 
 export function selectSettings(settings: AppSettings): AppSettings {
@@ -46,6 +60,9 @@ export function selectSettings(settings: AppSettings): AppSettings {
     fontPreset: settings.fontPreset,
     fontSizePreset: settings.fontSizePreset,
     startPageOnLaunch: settings.startPageOnLaunch,
+    fileTreeVisible: settings.fileTreeVisible,
+    panelLayout: settings.panelLayout,
+    fileTreeWidth: settings.fileTreeWidth,
   };
 }
 
@@ -77,6 +94,14 @@ function normalizeOutlineWidth(value: unknown): number {
   }
 
   return Math.round(Math.min(OUTLINE_WIDTH_MAX, Math.max(OUTLINE_WIDTH_MIN, value)));
+}
+
+function normalizeFileTreeWidth(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_SETTINGS.fileTreeWidth;
+  }
+
+  return Math.round(Math.min(FILE_TREE_WIDTH_MAX, Math.max(FILE_TREE_WIDTH_MIN, value)));
 }
 
 // 优先使用新版的 themeId；若配置来自旧版（theme + contentTheme 拆分存储）则合成 themeId，
@@ -116,6 +141,14 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.startPageOnLaunch === 'boolean'
         ? candidate.startPageOnLaunch
         : DEFAULT_SETTINGS.startPageOnLaunch,
+    fileTreeVisible:
+      typeof candidate.fileTreeVisible === 'boolean'
+        ? candidate.fileTreeVisible
+        : DEFAULT_SETTINGS.fileTreeVisible,
+    panelLayout: isPanelLayout(candidate.panelLayout)
+      ? candidate.panelLayout
+      : DEFAULT_SETTINGS.panelLayout,
+    fileTreeWidth: normalizeFileTreeWidth(candidate.fileTreeWidth),
   };
 }
 

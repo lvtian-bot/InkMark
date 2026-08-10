@@ -5,6 +5,7 @@ import { Editor } from './components/Editor';
 import { SourceEditor } from './components/SourceEditor';
 import { StatusBar } from './components/StatusBar';
 import { Outline } from './components/Outline';
+import { FileTree } from './components/FileTree';
 import { TabBar } from './components/TabBar';
 import { Toolbar } from './components/Toolbar';
 import { StartPage } from './components/StartPage';
@@ -15,6 +16,8 @@ import { FindReplaceBar } from './components/FindReplaceBar';
 import { useTheme } from './hooks/useTheme';
 import { useEditorFont } from './hooks/useEditorFont';
 import { useFile } from './hooks/useFile';
+import { useFileTree } from './hooks/useFileTree';
+import { useResizablePanel } from './hooks/useResizablePanel';
 import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
 import { useWordCount } from './hooks/useWordCount';
@@ -42,6 +45,18 @@ function AppContent() {
   );
   const outlineWidth = useStore((s) => s.outlineWidth);
   const outlineVisible = useStore((s) => s.outlineVisible);
+  const fileTreeVisible = useStore((s) => s.fileTreeVisible);
+  const panelLayout = useStore((s) => s.panelLayout);
+  const fileTreeWidth = useStore((s) => s.fileTreeWidth);
+  const setFileTreeVisible = useStore((s) => s.setFileTreeVisible);
+  const setFileTreeWidth = useStore((s) => s.setFileTreeWidth);
+  // 单一布局字段派生两侧位置:outline-left → 大纲左/文件树右;outline-right 反之。
+  // 两侧天然互斥,不会出现同侧并列。
+  const outlineSide = panelLayout === 'outline-left' ? 'left' : 'right';
+  const fileTreeSide = panelLayout === 'outline-left' ? 'right' : 'left';
+  const activeFilePath = useStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.filePath ?? null,
+  );
   const viewMode = useStore((s) => s.viewMode);
   const setOutlineWidth = useStore((s) => s.setOutlineWidth);
   const toggleViewMode = useStore((s) => s.toggleViewMode);
@@ -66,6 +81,7 @@ function AppContent() {
   }, []);
 
   const fileOps = useFile(setMarkdown, viewMode);
+  const fileTree = useFileTree();
   const findReplace = useFindReplace({ activeTabId, viewMode });
   const {
     close: closeFindReplace,
@@ -263,6 +279,12 @@ function AppContent() {
   }, [outlineVisible]);
 
   useEffect(() => {
+    if (window.inkmark.syncFileTreeVisible) {
+      window.inkmark.syncFileTreeVisible(fileTreeVisible);
+    }
+  }, [fileTreeVisible]);
+
+  useEffect(() => {
     window.inkmark.onMenuNew(() => {
       void fileOps.newFile();
     });
@@ -294,6 +316,19 @@ function AppContent() {
         s.setOutlineVisible(!s.outlineVisible);
       });
     }
+    if (window.inkmark.onMenuOpenFolder) {
+      window.inkmark.onMenuOpenFolder(() => {
+        void fileTree.openFolderDialog().then((ok) => {
+          if (ok) setFileTreeVisible(true);
+        });
+      });
+    }
+    if (window.inkmark.onMenuToggleFileTree) {
+      window.inkmark.onMenuToggleFileTree(() => {
+        const s = useStore.getState();
+        s.setFileTreeVisible(!s.fileTreeVisible);
+      });
+    }
     if (window.inkmark.onMenuCloseTab) {
       window.inkmark.onMenuCloseTab(() => {
         void fileOps.closeTab();
@@ -310,7 +345,7 @@ function AppContent() {
     window.inkmark.onOpenFilePath((path: string) => {
       void fileOps.openFilePath(path);
     });
-  }, [closeFindReplace, fileOps, setThemeId, toggleViewMode]);
+  }, [closeFindReplace, fileOps, fileTree, setFileTreeVisible, setThemeId, toggleViewMode]);
 
   useEffect(() => {
     const handleFindShortcut = (event: KeyboardEvent): void => {
@@ -430,33 +465,17 @@ function AppContent() {
     return () => cancelAnimationFrame(raf);
   }, [isStartPage]);
 
-  const [isResizing, setIsResizing] = useState(false);
-
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isResizing) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.min(500, Math.max(150, e.clientX));
-      setOutlineWidth(newWidth);
-    };
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, [isResizing, setOutlineWidth]);
+  const outlinePanel = useResizablePanel({
+    width: outlineWidth,
+    onWidthChange: setOutlineWidth,
+    side: 'left',
+  });
+  const fileTreePanel = useResizablePanel({
+    width: fileTreeWidth,
+    onWidthChange: setFileTreeWidth,
+    side: fileTreeSide,
+  });
+  const isResizing = outlinePanel.isResizing || fileTreePanel.isResizing;
 
   return (
     <div className={`app ${isResizing ? 'resizing' : ''}`}>
@@ -468,12 +487,25 @@ function AppContent() {
         onNewTab={() => fileOps.newFile()}
       />
       <div className="app-body">
-        {outlineVisible && (
+        {fileTreeVisible && fileTreeSide === 'left' && (
+          <>
+            <div style={{ width: fileTreeWidth, minWidth: fileTreeWidth }}>
+              <FileTree
+                state={fileTree}
+                side="left"
+                activeFilePath={activeFilePath}
+                onOpenFile={(path) => void fileOps.openFilePath(path)}
+              />
+            </div>
+            <div className="resize-handle" onMouseDown={fileTreePanel.handleResizeStart} />
+          </>
+        )}
+        {outlineVisible && outlineSide === 'left' && (
           <>
             <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
               <Outline />
             </div>
-            <div className="resize-handle" onMouseDown={handleResizeStart} />
+            <div className="resize-handle" onMouseDown={outlinePanel.handleResizeStart} />
           </>
         )}
         <main className="editor-main">
@@ -481,6 +513,15 @@ function AppContent() {
             <StartPage
               onCreateBlank={() => setStartPage(false)}
               onOpenFile={() => void fileOps.openFile()}
+              onOpenFolder={(path) => {
+                const openResult =
+                  path != null
+                    ? fileTree.openRoot(path).then(() => true)
+                    : fileTree.openFolderDialog();
+                void openResult.then((ok) => {
+                  if (ok) setFileTreeVisible(true);
+                });
+              }}
               onOpenPath={(path) => void fileOps.openFilePath(path)}
             />
           )}
@@ -498,6 +539,27 @@ function AppContent() {
           </div>
           <StatusBar onOpenSettings={() => setIsSettingsOpen(true)} />
         </main>
+        {outlineVisible && outlineSide === 'right' && (
+          <>
+            <div className="resize-handle" onMouseDown={outlinePanel.handleResizeStart} />
+            <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
+              <Outline />
+            </div>
+          </>
+        )}
+        {fileTreeVisible && fileTreeSide === 'right' && (
+          <>
+            <div className="resize-handle" onMouseDown={fileTreePanel.handleResizeStart} />
+            <div style={{ width: fileTreeWidth, minWidth: fileTreeWidth }}>
+              <FileTree
+                state={fileTree}
+                side="right"
+                activeFilePath={activeFilePath}
+                onOpenFile={(path) => void fileOps.openFilePath(path)}
+              />
+            </div>
+          </>
+        )}
       </div>
       <ConfirmDialog />
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}

@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
+import type { RecentItem, RecentKind } from '../types';
 import '../styles/start-page.css';
 
 interface StartPageProps {
   onCreateBlank: () => void;
   onOpenFile: () => void;
   onOpenPath: (path: string) => void;
+  /** 打开文件夹到文件树。不传路径时弹出选择框；传路径时直接打开该文件夹。 */
+  onOpenFolder?: (path?: string) => void;
 }
 
-interface RecentItem {
+interface RecentRow {
   path: string;
+  kind: RecentKind;
   name: string;
   dir: string;
 }
@@ -53,6 +57,21 @@ const iconOpen = (
   </svg>
 );
 
+const iconFolder = (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.8"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  </svg>
+);
+
 const iconFile = (
   <svg
     width="18"
@@ -85,13 +104,13 @@ const iconClose = (
   </svg>
 );
 
-export function StartPage({ onCreateBlank, onOpenFile, onOpenPath }: StartPageProps) {
-  const [recent, setRecent] = useState<RecentItem[]>([]);
+export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder }: StartPageProps) {
+  const [recent, setRecent] = useState<RecentRow[]>([]);
   const [appName, setAppName] = useState('InkMark');
 
   useEffect(() => {
-    void window.inkmark.getRecentFiles().then((paths: string[]) => {
-      setRecent(paths.map((path) => ({ path, ...splitPath(path) })));
+    void window.inkmark.getRecentFiles().then((items: RecentItem[]) => {
+      setRecent(items.map((item) => ({ ...item, ...splitPath(item.path) })));
     });
     void window.inkmark.getAppInfo().then((info) => {
       if (info.name) setAppName(info.name);
@@ -134,6 +153,16 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath }: StartPagePr
                   <span className="start-row-name">打开文件…</span>
                 </span>
               </li>
+              {onOpenFolder && (
+                <li className="start-row" onClick={() => onOpenFolder()}>
+                  <span className="start-row-icon" aria-hidden="true">
+                    {iconFolder}
+                  </span>
+                  <span className="start-row-text">
+                    <span className="start-row-name">打开文件夹…</span>
+                  </span>
+                </li>
+              )}
             </ul>
           </section>
 
@@ -148,36 +177,39 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath }: StartPagePr
             </div>
             {recent.length > 0 ? (
               <ul className="start-list">
-                {recent.map((item) => (
-                  <li
-                    key={item.path}
-                    className="start-row start-row--recent"
-                    onClick={() => onOpenPath(item.path)}
-                  >
-                    <span className="start-row-icon" aria-hidden="true">
-                      {iconFile}
-                    </span>
-                    <span className="start-row-text start-row-text--inline">
-                      <span className="start-row-name">{item.name}</span>
-                      <span className="start-row-dir">{item.dir || '—'}</span>
-                    </span>
-                    <button
-                      type="button"
-                      className="start-row-remove"
-                      title="从最近列表中移除"
-                      aria-label="从最近列表中移除"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRemove(item.path);
-                      }}
+                {recent.map((item) => {
+                  const isFolder = item.kind === 'folder';
+                  return (
+                    <li
+                      key={item.path}
+                      className="start-row start-row--recent"
+                      onClick={() => (isFolder ? onOpenFolder?.(item.path) : onOpenPath(item.path))}
                     >
-                      {iconClose}
-                    </button>
-                  </li>
-                ))}
+                      <span className="start-row-icon" aria-hidden="true">
+                        {isFolder ? iconFolder : iconFile}
+                      </span>
+                      <span className="start-row-text start-row-text--inline">
+                        <span className="start-row-name">{item.name}</span>
+                        <span className="start-row-dir">{item.dir || '—'}</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="start-row-remove"
+                        title="从最近列表中移除"
+                        aria-label="从最近列表中移除"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleRemove(item.path);
+                        }}
+                      >
+                        {iconClose}
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p className="start-empty-hint">暂无最近打开的文件</p>
+              <p className="start-empty-hint">暂无最近打开的文件或文件夹</p>
             )}
           </section>
         </div>

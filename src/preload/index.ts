@@ -4,6 +4,8 @@ import type {
   ResolveImageSourceRequest,
   StoreImageRequest,
 } from '../shared/image-storage';
+import type { WorkspaceEntry } from '../shared/workspace-tree';
+import type { RecentItem } from '../shared/recent-items';
 
 const api = {
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
@@ -12,7 +14,7 @@ const api = {
   saveFileAs: (content: string, sourcePath?: string | null) =>
     ipcRenderer.invoke('dialog:saveFileAs', { content, sourcePath }),
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
-  getRecentFiles: () => ipcRenderer.invoke('recent:get'),
+  getRecentFiles: () => ipcRenderer.invoke('recent:get') as Promise<RecentItem[]>,
   removeRecentFile: (path: string) => ipcRenderer.invoke('recent:remove', path),
   clearRecentFiles: () => ipcRenderer.invoke('recent:clear'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
@@ -65,6 +67,14 @@ const api = {
     ipcRenderer.removeAllListeners('menu:toggleOutline');
     ipcRenderer.on('menu:toggleOutline', () => cb());
   },
+  onMenuOpenFolder: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:openFolder');
+    ipcRenderer.on('menu:openFolder', () => cb());
+  },
+  onMenuToggleFileTree: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:toggleFileTree');
+    ipcRenderer.on('menu:toggleFileTree', () => cb());
+  },
   onMenuCloseTab: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:closeTab');
     ipcRenderer.on('menu:closeTab', () => cb());
@@ -88,6 +98,9 @@ const api = {
   syncOutlineVisible: (visible: boolean) => {
     ipcRenderer.send('menu:syncOutline', visible);
   },
+  syncFileTreeVisible: (visible: boolean) => {
+    ipcRenderer.send('menu:syncFileTree', visible);
+  },
   popupMenu: () => {
     ipcRenderer.send('menu:popup');
   },
@@ -96,6 +109,21 @@ const api = {
     ipcRenderer.invoke('image:discard', request),
   resolveImageSource: (request: ResolveImageSourceRequest) =>
     ipcRenderer.invoke('image:resolveSource', request),
+  openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
+  listDirectory: (path: string) =>
+    ipcRenderer.invoke('dir:list', { path }) as Promise<{
+      path: string;
+      entries: WorkspaceEntry[];
+    } | null>,
+  revealInFolder: (path: string) => ipcRenderer.invoke('shell:reveal', { path }),
+  watchWorkspace: (path: string) => ipcRenderer.send('workspace:watch', { path }),
+  unwatchWorkspace: () => ipcRenderer.send('workspace:unwatch'),
+  onWorkspaceWatchEvent: (cb: (event: { path: string }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, workspaceEvent: { path: string }) =>
+      cb(workspaceEvent);
+    ipcRenderer.on('workspace:watch-event', listener);
+    return () => ipcRenderer.removeListener('workspace:watch-event', listener);
+  },
   platform: process.platform,
 };
 

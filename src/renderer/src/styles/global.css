@@ -18,6 +18,20 @@
   --editor-font-size: 16px;
   --editor-max-width: 850px;
   --editor-side-padding: 56px;
+  /* 侧栏面板统一基线:大纲、文件树等同类侧栏共用,保证视觉对齐 */
+  --panel-header-height: 36px;
+  --panel-header-pad-x: 16px;
+  --panel-list-pad-top: 8px;
+  --panel-row-pad-y: 6px;
+  --panel-row-pad-x: 8px;
+  --panel-row-gap: 6px;
+  --panel-indent-base: 16px;
+  --panel-root-indent: 8px;
+  /* 行高亮:两侧内缩的圆角矩形,中性灰,贴近 Obsidian 侧栏观感 */
+  --panel-row-margin-x: 8px;
+  --panel-row-radius: 6px;
+  --panel-row-hover: #f3f3f4;
+  --panel-row-active: #e9e9eb;
   color-scheme: light;
 }
 [data-theme='dark'] {
@@ -31,6 +45,8 @@
   --tab-bar-bg: var(--bg-secondary);
   --tab-hover-bg: #283349;
   --canvas-bg: #11111b;
+  --panel-row-hover: rgba(255, 255, 255, 0.06);
+  --panel-row-active: rgba(255, 255, 255, 0.12);
   --accent: #89b4fa;
   --accent-hover: #74a0f7;
   color-scheme: dark;

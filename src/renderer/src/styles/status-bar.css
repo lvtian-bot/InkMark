@@ -20,11 +20,18 @@
   gap: 4px;
 }
 
-.status-counts {
+.status-right {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+
+.status-counts {
+  display: flex;
+  align-items: center;
   gap: 16px;
+  margin-right: 12px;
 }
 
 .status-toggle-btn {
@@ -49,12 +56,6 @@
   background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
-.status-toggle-btn.active {
-  color: var(--accent);
-}
-.status-toggle-btn.active:hover {
-  color: var(--accent-hover);
-}
 
 .status-mode-btn {
   height: 24px;
@@ -73,10 +74,4 @@
 .status-mode-btn:hover {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-}
-.status-mode-btn.active {
-  color: var(--accent);
-}
-.status-mode-btn.active:hover {
-  color: var(--accent-hover);
 }

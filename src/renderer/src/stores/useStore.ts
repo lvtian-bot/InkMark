@@ -12,6 +12,7 @@ import {
   saveSettings,
   selectSettings,
   type AppSettings,
+  type PanelLayout,
   type ToolbarWidth,
 } from '../settings';
 
@@ -57,6 +58,9 @@ interface InkMarkState extends AppSettings {
   setThemeId: (themeId: ThemeId) => void;
   setOutlineWidth: (width: number) => void;
   setOutlineVisible: (visible: boolean) => void;
+  setFileTreeVisible: (visible: boolean) => void;
+  setPanelLayout: (layout: PanelLayout) => void;
+  setFileTreeWidth: (width: number) => void;
   setToolbarWidth: (width: ToolbarWidth) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
@@ -227,6 +231,15 @@ export const useStore = create<InkMarkState>((set, get) => ({
 
   setOutlineVisible: (visible) => {
     set(saveSettings({ ...selectSettings(get()), outlineVisible: visible }));
+  },
+  setFileTreeVisible: (visible) => {
+    set(saveSettings({ ...selectSettings(get()), fileTreeVisible: visible }));
+  },
+  setPanelLayout: (layout) => {
+    set(saveSettings({ ...selectSettings(get()), panelLayout: layout }));
+  },
+  setFileTreeWidth: (width) => {
+    set(saveSettings({ ...selectSettings(get()), fileTreeWidth: width }));
   },
   setToolbarWidth: (toolbarWidth) => {
     set(saveSettings({ ...selectSettings(get()), toolbarWidth }));

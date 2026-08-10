@@ -10,9 +10,18 @@ import {
   shell,
 } from 'electron';
 import { join, dirname, isAbsolute } from 'path';
-import { readFileSync, writeFileSync, existsSync, statSync, renameSync, unlinkSync } from 'fs';
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  statSync,
+  renameSync,
+  unlinkSync,
+  readdirSync,
+} from 'fs';
 import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
+import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
 import type {
   DiscardStoredImageRequest,
@@ -20,6 +29,14 @@ import type {
   StoreImageRequest,
 } from '../shared/image-storage';
 import { isThemeId } from '../shared/theme';
+import { filterWorkspaceEntries, type WorkspaceEntry } from '../shared/workspace-tree';
+import {
+  addOrUpdateRecent,
+  normalizeRecentItems,
+  removeRecent,
+  type RecentItem,
+  type RecentKind,
+} from '../shared/recent-items';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -27,8 +44,10 @@ let pendingFilePaths: string[] = [];
 let currentThemeId = 'inkmark-light';
 let currentSourceMode = false;
 let currentOutlineVisible = true;
+let currentFileTreeVisible = false;
 const PRODUCT_NAME = 'InkMark';
 const fileWatchManager = createFileWatchManager();
+const workspaceWatchManager = createWorkspaceWatchManager();
 const imageStorage = createImageStorage();
 
 app.enableSandbox();
@@ -59,6 +78,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isDocumentPath(value: unknown): value is string {
   return typeof value === 'string' && isAbsolute(value) && /\.(md|markdown|txt)$/i.test(value);
+}
+
+function isAbsolutePath(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && isAbsolute(value);
 }
 
 function isSaveFileRequest(value: unknown): value is SaveFileRequest {
@@ -117,21 +140,19 @@ function saveWindowState(win: BrowserWindow): void {
 }
 
 const MAX_RECENT_FILES = 10;
-let recentFilesCache: string[] | null = null;
+let recentFilesCache: RecentItem[] | null = null;
 
 function getRecentFilesPath(): string {
   return join(app.getPath('userData'), 'recent-files.json');
 }
 
-function getRecentFiles(): string[] {
+function getRecentFiles(): RecentItem[] {
   if (recentFilesCache === null) {
     try {
       const recentPath = getRecentFilesPath();
       if (existsSync(recentPath)) {
         const data = JSON.parse(readFileSync(recentPath, 'utf-8'));
-        recentFilesCache = Array.isArray(data)
-          ? data.filter((p): p is string => typeof p === 'string')
-          : [];
+        recentFilesCache = normalizeRecentItems(data);
       } else {
         recentFilesCache = [];
       }
@@ -142,27 +163,25 @@ function getRecentFiles(): string[] {
   return recentFilesCache;
 }
 
-function addRecentFile(filePath: string): void {
-  recentFilesCache = [filePath, ...getRecentFiles().filter((p) => p !== filePath)].slice(
-    0,
-    MAX_RECENT_FILES,
-  );
+function writeRecentFiles(items: RecentItem[]): void {
+  recentFilesCache = items;
   try {
-    writeFileSync(getRecentFilesPath(), JSON.stringify(recentFilesCache), 'utf-8');
+    writeFileSync(getRecentFilesPath(), JSON.stringify(items), 'utf-8');
   } catch {
     /* ignore write errors */
   }
 }
 
-function removeRecentFile(filePath: string): void {
-  const next = getRecentFiles().filter((p) => p !== filePath);
+function addRecent(filePath: string, kind: RecentKind): void {
+  const next = addOrUpdateRecent(getRecentFiles(), filePath, kind, MAX_RECENT_FILES);
+  if (next === getRecentFiles()) return;
+  writeRecentFiles(next);
+}
+
+function removeRecentItem(filePath: string): void {
+  const next = removeRecent(getRecentFiles(), filePath);
   if (next.length === recentFilesCache!.length) return;
-  recentFilesCache = next;
-  try {
-    writeFileSync(getRecentFilesPath(), JSON.stringify(recentFilesCache), 'utf-8');
-  } catch {
-    /* ignore write errors */
-  }
+  writeRecentFiles(next);
 }
 
 function getFileFromArgs(argv: string[]): string[] {
@@ -297,6 +316,7 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     fileWatchManager.close();
+    workspaceWatchManager.close();
     mainWindow = null;
   });
 
@@ -325,6 +345,11 @@ function createMenu(): void {
           label: '打开...',
           accelerator: 'CmdOrCtrl+O',
           click: () => mainWindow?.webContents.send('menu:open'),
+        },
+        {
+          label: '打开文件夹…',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: () => mainWindow?.webContents.send('menu:openFolder'),
         },
         {
           label: '关闭标签页',
@@ -389,6 +414,12 @@ function createMenu(): void {
           click: () => mainWindow?.webContents.send('menu:toggleOutline'),
         },
         {
+          label: '文件树',
+          type: 'checkbox',
+          checked: currentFileTreeVisible,
+          click: () => mainWindow?.webContents.send('menu:toggleFileTree'),
+        },
+        {
           label: '源码模式',
           accelerator: 'CmdOrCtrl+/',
           type: 'checkbox',
@@ -449,6 +480,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   fileWatchManager.close();
+  workspaceWatchManager.close();
   imageStorage.close();
 });
 
@@ -476,6 +508,12 @@ ipcMain.on('menu:syncOutline', (event, visible: unknown) => {
   createMenu();
 });
 
+ipcMain.on('menu:syncFileTree', (event, visible: unknown) => {
+  if (!isTrustedRenderer(event) || typeof visible !== 'boolean') return;
+  currentFileTreeVisible = visible;
+  createMenu();
+});
+
 ipcMain.on('menu:popup', (event) => {
   if (!isTrustedRenderer(event)) return;
   const menu = Menu.getApplicationMenu();
@@ -497,7 +535,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
     try {
       const content = readFileSync(filePath, 'utf-8');
       const mtime = statSync(filePath).mtimeMs;
-      addRecentFile(filePath);
+      addRecent(filePath, 'file');
       files.push({ path: filePath, content, mtime });
     } catch {
       /* skip unreadable files */
@@ -563,11 +601,11 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
   try {
     const content = readFileSync(path, 'utf-8');
     const mtime = statSync(path).mtimeMs;
-    addRecentFile(path);
+    addRecent(path, 'file');
     return { path, content, mtime };
   } catch {
     // 文件已被删除或移动：从最近列表移除死链，避免反复点击失败
-    removeRecentFile(path);
+    removeRecentItem(path);
     return null;
   }
 });
@@ -601,18 +639,13 @@ ipcMain.handle('recent:get', async (event) => {
 });
 
 ipcMain.handle('recent:remove', async (event, filePath: unknown) => {
-  if (!isTrustedRenderer(event) || !isDocumentPath(filePath)) return;
-  removeRecentFile(filePath);
+  if (!isTrustedRenderer(event) || !isAbsolutePath(filePath)) return;
+  removeRecentItem(filePath);
 });
 
 ipcMain.handle('recent:clear', async (event) => {
   if (!isTrustedRenderer(event)) return;
-  recentFilesCache = [];
-  try {
-    writeFileSync(getRecentFilesPath(), JSON.stringify(recentFilesCache), 'utf-8');
-  } catch {
-    /* ignore write errors */
-  }
+  writeRecentFiles([]);
 });
 
 ipcMain.handle('app:getInfo', (event) =>
@@ -640,4 +673,54 @@ ipcMain.handle('image:resolveSource', (event, request: ResolveImageSourceRequest
     return { status: 'error', code: 'invalid-source', message: '图片请求来源无效。' } as const;
   }
   return imageStorage.resolveSource(request);
+});
+
+ipcMain.handle('dialog:openFolder', async (event) => {
+  if (!isTrustedRenderer(event) || !mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  const folderPath = result.filePaths[0];
+  addRecent(folderPath, 'folder');
+  return { path: folderPath };
+});
+
+ipcMain.handle('dir:list', async (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isAbsolutePath(request.path)) {
+    return null;
+  }
+  const directoryPath = request.path;
+  try {
+    const dirStat = statSync(directoryPath);
+    if (!dirStat.isDirectory()) return null;
+  } catch {
+    return null;
+  }
+  try {
+    const dirents = readdirSync(directoryPath, { withFileTypes: true });
+    const entries: WorkspaceEntry[] = dirents.map((dirent) => ({
+      name: dirent.name,
+      absolutePath: join(directoryPath, dirent.name),
+      isDirectory: dirent.isDirectory(),
+    }));
+    return { path: directoryPath, entries: filterWorkspaceEntries(entries) };
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('shell:reveal', async (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isAbsolutePath(request.path)) return;
+  shell.showItemInFolder(request.path);
+});
+
+ipcMain.on('workspace:watch', (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isAbsolutePath(request.path)) return;
+  workspaceWatchManager.subscribe(event.sender, request.path);
+});
+
+ipcMain.on('workspace:unwatch', (event) => {
+  if (!isTrustedRenderer(event)) return;
+  workspaceWatchManager.unsubscribe(event.sender.id);
 });

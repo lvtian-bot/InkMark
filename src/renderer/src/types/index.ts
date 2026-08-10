@@ -14,6 +14,10 @@ export {
   type ContentTheme,
   type ThemeId,
 } from '../../../shared/theme';
+export type { WorkspaceEntry } from '../../../shared/workspace-tree';
+import type { WorkspaceEntry } from '../../../shared/workspace-tree';
+export type { RecentItem, RecentKind } from '../../../shared/recent-items';
+import type { RecentItem } from '../../../shared/recent-items';
 
 export interface Heading {
   id: string;
@@ -60,7 +64,7 @@ export interface InkMarkAPI {
   ) => Promise<SaveResult>;
   saveFileAs: (content: string, sourcePath?: string | null) => Promise<SaveAsResult | null>;
   openFilePath: (path: string) => Promise<FileResult | null>;
-  getRecentFiles: () => Promise<string[]>;
+  getRecentFiles: () => Promise<RecentItem[]>;
   removeRecentFile: (path: string) => Promise<void>;
   clearRecentFiles: () => Promise<void>;
   getAppInfo: () => Promise<AppInfo>;
@@ -80,11 +84,20 @@ export interface InkMarkAPI {
   onMenuAbout: (cb: () => void) => void;
   onMenuToggleSource: (cb: () => void) => void;
   onMenuToggleOutline: (cb: () => void) => void;
+  onMenuOpenFolder: (cb: () => void) => void;
+  onMenuToggleFileTree: (cb: () => void) => void;
   setWindowTitle: (title: string) => Promise<void>;
   closeWindow: () => Promise<void>;
   syncThemeId: (themeId: string) => void;
   syncSourceMode: (checked: boolean) => void;
   syncOutlineVisible: (visible: boolean) => void;
+  syncFileTreeVisible: (visible: boolean) => void;
+  openFolderDialog: () => Promise<{ path: string } | null>;
+  listDirectory: (path: string) => Promise<{ path: string; entries: WorkspaceEntry[] } | null>;
+  revealInFolder: (path: string) => Promise<void>;
+  watchWorkspace: (path: string) => void;
+  unwatchWorkspace: () => void;
+  onWorkspaceWatchEvent: (cb: (event: { path: string }) => void) => () => void;
   popupMenu: () => void;
   storeImage: (request: StoreImageRequest) => Promise<StoreImageResult>;
   discardStoredImage: (request: DiscardStoredImageRequest) => Promise<DiscardStoredImageResult>;
