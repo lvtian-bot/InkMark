@@ -1,14 +1,42 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
+import type { MouseEvent } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
+import {
+  computeCollapsibleIds,
+  computeVisibleHeadings,
+  resolveActiveId,
+} from '../outline-visibility';
 import '../styles/outline.css';
+
+const EMPTY_IDS: Set<string> = new Set();
 
 export function Outline() {
   const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
+  const activeTabId = useStore((s) => s.activeTabId);
   const viewMode = useStore((s) => s.viewMode);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 折叠集合与所属标签成对保存:标题 id 按文本生成,不同标签页可能出现同名 id,
+  // 读取时若所属标签不是当前标签则视为空集合,避免状态串页
+  const [collapsed, setCollapsed] = useState<{ tabId: string | null; ids: Set<string> }>({
+    tabId: null,
+    ids: EMPTY_IDS,
+  });
+  const collapsedIds = collapsed.tabId === activeTabId ? collapsed.ids : EMPTY_IDS;
   const tickingRef = useRef(false);
+
+  const visibleHeadings = useMemo(
+    () => computeVisibleHeadings(outline, collapsedIds),
+    [outline, collapsedIds],
+  );
+  const collapsibleIds = useMemo(() => computeCollapsibleIds(outline), [outline]);
+  const visibleIds = useMemo(() => new Set(visibleHeadings.map((h) => h.id)), [visibleHeadings]);
+  const displayedActiveId = useMemo(
+    () => resolveActiveId(outline, visibleIds, activeId),
+    [outline, visibleIds, activeId],
+  );
 
   useEffect(() => {
     const handleScroll = (): void => {
@@ -59,13 +87,27 @@ export function Outline() {
     }
   };
 
+  const handleToggle = (id: string, event: MouseEvent): void => {
+    event.stopPropagation();
+    setCollapsed((prev) => {
+      const base = prev.tabId === activeTabId ? prev.ids : EMPTY_IDS;
+      const next = new Set(base);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return { tabId: activeTabId, ids: next };
+    });
+  };
+
   if (outline.length === 0) {
     return (
       <aside className="outline">
         <div className="outline-header">
-          <span className="outline-title">{'\u5927\u7eb2'}</span>
+          <span className="outline-title">大纲</span>
         </div>
-        <div className="outline-empty">{'\u6682\u65e0\u5927\u7eb2'}</div>
+        <div className="outline-empty">暂无大纲</div>
       </aside>
     );
   }
@@ -73,20 +115,27 @@ export function Outline() {
   return (
     <aside className="outline">
       <div className="outline-header">
-        <span className="outline-title">{'\u5927\u7eb2'}</span>
+        <span className="outline-title">大纲</span>
       </div>
       <nav className="outline-list">
-        {outline.map((heading) => (
+        {visibleHeadings.map((heading) => (
           <button
             key={heading.id}
-            className={`outline-item ${activeId === heading.id ? 'active' : ''}`}
-            style={{ paddingLeft: `${(heading.level - 1) * 14 + 16}px` }}
+            className={`outline-item level-${heading.level} ${
+              displayedActiveId === heading.id ? 'active' : ''
+            }`}
             onClick={() => handleClick(heading.pos)}
             title={heading.text}
           >
-            <span className={`outline-level-marker level-${heading.level}`}>
-              {'H' + heading.level}
-            </span>
+            {collapsibleIds.has(heading.id) ? (
+              <ChevronRight
+                size={12}
+                className={`outline-chevron${collapsedIds.has(heading.id) ? '' : ' open'}`}
+                onClick={(event) => handleToggle(heading.id, event)}
+              />
+            ) : (
+              <span className="outline-chevron-placeholder" />
+            )}
             <span className="outline-text">{heading.text}</span>
           </button>
         ))}
