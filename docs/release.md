@@ -7,14 +7,14 @@
 1. 确认本次版本范围，更新 `package.json` 和 `package-lock.json` 中的版本号。
 2. 运行 `npm run check`，确认 lint、类型检查、单元测试、格式检查和生产构建全部通过。
 3. 提交版本改动并推送 `master`，等待 Quality workflow 通过。
-4. 创建与包版本一致的标签，例如 `v0.0.6`，并将标签推送到远端。
-5. 等待 Release workflow 完成。该流程会再次运行质量检查、构建 Windows 安装包，并创建 GitHub Release。
-6. 确认 Release 页面存在 `.exe` 安装包、`.exe.blockmap` 和 `latest.yml`。
+4. 创建与包版本一致的标签（例如 `v0.0.7`），并将标签推送到远端。
+5. **主动跟踪 Release workflow**：推送标签后，执行人必须通过 `gh run list` / `gh run watch` 或 GitHub 页面实时跟踪 Release 工作流执行过程，直至所有步骤全部完成。严禁推完标签不跟踪；若工作流失败，必须立即介入排查处理。
+6. 确认 GitHub Release 页面已成功生成该版本，且包含 `.exe` 安装包、`.exe.blockmap` 和 `latest.yml` 完整发布产物。
 7. 在本地保留同版本安装包，以下两种方式任选其一：
    - 从 GitHub Release 下载已发布的 `.exe` 安装包；
    - 运行 `npm run build:win`，保留 `dist/` 中生成的同版本安装包。
 
-完成标准：GitHub Release 发布成功，并且本地能够找到同版本的 Windows 安装包。仅创建标签、仅通过构建或仅生成远端文件都不算完成发布。
+完成标准：GitHub Actions Release 工作流成功执行、GitHub Release 发布成功且产物完整，并且本地能够找到同版本的 Windows 安装包。仅创建标签、仅推送远端、仅通过本地构建或工作流中途失败均不视为完成发布。
 
 ## 人工验证边界
 
