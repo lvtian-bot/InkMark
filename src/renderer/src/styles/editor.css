@@ -32,6 +32,8 @@
   caret-color: var(--accent);
   font-family: var(--editor-font-family);
   font-size: var(--editor-font-size);
+  line-height: var(--editor-line-height, 1.75);
+  letter-spacing: var(--editor-letter-spacing, 0em);
 }
 /* 编辑器功能性样式：原由 nord 样式表提供，视觉层不再加载后由此接管 */
 .editor-container .ProseMirror-selectednode {
@@ -76,7 +78,7 @@
   color: var(--text-secondary);
 }
 .editor-container.theme-inkmark p {
-  line-height: 1.75;
+  line-height: var(--editor-line-height, 1.75);
   margin: 0.6em 0;
 }
 .editor-container.theme-inkmark code {
@@ -109,7 +111,7 @@
 .editor-container.theme-inkmark ol {
   padding-left: 24px;
   margin: 0.6em 0;
-  line-height: 1.75;
+  line-height: var(--editor-line-height, 1.75);
 }
 .editor-container.theme-inkmark li {
   margin: 0.2em 0;

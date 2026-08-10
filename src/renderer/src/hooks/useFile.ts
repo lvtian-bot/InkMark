@@ -248,11 +248,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
       editorStateCache.dispose(id);
 
-      if (useStore.getState().tabs.length <= 1) {
-        await window.inkmark.closeWindow();
-        return true;
-      }
-
+      // 关闭最后一个标签页时回到欢迎页，而非关闭整个窗口；
+      // store 的 closeTab 会在标签页清空后自动新建一个欢迎页标签页。
       closeTabStore(id);
       return true;
     },

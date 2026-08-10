@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FilePlus, FileText, Folder, X } from 'lucide-react';
 import type { RecentItem, RecentKind } from '../types';
 import '../styles/start-page.css';
 
@@ -23,86 +24,6 @@ function splitPath(path: string): { name: string; dir: string } {
   const dir = idx > 0 ? path.slice(0, idx) : '';
   return { name, dir };
 }
-
-const iconNew = (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-    <path d="M14 3v5h5" />
-    <line x1="12" y1="11" x2="12" y2="17" />
-    <line x1="9" y1="14" x2="15" y2="14" />
-  </svg>
-);
-
-const iconOpen = (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M3 7a2 2 0 0 1 2-2h3.17a2 2 0 0 1 1.41.59l1.42 1.41A2 2 0 0 0 11.41 8H19a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-  </svg>
-);
-
-const iconFolder = (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-  </svg>
-);
-
-const iconFile = (
-  <svg
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
-    <path d="M14 3v5h5" />
-  </svg>
-);
-
-const iconClose = (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <line x1="6" y1="6" x2="18" y2="18" />
-    <line x1="18" y1="6" x2="6" y2="18" />
-  </svg>
-);
 
 export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder }: StartPageProps) {
   const [recent, setRecent] = useState<RecentRow[]>([]);
@@ -139,7 +60,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
             <ul className="start-list">
               <li className="start-row start-row--primary" onClick={onCreateBlank}>
                 <span className="start-row-icon" aria-hidden="true">
-                  {iconNew}
+                  <FilePlus size={18} />
                 </span>
                 <span className="start-row-text">
                   <span className="start-row-name">新建空白文档</span>
@@ -147,7 +68,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
               </li>
               <li className="start-row" onClick={onOpenFile}>
                 <span className="start-row-icon" aria-hidden="true">
-                  {iconOpen}
+                  <FileText size={18} />
                 </span>
                 <span className="start-row-text">
                   <span className="start-row-name">打开文件…</span>
@@ -156,7 +77,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
               {onOpenFolder && (
                 <li className="start-row" onClick={() => onOpenFolder()}>
                   <span className="start-row-icon" aria-hidden="true">
-                    {iconFolder}
+                    <Folder size={18} />
                   </span>
                   <span className="start-row-text">
                     <span className="start-row-name">打开文件夹…</span>
@@ -186,11 +107,11 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                       onClick={() => (isFolder ? onOpenFolder?.(item.path) : onOpenPath(item.path))}
                     >
                       <span className="start-row-icon" aria-hidden="true">
-                        {isFolder ? iconFolder : iconFile}
+                        {isFolder ? <Folder size={18} /> : <FileText size={18} />}
                       </span>
                       <span className="start-row-text start-row-text--inline">
                         <span className="start-row-name">{item.name}</span>
-                        <span className="start-row-dir">{item.dir || '—'}</span>
+                        <span className="start-row-dir">{item.dir || '-'}</span>
                       </span>
                       <button
                         type="button"
@@ -202,7 +123,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                           void handleRemove(item.path);
                         }}
                       >
-                        {iconClose}
+                        <X size={14} />
                       </button>
                     </li>
                   );

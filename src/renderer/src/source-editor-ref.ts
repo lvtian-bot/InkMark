@@ -25,6 +25,10 @@ export interface SourceEditorHandle {
   getSelection: () => SourceSelection;
   /// Set selection (caret when from === to) and focus.
   setSelection: (from: number, to: number) => void;
+  /// Current CodeMirror scroll position.
+  getScrollTop: () => number;
+  /// Restore CodeMirror scroll position.
+  setScrollTop: (top: number) => void;
   /// Replace [from, to) with `text`, place caret after the inserted text, and
   /// dispatch a transaction that is treated as a user edit (fires onChange).
   replaceRange: (from: number, to: number, text: string) => void;

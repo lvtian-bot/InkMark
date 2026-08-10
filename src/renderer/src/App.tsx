@@ -24,6 +24,7 @@ import { useWordCount } from './hooks/useWordCount';
 import { useStore } from './stores/useStore';
 import { isThemeId } from './types';
 import { editorHandle } from './editor-ref';
+import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
 import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
 import { confirmDialog } from './confirm-dialog';
@@ -147,21 +148,25 @@ function AppContent() {
       return;
     }
 
+    const targetMode = viewModeRef.current;
+
     if (oldTabId) {
-      const scrollTop = editorHandle.current.getScrollTop();
-      const vm = viewModeRef.current;
+      const scrollTop =
+        targetMode === 'source'
+          ? (sourceEditorHandle.current?.getScrollTop() ?? 0)
+          : editorHandle.current.getScrollTop();
       const sourceContent =
-        vm === 'source'
+        targetMode === 'source'
           ? (sourceEditorHandle.current?.getValue() ?? '')
           : editorHandle.current.getMarkdown();
-      if (vm === 'source') {
+      if (targetMode === 'source') {
         const state = sourceEditorHandle.current?.getEditorState();
         if (state) editorStateCache.capture(oldTabId, 'source', sourceContent, state);
       } else {
         const state = editorHandle.current.getEditorState();
         if (state) editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
       }
-      updateTab(oldTabId, { sourceContent, scrollTop });
+      updateTab(oldTabId, { sourceContent, ...scrollPositionUpdate(targetMode, scrollTop) });
     }
 
     switchingRef.current = true;
@@ -173,7 +178,7 @@ function AppContent() {
       editorHandle.current.setMarkdown(newTab.sourceContent);
     }
 
-    if (viewModeRef.current === 'source') {
+    if (targetMode === 'source') {
       const savedSourceState = editorStateCache.restore(newTabId, 'source', newTab.sourceContent);
       if (savedSourceState) {
         sourceEditorHandle.current?.setEditorState(savedSourceState);
@@ -184,7 +189,7 @@ function AppContent() {
 
     switchingRef.current = false;
 
-    if (viewModeRef.current === 'source') {
+    if (targetMode === 'source') {
       const sourceState = sourceEditorHandle.current?.getEditorState();
       if (sourceState) {
         updateSourceOutline(sourceState);
@@ -199,7 +204,13 @@ function AppContent() {
     }
 
     requestAnimationFrame(() => {
-      editorHandle.current?.setScrollTop(newTab.scrollTop);
+      if (viewModeRef.current !== targetMode) return;
+      const scrollTop = readTabScrollTop(newTab, targetMode);
+      if (targetMode === 'source') {
+        sourceEditorHandle.current?.setScrollTop(scrollTop);
+      } else {
+        editorHandle.current?.setScrollTop(scrollTop);
+      }
     });
 
     prevTabIdRef.current = newTabId;
@@ -219,6 +230,11 @@ function AppContent() {
     if (prev === viewMode) return;
     prevModeRef.current = viewMode;
     const tabId = useStore.getState().activeTabId;
+    const scrollTop =
+      prev === 'source'
+        ? (sourceEditorHandle.current?.getScrollTop() ?? 0)
+        : (editorHandle.current?.getScrollTop() ?? 0);
+    updateTab(tabId, scrollPositionUpdate(prev, scrollTop));
     switchingRef.current = true;
     if (viewMode === 'source') {
       const md = editorHandle.current?.getMarkdown() ?? '';
@@ -257,8 +273,20 @@ function AppContent() {
         updateWordCount(doc, true);
       }
     }
+
+    const activeTab = useStore.getState().tabs.find((tab) => tab.id === tabId);
+    const targetScrollTop = activeTab ? readTabScrollTop(activeTab, viewMode) : 0;
+    requestAnimationFrame(() => {
+      if (viewModeRef.current !== viewMode) return;
+      if (viewMode === 'source') {
+        sourceEditorHandle.current?.setScrollTop(targetScrollTop);
+      } else {
+        editorHandle.current?.setScrollTop(targetScrollTop);
+      }
+    });
   }, [
     setSourceContent,
+    updateTab,
     updateOutline,
     updateSourceOutline,
     updateSourceWordCount,
@@ -468,7 +496,7 @@ function AppContent() {
   const outlinePanel = useResizablePanel({
     width: outlineWidth,
     onWidthChange: setOutlineWidth,
-    side: 'left',
+    side: outlineSide,
   });
   const fileTreePanel = useResizablePanel({
     width: fileTreeWidth,
@@ -497,7 +525,10 @@ function AppContent() {
                 onOpenFile={(path) => void fileOps.openFilePath(path)}
               />
             </div>
-            <div className="resize-handle" onMouseDown={fileTreePanel.handleResizeStart} />
+            <div
+              className={`resize-handle ${fileTreePanel.isResizing ? 'is-active' : ''}`}
+              onMouseDown={fileTreePanel.handleResizeStart}
+            />
           </>
         )}
         {outlineVisible && outlineSide === 'left' && (
@@ -505,7 +536,10 @@ function AppContent() {
             <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
               <Outline />
             </div>
-            <div className="resize-handle" onMouseDown={outlinePanel.handleResizeStart} />
+            <div
+              className={`resize-handle ${outlinePanel.isResizing ? 'is-active' : ''}`}
+              onMouseDown={outlinePanel.handleResizeStart}
+            />
           </>
         )}
         <main className="editor-main">
@@ -541,7 +575,10 @@ function AppContent() {
         </main>
         {outlineVisible && outlineSide === 'right' && (
           <>
-            <div className="resize-handle" onMouseDown={outlinePanel.handleResizeStart} />
+            <div
+              className={`resize-handle ${outlinePanel.isResizing ? 'is-active' : ''}`}
+              onMouseDown={outlinePanel.handleResizeStart}
+            />
             <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
               <Outline />
             </div>
@@ -549,7 +586,10 @@ function AppContent() {
         )}
         {fileTreeVisible && fileTreeSide === 'right' && (
           <>
-            <div className="resize-handle" onMouseDown={fileTreePanel.handleResizeStart} />
+            <div
+              className={`resize-handle ${fileTreePanel.isResizing ? 'is-active' : ''}`}
+              onMouseDown={fileTreePanel.handleResizeStart}
+            />
             <div style={{ width: fileTreeWidth, minWidth: fileTreeWidth }}>
               <FileTree
                 state={fileTree}

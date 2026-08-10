@@ -2,8 +2,12 @@ import { isThemeId, type ThemeId } from './types';
 import {
   isFontPresetId,
   isFontSizePresetId,
+  isLetterSpacingPresetId,
+  isLineHeightPresetId,
   type FontPresetId,
   type FontSizePresetId,
+  type LetterSpacingPresetId,
+  type LineHeightPresetId,
 } from './font-presets';
 
 // AppTheme 已迁移至 ./types，这里 re-export 以保持现有 import 路径稳定。
@@ -27,6 +31,8 @@ export interface AppSettings {
   toolbarWidth: ToolbarWidth;
   fontPreset: FontPresetId;
   fontSizePreset: FontSizePresetId;
+  lineHeightPreset: LineHeightPresetId;
+  letterSpacingPreset: LetterSpacingPresetId;
   startPageOnLaunch: boolean;
   fileTreeVisible: boolean;
   panelLayout: PanelLayout;
@@ -45,6 +51,8 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   toolbarWidth: 'wide',
   fontPreset: 'system',
   fontSizePreset: 'medium',
+  lineHeightPreset: 'medium',
+  letterSpacingPreset: 'medium',
   startPageOnLaunch: true,
   fileTreeVisible: false,
   panelLayout: 'outline-left',
@@ -59,6 +67,8 @@ export function selectSettings(settings: AppSettings): AppSettings {
     toolbarWidth: settings.toolbarWidth,
     fontPreset: settings.fontPreset,
     fontSizePreset: settings.fontSizePreset,
+    lineHeightPreset: settings.lineHeightPreset,
+    letterSpacingPreset: settings.letterSpacingPreset,
     startPageOnLaunch: settings.startPageOnLaunch,
     fileTreeVisible: settings.fileTreeVisible,
     panelLayout: settings.panelLayout,
@@ -137,6 +147,12 @@ function normalizeSettings(value: unknown): AppSettings {
     fontSizePreset: isFontSizePresetId(candidate.fontSizePreset)
       ? candidate.fontSizePreset
       : DEFAULT_SETTINGS.fontSizePreset,
+    lineHeightPreset: isLineHeightPresetId(candidate.lineHeightPreset)
+      ? candidate.lineHeightPreset
+      : DEFAULT_SETTINGS.lineHeightPreset,
+    letterSpacingPreset: isLetterSpacingPresetId(candidate.letterSpacingPreset)
+      ? candidate.letterSpacingPreset
+      : DEFAULT_SETTINGS.letterSpacingPreset,
     startPageOnLaunch:
       typeof candidate.startPageOnLaunch === 'boolean'
         ? candidate.startPageOnLaunch

@@ -8,6 +8,7 @@ import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
+import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import '../styles/source-editor.css';
 
 interface SourceEditorProps {
@@ -109,6 +110,8 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
         view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
         view.focus();
       },
+      getScrollTop: () => readScrollTop(view.scrollDOM),
+      setScrollTop: (top) => writeScrollTop(view.scrollDOM, top),
       replaceRange: (from, to, text) => {
         suppressRef.current = false;
         view.dispatch(

@@ -1,4 +1,4 @@
-// 编辑区字体预设。字体族用 CSS font-family 栈，选未安装的字体时浏览器自动回落，
+// 编辑区字体与排版预设。字体族用 CSS font-family 栈，选未安装的字体时浏览器自动回落，
 // 不会出错。字号用绝对像素，标题等 em 单位会跟随根字号缩放。
 
 export type FontPresetId =
@@ -85,4 +85,58 @@ export function isFontSizePresetId(value: unknown): value is FontSizePresetId {
 export function resolveFontSize(id: unknown): number {
   if (!isFontSizePresetId(id)) return DEFAULT_FONT_SIZE_PRESET.px;
   return FONT_SIZE_PRESET_BY_ID.get(id)?.px ?? DEFAULT_FONT_SIZE_PRESET.px;
+}
+
+export type LineHeightPresetId = 'compact' | 'medium' | 'relaxed';
+
+export interface LineHeightPreset {
+  id: LineHeightPresetId;
+  label: string;
+  value: number;
+}
+
+export const LINE_HEIGHT_PRESETS: readonly LineHeightPreset[] = [
+  { id: 'compact', label: '紧凑', value: 1.6 },
+  { id: 'medium', label: '默认', value: 1.75 },
+  { id: 'relaxed', label: '舒展', value: 2 },
+];
+
+const DEFAULT_LINE_HEIGHT_PRESET = LINE_HEIGHT_PRESETS[1];
+const LINE_HEIGHT_PRESET_BY_ID = new Map(LINE_HEIGHT_PRESETS.map((preset) => [preset.id, preset]));
+
+export function isLineHeightPresetId(value: unknown): value is LineHeightPresetId {
+  return LINE_HEIGHT_PRESETS.some((preset) => preset.id === value);
+}
+
+export function resolveLineHeight(id: unknown): number {
+  if (!isLineHeightPresetId(id)) return DEFAULT_LINE_HEIGHT_PRESET.value;
+  return LINE_HEIGHT_PRESET_BY_ID.get(id)?.value ?? DEFAULT_LINE_HEIGHT_PRESET.value;
+}
+
+export type LetterSpacingPresetId = 'tight' | 'medium' | 'wide';
+
+export interface LetterSpacingPreset {
+  id: LetterSpacingPresetId;
+  label: string;
+  value: string;
+}
+
+export const LETTER_SPACING_PRESETS: readonly LetterSpacingPreset[] = [
+  { id: 'tight', label: '紧凑', value: '-0.02em' },
+  { id: 'medium', label: '默认', value: '0em' },
+  { id: 'wide', label: '舒展', value: '0.04em' },
+];
+
+const DEFAULT_LETTER_SPACING_PRESET = LETTER_SPACING_PRESETS[1];
+const LETTER_SPACING_PRESET_BY_ID = new Map(
+  LETTER_SPACING_PRESETS.map((preset) => [preset.id, preset]),
+);
+
+export function isLetterSpacingPresetId(value: unknown): value is LetterSpacingPresetId {
+  return LETTER_SPACING_PRESETS.some((preset) => preset.id === value);
+}
+
+export function resolveLetterSpacing(id: unknown): string {
+  if (!isLetterSpacingPresetId(id)) return DEFAULT_LETTER_SPACING_PRESET.value;
+  return LETTER_SPACING_PRESET_BY_ID.get(id)?.value ?? DEFAULT_LETTER_SPACING_PRESET.value;
 }

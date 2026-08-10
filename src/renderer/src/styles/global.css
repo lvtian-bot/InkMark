@@ -16,6 +16,8 @@
   --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
   --editor-font-family: var(--font-family);
   --editor-font-size: 16px;
+  --editor-line-height: 1.75;
+  --editor-letter-spacing: 0em;
   --editor-max-width: 850px;
   --editor-side-padding: 56px;
   /* 侧栏面板统一基线:大纲、文件树等同类侧栏共用,保证视觉对齐 */
@@ -107,6 +109,6 @@ body {
 .resize-handle:hover {
   background: var(--accent);
 }
-.app.resizing .resize-handle {
+.resize-handle.is-active {
   background: var(--accent);
 }

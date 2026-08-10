@@ -40,6 +40,7 @@ import {
   type EditorState as ProseMirrorEditorState,
 } from '@milkdown/kit/prose/state';
 import { editorHandle } from '../editor-ref';
+import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import { findLiteralMatches, isValidTextMatch, type TextMatch } from '../find-replace';
 import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
@@ -268,11 +269,11 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       },
       getScrollTop: () => {
         const container = document.querySelector('.editor-container') as HTMLElement | null;
-        return container?.scrollTop ?? 0;
+        return readScrollTop(container);
       },
       setScrollTop: (top: number) => {
         const container = document.querySelector('.editor-container') as HTMLElement | null;
-        if (container) container.scrollTop = top;
+        writeScrollTop(container, top);
       },
       undo: () => {
         try {

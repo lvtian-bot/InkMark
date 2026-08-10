@@ -26,7 +26,8 @@ export interface Tab {
   wordCount: number;
   charCount: number;
   sourceContent: string;
-  scrollTop: number;
+  wysiwygScrollTop: number;
+  sourceScrollTop: number;
   fileMtime: number | null;
 }
 
@@ -52,7 +53,8 @@ interface InkMarkState extends AppSettings {
   setOutline: (outline: Heading[]) => void;
   setWordCount: (words: number, chars: number) => void;
   setSourceContent: (content: string) => void;
-  setScrollTop: (top: number) => void;
+  setWysiwygScrollTop: (top: number) => void;
+  setSourceScrollTop: (top: number) => void;
 
   applySettings: (settings: AppSettings) => void;
   setThemeId: (themeId: ThemeId) => void;
@@ -99,7 +101,8 @@ function createTab(
     wordCount: 0,
     charCount: 0,
     sourceContent: init?.content ?? '',
-    scrollTop: 0,
+    wysiwygScrollTop: 0,
+    sourceScrollTop: 0,
     fileMtime: init?.fileMtime ?? null,
   };
 }
@@ -213,8 +216,16 @@ export const useStore = create<InkMarkState>((set, get) => ({
     get().updateTab(get().activeTabId, { sourceContent: content });
   },
 
-  setScrollTop: (top) => {
-    get().updateTab(get().activeTabId, { scrollTop: top });
+  setWysiwygScrollTop: (top) => {
+    get().updateTab(get().activeTabId, {
+      wysiwygScrollTop: Number.isFinite(top) ? Math.max(0, top) : 0,
+    });
+  },
+
+  setSourceScrollTop: (top) => {
+    get().updateTab(get().activeTabId, {
+      sourceScrollTop: Number.isFinite(top) ? Math.max(0, top) : 0,
+    });
   },
 
   applySettings: (settings) => {

@@ -16,7 +16,7 @@
 .source-container .cm-scroller {
   font-family: var(--editor-font-family);
   font-size: var(--editor-font-size, 16px);
-  line-height: var(--editor-line-height, 1.7);
+  line-height: var(--editor-line-height, 1.75);
   align-items: flex-start;
   min-height: 0;
   overflow-y: auto;
@@ -31,6 +31,7 @@
   margin: 0 auto;
   padding: 24px var(--editor-side-padding) 120px;
   font-family: var(--editor-font-family);
+  letter-spacing: var(--editor-letter-spacing, 0em);
   caret-color: var(--accent);
 }
 

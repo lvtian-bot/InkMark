@@ -6,3 +6,4 @@ dist
 *.tsbuildinfo
 .workbuddy/
 .zcode/
+.codex/

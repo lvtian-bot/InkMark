@@ -3,8 +3,12 @@ import { isPanelLayout, isToolbarWidth, selectSettings, type AppSettings } from 
 import {
   FONT_PRESETS,
   FONT_SIZE_PRESETS,
+  LETTER_SPACING_PRESETS,
+  LINE_HEIGHT_PRESETS,
   isFontPresetId,
   isFontSizePresetId,
+  isLetterSpacingPresetId,
+  isLineHeightPresetId,
 } from '../font-presets';
 import { useStore } from '../stores/useStore';
 import { isThemeId } from '../types';
@@ -220,6 +224,50 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       }}
                     >
                       {FONT_SIZE_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">行距</span>
+                      <span className="settings-field-hint">调整正文行与行之间的距离。</span>
+                    </span>
+                    <select
+                      value={draft.lineHeightPreset}
+                      onChange={(event) => {
+                        const lineHeightPreset = event.target.value;
+                        if (isLineHeightPresetId(lineHeightPreset)) {
+                          setDraft((settings) => ({ ...settings, lineHeightPreset }));
+                        }
+                      }}
+                    >
+                      {LINE_HEIGHT_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">字间距</span>
+                      <span className="settings-field-hint">调整正文字符之间的松紧程度。</span>
+                    </span>
+                    <select
+                      value={draft.letterSpacingPreset}
+                      onChange={(event) => {
+                        const letterSpacingPreset = event.target.value;
+                        if (isLetterSpacingPresetId(letterSpacingPreset)) {
+                          setDraft((settings) => ({ ...settings, letterSpacingPreset }));
+                        }
+                      }}
+                    >
+                      {LETTER_SPACING_PRESETS.map((preset) => (
                         <option key={preset.id} value={preset.id}>
                           {preset.label}
                         </option>
