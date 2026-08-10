@@ -70,7 +70,7 @@ export interface FontSizePreset {
 
 export const FONT_SIZE_PRESETS: readonly FontSizePreset[] = [
   { id: 'small', label: '小', px: 14 },
-  { id: 'medium', label: '适中', px: 16 },
+  { id: 'medium', label: '默认', px: 16 },
   { id: 'large', label: '大', px: 18 },
   { id: 'xlarge', label: '更大', px: 20 },
 ];
