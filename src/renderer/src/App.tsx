@@ -534,7 +534,7 @@ function AppContent() {
         {outlineVisible && outlineSide === 'left' && (
           <>
             <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
-              <Outline />
+              <Outline side="left" />
             </div>
             <div
               className={`resize-handle ${outlinePanel.isResizing ? 'is-active' : ''}`}
@@ -580,7 +580,7 @@ function AppContent() {
               onMouseDown={outlinePanel.handleResizeStart}
             />
             <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
-              <Outline />
+              <Outline side="right" />
             </div>
           </>
         )}

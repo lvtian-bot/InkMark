@@ -8,6 +8,12 @@
   overflow: hidden;
   user-select: none;
 }
+
+/* 右侧时边框改为左侧,避免与编辑器之间出现双线 */
+.outline.side-right {
+  border-right: none;
+  border-left: 1px solid var(--border-color);
+}
 .outline-header {
   height: var(--panel-header-height);
   display: flex;

@@ -13,7 +13,7 @@ import '../styles/outline.css';
 
 const EMPTY_IDS: Set<string> = new Set();
 
-export function Outline() {
+export function Outline({ side }: { side?: 'left' | 'right' }) {
   const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
   const activeTabId = useStore((s) => s.activeTabId);
   const viewMode = useStore((s) => s.viewMode);
@@ -103,7 +103,7 @@ export function Outline() {
 
   if (outline.length === 0) {
     return (
-      <aside className="outline">
+      <aside className={`outline${side === 'right' ? ' side-right' : ''}`}>
         <div className="outline-header">
           <span className="outline-title">大纲</span>
         </div>
@@ -113,7 +113,7 @@ export function Outline() {
   }
 
   return (
-    <aside className="outline">
+    <aside className={`outline${side === 'right' ? ' side-right' : ''}`}>
       <div className="outline-header">
         <span className="outline-title">大纲</span>
       </div>
