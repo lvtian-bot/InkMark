@@ -81,7 +81,7 @@ function AppContent() {
   }, []);
 
   const fileOps = useFile(setMarkdown, viewMode);
-  const fileTree = useFileTree();
+  const fileTree = useFileTree(activeFilePath);
   const findReplace = useFindReplace({ activeTabId, viewMode });
   const {
     close: closeFindReplace,
