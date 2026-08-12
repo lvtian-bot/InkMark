@@ -7,6 +7,7 @@ import {
   Link2,
   List,
   Redo2,
+  Save,
   Strikethrough,
   Table,
   Undo2,
@@ -15,6 +16,7 @@ import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle, type SourceSelection } from '../source-editor-ref';
 import { promptDialog } from '../confirm-dialog';
+import { formatComboForDisplay, toDisplayPlatform } from '../../../shared/shortcuts';
 import '../styles/toolbar.css';
 
 /// 源码模式下的编辑结果：新全文 + 新选区。辅助函数只产出这份结果，
@@ -143,9 +145,16 @@ function toggleTaskPrefix(): SourceEdit | null {
   };
 }
 
-export function Toolbar() {
+interface ToolbarProps {
+  onSave: () => void;
+}
+
+export function Toolbar({ onSave }: ToolbarProps) {
   const viewMode = useStore((s) => s.viewMode);
   const toolbarWidth = useStore((s) => s.toolbarWidth);
+  const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
+  const saveShortcut = useStore((s) => s.shortcuts.save);
+  const displayPlatform = toDisplayPlatform(window.inkmark.platform);
   const isWysiwyg = viewMode === 'wysiwyg';
 
   const handleUndo = (): void => {
@@ -353,6 +362,15 @@ export function Toolbar() {
         </button>
         <button className="toolbar-btn" onClick={handleTable} title="表格">
           <Table size={16} />
+        </button>
+      </div>
+      <div className="toolbar-group toolbar-group-end">
+        <button
+          className={`toolbar-btn${isDirty ? ' active' : ''}`}
+          onClick={onSave}
+          title={`保存 (${formatComboForDisplay(saveShortcut, displayPlatform)})`}
+        >
+          <Save size={16} />
         </button>
       </div>
     </div>

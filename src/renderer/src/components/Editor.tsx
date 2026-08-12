@@ -44,6 +44,7 @@ import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import { findLiteralMatches, isValidTextMatch, type TextMatch } from '../find-replace';
 import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
+import { frontmatter } from '../plugins/frontmatter';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import '../styles/editor.css';
 import '../styles/prism.css';
@@ -142,6 +143,7 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       })
       .use(commonmark)
       .use(gfm)
+      .use(frontmatter)
       .use(taskList)
       .use(history)
       .use(listener)
@@ -217,6 +219,23 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
           onDocChangeRef.current(view.state.doc);
         } catch (e) {
           console.error('setMarkdown error:', e);
+        }
+      },
+      skipFrontmatterIfSelected: () => {
+        // 文档以 frontmatter 开头、且当前选区落在它上面时(如刚加载内容默认选在首节点),
+        // 把光标移到 frontmatter 之后的正文,避免 atom 节点被选中产生扎眼高亮。
+        // 仅在选区确实压在 frontmatter 上时移动,不破坏用户已在正文中的位置。
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const doc = view.state.doc;
+          const first = doc.firstChild;
+          if (!first || first.type.name !== 'frontmatter') return;
+          const fmEnd = first.nodeSize;
+          if (view.state.selection.from >= fmEnd) return;
+          const pos = Math.min(fmEnd, doc.content.size);
+          view.dispatch(view.state.tr.setSelection(TextSelection.near(doc.resolve(pos))));
+        } catch {
+          /* 选区调整失败时保持默认 */
         }
       },
       getEditorState: () => {
@@ -438,13 +457,18 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       ed.action(replaceAllAction(activeTab.sourceContent, true));
       const view = ed.ctx.get(editorViewCtx);
       onDocInitRef.current(view.state.doc);
+      editorHandle.current?.skipFrontmatterIfSelected();
     }
 
     armedRef.current = true;
 
-    requestAnimationFrame(() => {
-      editorHandle.current?.focus();
-    });
+    // 打开已有文档不抢焦点(避免光标压在 frontmatter 上、也尊重"打开以阅读为主");
+    // 仅新建文档(filePath 为空)自动聚焦,便于立即开始输入。
+    if (!activeTab?.filePath) {
+      requestAnimationFrame(() => {
+        editorHandle.current?.focus();
+      });
+    }
 
     return () => {
       editorHandle.current = null;

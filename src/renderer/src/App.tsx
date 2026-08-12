@@ -29,6 +29,7 @@ import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
 import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
+import { comboMatchesEvent } from './shortcut-recorder';
 
 function AppContent() {
   const { themeId, setThemeId } = useTheme();
@@ -49,6 +50,7 @@ function AppContent() {
   const fileTreeVisible = useStore((s) => s.fileTreeVisible);
   const panelLayout = useStore((s) => s.panelLayout);
   const fileTreeWidth = useStore((s) => s.fileTreeWidth);
+  const shortcuts = useStore((s) => s.shortcuts);
   const setFileTreeVisible = useStore((s) => s.setFileTreeVisible);
   const setFileTreeWidth = useStore((s) => s.setFileTreeWidth);
   // 单一布局字段派生两侧位置:outline-left → 大纲左/文件树右;outline-right 反之。
@@ -178,6 +180,7 @@ function AppContent() {
     } else {
       editorHandle.current.setMarkdown(newTab.sourceContent);
     }
+    editorHandle.current.skipFrontmatterIfSelected();
 
     if (targetMode === 'source') {
       const savedSourceState = editorStateCache.restore(newTabId, 'source', newTab.sourceContent);
@@ -380,13 +383,16 @@ function AppContent() {
     const handleFindShortcut = (event: KeyboardEvent): void => {
       if (isSettingsOpen || isAboutOpen) return;
 
-      if ((event.ctrlKey || event.metaKey) && !event.altKey) {
-        const key = event.key.toLowerCase();
-        if ((key === 'f' || key === 'h') && !isStartPage) {
-          event.preventDefault();
-          openFindReplace(key === 'h');
-          return;
-        }
+      const platform = window.inkmark.platform;
+      if (!isStartPage && comboMatchesEvent(event, shortcuts.find, platform)) {
+        event.preventDefault();
+        openFindReplace(false);
+        return;
+      }
+      if (!isStartPage && comboMatchesEvent(event, shortcuts.replace, platform)) {
+        event.preventDefault();
+        openFindReplace(true);
+        return;
       }
 
       if (event.key === 'Escape' && isFindReplaceOpen) {
@@ -404,26 +410,26 @@ function AppContent() {
     isSettingsOpen,
     isStartPage,
     openFindReplace,
+    shortcuts,
   ]);
 
   useEffect(() => {
-    // 切换源码模式快捷键：Ctrl+/（与菜单「视图 → 源码模式」等效）与 Alt+E。
-    // 用捕获阶段监听，确保在 CodeMirror（Mod-/ = 注释）和 ProseMirror（Mod-/ = 选中父节点）
-    // 等编辑器 keymap 之前拦截，避免按键被编辑器消费导致"按了没反应"。
+    // 切换源码模式快捷键：用户配置的主快捷键（默认 Ctrl+/，与菜单「视图 → 源码模式」等效）
+    // 与固定第二入口 Alt+E。用捕获阶段监听，确保在 CodeMirror（Mod-/ = 注释）和
+    // ProseMirror（Mod-/ = 选中父节点）等编辑器 keymap 之前拦截，避免按键被编辑器消费。
     const handleToggleSourceShortcut = (event: KeyboardEvent): void => {
       const key = event.key.toLowerCase();
-      const isCtrlSlash =
-        (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === '/';
+      const matchesMain = comboMatchesEvent(event, shortcuts.toggleSource, window.inkmark.platform);
       const isAltE =
         event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && key === 'e';
-      if (!isCtrlSlash && !isAltE) return;
+      if (!matchesMain && !isAltE) return;
       event.preventDefault();
       event.stopPropagation();
       toggleViewMode();
     };
     window.addEventListener('keydown', handleToggleSourceShortcut, true);
     return () => window.removeEventListener('keydown', handleToggleSourceShortcut, true);
-  }, [toggleViewMode]);
+  }, [shortcuts, toggleViewMode]);
 
   useEffect(() => {
     if (isStartPage && isFindReplaceOpen) closeFindReplace();
@@ -434,6 +440,12 @@ function AppContent() {
       window.inkmark.syncThemeId(themeId);
     }
   }, [themeId]);
+
+  useEffect(() => {
+    if (window.inkmark.syncShortcuts) {
+      window.inkmark.syncShortcuts(shortcuts);
+    }
+  }, [shortcuts]);
 
   useEffect(() => {
     const handleDrop = async (e: DragEvent): Promise<void> => {
@@ -484,6 +496,10 @@ function AppContent() {
       return;
     }
     prevStartPageRef.current = isStartPage;
+    // 打开已有文档不抢焦点;新建文档(filePath 为空)才聚焦,便于立即输入。
+    const current = useStore.getState();
+    const switchedTab = current.tabs.find((t) => t.id === current.activeTabId);
+    if (switchedTab?.filePath) return;
     const raf = requestAnimationFrame(() => {
       if (viewModeRef.current === 'source') {
         sourceEditorHandle.current?.focus();
@@ -571,7 +587,7 @@ function AppContent() {
               onOpenPath={(path) => void fileOps.openFilePath(path)}
             />
           )}
-          {!isStartPage && <Toolbar />}
+          {!isStartPage && <Toolbar onSave={() => void fileOps.save()} />}
           {!isStartPage && isFindReplaceOpen && <FindReplaceBar controller={findReplace} />}
           <div
             className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}

@@ -166,14 +166,15 @@ export function useFileTree(activeFilePath: string | null) {
     return true;
   }, [openRoot]);
 
-  // 订阅工作区根目录的实时变化。收到事件时清空缓存并重新加载当前已展开的目录,
-  // 保持用户已展开的状态。回调里通过 expandedRef 读取最新展开集合,因此 expanded
-  // 无需作为依赖——避免每次展开都重新订阅。根变化时本 effect 自动重新订阅新根。
+  // 订阅工作区根目录的实时变化。收到事件时保留旧缓存,直接重新加载当前已展开的
+  // 目录,新数据回来后逐个替换(stale-while-revalidate)。先清缓存会让树瞬间变空、
+  // 显示"读取中…"占位,即便主进程已做自身写入抑制,渲染端也不再制造额外闪烁。
+  // 回调里通过 expandedRef 读取最新展开集合,因此 expanded 无需作为依赖——避免
+  // 每次展开都重新订阅。根变化时本 effect 自动重新订阅新根。
   useEffect(() => {
     if (!rootPath) return;
     window.inkmark.watchWorkspace(rootPath);
     const unsubscribe = window.inkmark.onWorkspaceWatchEvent(() => {
-      setDirCache(new Map());
       for (const path of expandedRef.current) {
         void loadDir(path);
       }

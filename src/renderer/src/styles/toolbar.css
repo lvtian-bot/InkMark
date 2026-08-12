@@ -37,6 +37,11 @@
   gap: 2px;
 }
 
+/* 文件级操作（保存）靠右，与格式操作分组区分。 */
+.toolbar-group-end {
+  margin-left: auto;
+}
+
 .toolbar-btn {
   display: flex;
   align-items: center;

@@ -107,7 +107,12 @@
   margin: 1em 0;
   color: var(--text-secondary);
 }
-.editor-container.theme-inkmark ul,
+.editor-container.theme-inkmark ul {
+  list-style-type: disc;
+  padding-left: 24px;
+  margin: 0.6em 0;
+  line-height: var(--editor-line-height, 1.75);
+}
 .editor-container.theme-inkmark ol {
   padding-left: 24px;
   margin: 0.6em 0;
@@ -241,4 +246,44 @@
 .editor-container li[data-item-type='task'][data-checked='true'] > p {
   color: var(--text-tertiary);
   text-decoration: line-through;
+}
+
+/* ---- Frontmatter (YAML 元信息块) ---- */
+/* Typora 式:带 --- 边界的可编辑文本区,等宽字体、灰底,与正文区分。
+   textarea 透明融入容器,高度随内容自适应(NodeView 里 autoResize)。 */
+.editor-container .frontmatter {
+  margin: 0 0 16px;
+  padding: 0 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  overflow: hidden;
+}
+.editor-container .frontmatter-delimiter {
+  padding: 8px 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.editor-container .frontmatter-editor {
+  width: 100%;
+  padding: 4px 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+}
+.editor-container .frontmatter-editor::placeholder {
+  color: var(--text-tertiary);
+}
+/* 即便 frontmatter 被 NodeSelection 选中,也用柔和边框替代默认蓝色高亮,
+   避免光标落点造成的扎眼效果。 */
+.editor-container .frontmatter.ProseMirror-selectednode {
+  outline: 1px solid var(--border-color);
+  outline-offset: 0;
 }

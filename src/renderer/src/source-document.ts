@@ -30,9 +30,19 @@ function mergeRanges(ranges: Range[]): Range[] {
   return merged;
 }
 
+/** 识别文档开头的 YAML frontmatter 区间(`---` 包裹块),没有则返回 null。 */
+function findFrontmatterRange(doc: string): Range | null {
+  const match = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(doc);
+  if (!match) return null;
+  return { from: 0, to: match[0].length };
+}
+
 export function extractSourceText(state: EditorState): string {
   const doc = state.doc.toString();
   const excluded: Range[] = [];
+  // frontmatter(YAML 元信息块)不计入正文字数。
+  const frontmatter = findFrontmatterRange(doc);
+  if (frontmatter) excluded.push(frontmatter);
   const cursor = syntaxTree(state).cursor();
 
   const visit = (): void => {
@@ -71,13 +81,16 @@ export function extractSourceText(state: EditorState): string {
 
 export function extractSourceHeadings(state: EditorState): Heading[] {
   const doc = state.doc.toString();
+  // frontmatter 结尾的 `---` 可能被 lezer 当成 setext 标题下划线,产生假标题;
+  // 跳过文档开头 frontmatter 区间内的所有标题命中。
+  const frontmatterEnd = findFrontmatterRange(doc)?.to ?? 0;
   const headings: Heading[] = [];
   const slugCount = new Map<string, number>();
   const cursor = syntaxTree(state).cursor();
 
   const visit = (): void => {
     const match = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(cursor.name);
-    if (match) {
+    if (match && cursor.from >= frontmatterEnd) {
       const level = Number(match[1]);
       const source = doc.slice(cursor.from, cursor.to);
       const text = cursor.name.startsWith('ATX')

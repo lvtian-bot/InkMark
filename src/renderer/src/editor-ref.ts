@@ -4,6 +4,7 @@ import type { TextMatch } from './find-replace';
 export interface EditorHandle {
   getMarkdown: () => string;
   setMarkdown: (md: string) => void;
+  skipFrontmatterIfSelected: () => void;
   getEditorState: () => EditorState | null;
   setEditorState: (state: EditorState) => void;
   getMarkdownFromState: (state: EditorState) => string;

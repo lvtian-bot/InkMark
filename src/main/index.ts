@@ -37,6 +37,13 @@ import {
   type RecentItem,
   type RecentKind,
 } from '../shared/recent-items';
+import {
+  DEFAULT_SHORTCUT_MAP,
+  comboToAccelerator,
+  normalizeShortcutMap,
+  type ShortcutAction,
+  type ShortcutMap,
+} from '../shared/shortcuts';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -45,6 +52,8 @@ let currentThemeId = 'inkmark-light';
 let currentSourceMode = false;
 let currentOutlineVisible = true;
 let currentFileTreeVisible = false;
+// 快捷键映射：启动时用默认值，渲染进程加载完用户设置后通过 shortcuts:sync 覆盖。
+let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
 const PRODUCT_NAME = 'InkMark';
 const fileWatchManager = createFileWatchManager();
 const workspaceWatchManager = createWorkspaceWatchManager();
@@ -331,6 +340,11 @@ function applyNativeTheme(themeId: string): void {
   nativeTheme.themeSource = themeId.endsWith('-dark') ? 'dark' : 'light';
 }
 
+function shortcutAccelerator(action: ShortcutAction): string {
+  // normalizeShortcutMap 保证 combo 合法且含 mod，comboToAccelerator 一定返回有效字符串。
+  return comboToAccelerator(currentShortcuts[action]) ?? '';
+}
+
 function createMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -338,39 +352,39 @@ function createMenu(): void {
       submenu: [
         {
           label: '新建',
-          accelerator: 'CmdOrCtrl+T',
+          accelerator: shortcutAccelerator('newFile'),
           click: () => mainWindow?.webContents.send('menu:new'),
         },
         {
           label: '打开...',
-          accelerator: 'CmdOrCtrl+O',
+          accelerator: shortcutAccelerator('openFile'),
           click: () => mainWindow?.webContents.send('menu:open'),
         },
         {
           label: '打开文件夹…',
-          accelerator: 'CmdOrCtrl+Shift+O',
+          accelerator: shortcutAccelerator('openFolder'),
           click: () => mainWindow?.webContents.send('menu:openFolder'),
         },
         {
           label: '关闭标签页',
-          accelerator: 'CmdOrCtrl+W',
+          accelerator: shortcutAccelerator('closeTab'),
           click: () => mainWindow?.webContents.send('menu:closeTab'),
         },
         { type: 'separator' },
         {
           label: '保存',
-          accelerator: 'CmdOrCtrl+S',
+          accelerator: shortcutAccelerator('save'),
           click: () => mainWindow?.webContents.send('menu:save'),
         },
         {
           label: '另存为...',
-          accelerator: 'CmdOrCtrl+Shift+S',
+          accelerator: shortcutAccelerator('saveAs'),
           click: () => mainWindow?.webContents.send('menu:saveAs'),
         },
         { type: 'separator' },
         {
           label: '设置...',
-          accelerator: 'CmdOrCtrl+,',
+          accelerator: shortcutAccelerator('settings'),
           click: () => mainWindow?.webContents.send('menu:settings'),
         },
       ],
@@ -421,7 +435,7 @@ function createMenu(): void {
         },
         {
           label: '源码模式',
-          accelerator: 'CmdOrCtrl+/',
+          accelerator: shortcutAccelerator('toggleSource'),
           type: 'checkbox',
           checked: currentSourceMode,
           click: () => mainWindow?.webContents.send('menu:toggleSource'),
@@ -514,6 +528,12 @@ ipcMain.on('menu:syncFileTree', (event, visible: unknown) => {
   createMenu();
 });
 
+ipcMain.on('shortcuts:sync', (event, shortcuts: unknown) => {
+  if (!isTrustedRenderer(event)) return;
+  currentShortcuts = normalizeShortcutMap(shortcuts);
+  createMenu();
+});
+
 ipcMain.on('menu:popup', (event) => {
   if (!isTrustedRenderer(event)) return;
   const menu = Menu.getApplicationMenu();
@@ -559,6 +579,7 @@ ipcMain.handle('file:save', async (event, request: unknown) => {
       return { status: 'conflict' as const };
     }
   }
+  workspaceWatchManager.recordSelfWrite(path);
   const mtime = fileWatchManager.performSelfWrite(path, () => atomicWriteFile(path, content));
   return { status: 'ok' as const, mtime };
 });
@@ -575,6 +596,7 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   if (result.canceled || !result.filePath) return null;
   const filePath = result.filePath;
   imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+  workspaceWatchManager.recordSelfWrite(filePath);
   const mtime = fileWatchManager.performSelfWrite(filePath, () =>
     atomicWriteFile(filePath, content),
   );

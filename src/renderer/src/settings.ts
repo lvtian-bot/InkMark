@@ -9,6 +9,11 @@ import {
   type LetterSpacingPresetId,
   type LineHeightPresetId,
 } from './font-presets';
+import {
+  DEFAULT_SHORTCUT_MAP,
+  normalizeShortcutMap,
+  type ShortcutMap,
+} from '../../shared/shortcuts';
 
 // AppTheme 已迁移至 ./types，这里 re-export 以保持现有 import 路径稳定。
 export type { AppTheme } from './types';
@@ -37,6 +42,7 @@ export interface AppSettings {
   fileTreeVisible: boolean;
   panelLayout: PanelLayout;
   fileTreeWidth: number;
+  shortcuts: ShortcutMap;
 }
 
 export const OUTLINE_WIDTH_MIN = 150;
@@ -57,6 +63,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   fileTreeVisible: false,
   panelLayout: 'outline-left',
   fileTreeWidth: 240,
+  shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
 };
 
 export function selectSettings(settings: AppSettings): AppSettings {
@@ -73,6 +80,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     fileTreeVisible: settings.fileTreeVisible,
     panelLayout: settings.panelLayout,
     fileTreeWidth: settings.fileTreeWidth,
+    shortcuts: settings.shortcuts,
   };
 }
 
@@ -165,6 +173,7 @@ function normalizeSettings(value: unknown): AppSettings {
       ? candidate.panelLayout
       : DEFAULT_SETTINGS.panelLayout,
     fileTreeWidth: normalizeFileTreeWidth(candidate.fileTreeWidth),
+    shortcuts: normalizeShortcutMap(candidate.shortcuts),
   };
 }
 

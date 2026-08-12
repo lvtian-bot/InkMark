@@ -12,19 +12,32 @@ import {
 } from '../font-presets';
 import { useStore } from '../stores/useStore';
 import { isThemeId } from '../types';
+import {
+  DEFAULT_SHORTCUT_MAP,
+  SHORTCUT_ACTIONS,
+  SHORTCUT_ACTION_META,
+  comboEquals,
+  findShortcutConflicts,
+  formatComboForDisplay,
+  normalizeShortcutMap,
+  toDisplayPlatform,
+  type ShortcutAction,
+} from '../../../shared/shortcuts';
+import { comboFromKeyboardEvent } from '../shortcut-recorder';
 import '../styles/settings-dialog.css';
 
 interface SettingsDialogProps {
   onClose: () => void;
 }
 
-type SettingsSection = 'appearance' | 'font' | 'editor' | 'startup';
+type SettingsSection = 'appearance' | 'font' | 'editor' | 'startup' | 'shortcuts';
 
 const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string }> = [
   { id: 'appearance', label: '外观' },
   { id: 'font', label: '字体' },
   { id: 'editor', label: '编辑器' },
   { id: 'startup', label: '启动' },
+  { id: 'shortcuts', label: '快捷键' },
 ];
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
@@ -34,7 +47,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<AppSettings>(() => selectSettings(useStore.getState()));
   const [activeSection, setActiveSection] = useState<SettingsSection>('appearance');
+  const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
   const applySettings = useStore((state) => state.applySettings);
+  const displayPlatform = toDisplayPlatform(window.inkmark.platform);
 
   useEffect(() => {
     const previouslyFocused = document.activeElement;
@@ -84,6 +99,49 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     event.preventDefault();
     applySettings(draft);
     onClose();
+  };
+
+  const shortcutConflicts = findShortcutConflicts(draft.shortcuts);
+  const hasShortcutConflict = SHORTCUT_ACTIONS.some(
+    (action) => (shortcutConflicts.get(action)?.length ?? 0) > 0,
+  );
+
+  // 录制：捕获阶段挂到 window，抢在编辑器/对话框自身处理之前消费按键。
+  // Esc 取消录制（不关闭对话框）；纯修饰键或不支持的键继续等待；必须含 Ctrl/Cmd 才接受。
+  useEffect(() => {
+    if (!recordingAction) return;
+    const handleRecording = (event: KeyboardEvent): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') {
+        setRecordingAction(null);
+        return;
+      }
+      const combo = comboFromKeyboardEvent(event, window.inkmark.platform);
+      if (!combo || !combo.mod) return;
+      setDraft((settings) => ({
+        ...settings,
+        shortcuts: { ...settings.shortcuts, [recordingAction]: combo },
+      }));
+      setRecordingAction(null);
+    };
+    window.addEventListener('keydown', handleRecording, true);
+    return () => window.removeEventListener('keydown', handleRecording, true);
+  }, [recordingAction]);
+
+  const resetShortcut = (action: ShortcutAction): void => {
+    setDraft((settings) => ({
+      ...settings,
+      shortcuts: { ...settings.shortcuts, [action]: { ...DEFAULT_SHORTCUT_MAP[action] } },
+    }));
+  };
+
+  const resetAllShortcuts = (): void => {
+    setDraft((settings) => ({
+      ...settings,
+      shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
+    }));
+    setRecordingAction(null);
   };
 
   return (
@@ -366,6 +424,78 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                   </label>
                 </fieldset>
               )}
+
+              {activeSection === 'shortcuts' && (
+                <fieldset className="settings-group">
+                  <legend>快捷键</legend>
+                  <div className="settings-shortcuts-toolbar">
+                    <span className="settings-field-hint">
+                      点击「录入」后按下组合键（需含 Ctrl 或 Cmd），Esc
+                      取消。加粗、斜体等格式键沿用编辑器默认，不在此配置。
+                    </span>
+                    <button
+                      type="button"
+                      className="settings-link-button"
+                      onClick={resetAllShortcuts}
+                    >
+                      全部重置
+                    </button>
+                  </div>
+                  <ul className="settings-shortcut-list">
+                    {SHORTCUT_ACTIONS.map((action) => {
+                      const meta = SHORTCUT_ACTION_META[action];
+                      const combo = draft.shortcuts[action];
+                      const conflictWith = shortcutConflicts.get(action) ?? [];
+                      const isRecording = recordingAction === action;
+                      const unchanged = comboEquals(combo, DEFAULT_SHORTCUT_MAP[action]);
+                      return (
+                        <li
+                          key={action}
+                          className={`settings-shortcut-row${conflictWith.length > 0 ? ' is-conflict' : ''}${isRecording ? ' is-recording' : ''}`}
+                        >
+                          <div className="settings-shortcut-info">
+                            <span className="settings-shortcut-label">{meta.label}</span>
+                            {meta.hint && (
+                              <span className="settings-shortcut-hint">{meta.hint}</span>
+                            )}
+                          </div>
+                          <div className="settings-shortcut-control">
+                            {isRecording ? (
+                              <span className="settings-shortcut-recording">按下组合键…</span>
+                            ) : (
+                              <kbd className="settings-shortcut-keys">
+                                {formatComboForDisplay(combo, displayPlatform)}
+                              </kbd>
+                            )}
+                            <button
+                              type="button"
+                              className="settings-shortcut-btn"
+                              onClick={() => setRecordingAction(isRecording ? null : action)}
+                            >
+                              {isRecording ? '取消' : '录入'}
+                            </button>
+                            <button
+                              type="button"
+                              className="settings-shortcut-btn"
+                              onClick={() => resetShortcut(action)}
+                              disabled={unchanged}
+                            >
+                              重置
+                            </button>
+                          </div>
+                          {conflictWith.length > 0 && (
+                            <span className="settings-shortcut-conflict">
+                              {`与「${conflictWith
+                                .map((a) => SHORTCUT_ACTION_META[a].label)
+                                .join('、')}」冲突`}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </fieldset>
+              )}
             </div>
           </div>
 
@@ -377,7 +507,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             >
               取消
             </button>
-            <button className="settings-button settings-button-primary" type="submit">
+            <button
+              className="settings-button settings-button-primary"
+              type="submit"
+              disabled={hasShortcutConflict}
+              title={hasShortcutConflict ? '存在快捷键冲突，请先解决' : undefined}
+            >
               确定
             </button>
           </footer>

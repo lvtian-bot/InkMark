@@ -6,6 +6,7 @@ import type {
   StoreImageRequest,
   StoreImageResult,
 } from '../../../shared/image-storage';
+import type { ShortcutMap } from '../../../shared/shortcuts';
 export {
   isThemeId,
   parseThemeId,
@@ -92,6 +93,7 @@ export interface InkMarkAPI {
   syncSourceMode: (checked: boolean) => void;
   syncOutlineVisible: (visible: boolean) => void;
   syncFileTreeVisible: (visible: boolean) => void;
+  syncShortcuts: (shortcuts: ShortcutMap) => void;
   openFolderDialog: () => Promise<{ path: string } | null>;
   listDirectory: (path: string) => Promise<{ path: string; entries: WorkspaceEntry[] } | null>;
   revealInFolder: (path: string) => Promise<void>;

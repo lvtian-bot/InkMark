@@ -38,6 +38,11 @@
   width: 160px;
 }
 
+.start-col--recent {
+  width: clamp(320px, 38vw, 560px);
+  min-width: 0;
+}
+
 .start-col-head {
   display: flex;
   align-items: baseline;
@@ -132,7 +137,9 @@
 
 .start-row--recent .start-row-name {
   color: var(--accent);
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 58%;
 }
 
 .start-row--recent:hover .start-row-name {
@@ -146,7 +153,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;
-  min-width: 0;
+  min-width: 28%;
 }
 
 .start-row-remove {

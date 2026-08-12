@@ -6,6 +6,7 @@ import type {
 } from '../shared/image-storage';
 import type { WorkspaceEntry } from '../shared/workspace-tree';
 import type { RecentItem } from '../shared/recent-items';
+import type { ShortcutMap } from '../shared/shortcuts';
 
 const api = {
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
@@ -100,6 +101,9 @@ const api = {
   },
   syncFileTreeVisible: (visible: boolean) => {
     ipcRenderer.send('menu:syncFileTree', visible);
+  },
+  syncShortcuts: (shortcuts: ShortcutMap) => {
+    ipcRenderer.send('shortcuts:sync', shortcuts);
   },
   popupMenu: () => {
     ipcRenderer.send('menu:popup');
