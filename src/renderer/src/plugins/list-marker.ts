@@ -1,5 +1,8 @@
-import { $remark } from '@milkdown/kit/utils';
+import { $remark, $prose } from '@milkdown/kit/utils';
 import { bulletListSchema, orderedListSchema } from '@milkdown/kit/preset/commonmark';
+import { inputRulesCtx } from '@milkdown/kit/core';
+import { Plugin } from '@milkdown/kit/prose/state';
+import { wrappingInputRule } from '@milkdown/kit/prose/inputrules';
 
 /// 所见即所得模式下保留列表的原始 Markdown 标记符号。
 ///
@@ -281,12 +284,33 @@ export function listMarkerHandler(
   return value;
 }
 
+// ---- 4. 覆盖无序列表 inputRule：记录敲入的标记字符 ----
+//
+// Milkdown 内置的 wrapInBulletListInputRule 用 wrappingInputRule(regex, type) 注册，不传
+// getAttributes，于是所见即所得里打「* /- /+ 」新建的列表 bullet 属性取默认 '-'，保存后
+// 字符丢失。这里用同样 regex、带 getAttributes 的规则替换，把敲入的字符记进属性。通过
+// $prose 在 SchemaReady 后 unshift 到 inputRulesCtx 最前，确保先于内置规则匹配。
+
+/// 无序列表 inputRule 的属性：把捕获到的标记字符写进 bullet 属性。导出供单测。
+export function bulletListInputAttrs(match: string[]): { bullet: string } {
+  const marker = match[1];
+  return marker === '*' || marker === '+' || marker === '-' ? { bullet: marker } : { bullet: '-' };
+}
+
+const listMarkerInputRule = $prose((ctx) => {
+  const bulletType = bulletListSchema.type(ctx);
+  const ir = wrappingInputRule(/^\s*([-+*])\s$/, bulletType, bulletListInputAttrs);
+  ctx.update(inputRulesCtx, (irs) => [ir, ...irs]);
+  return new Plugin({});
+});
+
 // ---- 导出 ----
 
-// $remark 与 extendSchema 返回 [ctx, plugin] 元组，展开成扁平插件列表供 Editor.use 注册。
-// 注册顺序须在 commonmark 之后，靠 upsertById 覆盖原 bullet_list/ordered_list schema。
+// $remark/extendSchema 返回 [ctx, plugin] 元组（展开），$prose 返回单个 plugin。
+// 注册顺序须在 commonmark 之后：schema 靠 upsertById 覆盖，inputRule 靠 unshift 抢先匹配。
 export const listMarker = [
   ...remarkListMarker,
   ...bulletListMarkerSchema,
   ...orderedListMarkerSchema,
+  listMarkerInputRule,
 ];

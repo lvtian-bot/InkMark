@@ -5,6 +5,7 @@ import remarkStringify from 'remark-stringify';
 import {
   detectBullet,
   detectBulletOrdered,
+  bulletListInputAttrs,
   listMarkerAttacher,
   listMarkerHandler,
 } from './list-marker';
@@ -92,5 +93,18 @@ describe('list marker 往返保留', () => {
     expect(out).toContain('* first');
     expect(out).toContain('+ second');
     expect(out).toContain('- third');
+  });
+});
+
+describe('bulletListInputAttrs', () => {
+  it('记录敲入的标记字符', () => {
+    expect(bulletListInputAttrs(['* ', '*'])).toEqual({ bullet: '*' });
+    expect(bulletListInputAttrs(['+ ', '+'])).toEqual({ bullet: '+' });
+    expect(bulletListInputAttrs(['- ', '-'])).toEqual({ bullet: '-' });
+  });
+
+  it('非法字符回落默认 -', () => {
+    expect(bulletListInputAttrs(['x', 'x'])).toEqual({ bullet: '-' });
+    expect(bulletListInputAttrs([''])).toEqual({ bullet: '-' });
   });
 });
