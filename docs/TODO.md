@@ -76,10 +76,11 @@
   - 工作区根目录通过独立 `WorkspaceWatchManager` 监听，外部新增/删除/重命名后清缓存并刷新已展开目录；不递归监听子目录，深层变化靠下次展开或刷新。
   - 设置面板新增显示开关、左右位置（默认右）与宽度；状态栏、视图菜单和开始页均提供打开文件夹与切换入口；面板支持拖拽调整宽度（左/右两侧方向均正确）。
   - 暂不做：新建/重命名/删除等改写文件系统的操作（`shell:reveal` 已在 IPC 层预留，待后续基础操作补齐时接入）。
-- [ ] 所见即所得模式下保留原始 Markdown 标记符号（优先度：高）
-  - 现状：在所见即所得模式编辑并保存时，ProseMirror 将文档序列化为 Markdown，原始标记符号会丢失并被统一化。当前已将无序列表的固定输出从 remark-stringify 默认的 `*` 调整为项目约定的 `-`，但用户输入的 `*` 或 `+` 仍会变成 `-`；加粗、斜体等标记同样会按固定风格重新生成。
-  - 用户期望与参照：输入什么保留什么（Obsidian、Typora 均可在所见即所得下做到），InkMark 当前缺失此能力，影响所有用户文档。
-  - 待调研方向：在 Milkdown 的 `bullet_list`/`list_item` 节点 schema 中保存原始标记属性，解析时写入、序列化时还原；或评估 remark 插件层拦截。属核心编辑能力，需深入 Milkdown 内部实现，单独评估。
+- [x] 所见即所得模式下保留原始 Markdown 标记符号 ✅ 2026-08-13
+  - 已实现：新增 `plugins/list-marker`，对齐 Milkdown 内置的 strong/emphasis `remarkMarker` 范式（按 mdast `position.start.offset` 回原始串取字符）。三步缺一不可：remark 插件回捞 bullet/有序标点 → `extendSchema` 给 bullet_list/ordered_list 加标记属性并改解析/序列化 runner → 自定义 list handler 优先按节点字符输出（忠实移植 mdast-util-to-markdown 的 list handler，保留 useDifferentMarker 正确性）。
+  - 范围：列表的 `-`/`*`/`+` 与有序 `1.`/`1)` 按节点保留；加粗 `**`/`__`、斜体 `*`/`_` 经核实由 Milkdown 内置 remarkMarker 端到端保留，无需额外处理。回落默认：无序 `-`、有序 `.`、加粗/斜体 `*`。
+  - 回落场景：无 position 可回捞时（工具栏/快捷键新建的列表、部分粘贴内容）用默认字符。
+  - 测试：`list-marker.test.ts`（13 用例）覆盖检测纯函数与 remark 往返；ProseMirror 文档模型的属性透传为机械的 openNode/attrs 读写，由类型与构建保证，所见即所得下的端到端往返留待实际体验。
 - [x] 文件树跟随活动文档 ✅ 2026-08-10
   - 已实现：活动文档路径变化时按规则决定就地展开定位、恢复历史根或切换到文档所在文件夹；方案见 [file-tree-follow.md](./file-tree-follow.md)。
   - 用户显式「打开文件夹」优先于跟随；展开状态按根记录，跨目录切换来回恢复。另存为经路径变化自然触发，无需单独处理。

@@ -45,6 +45,7 @@ import { findLiteralMatches, isValidTextMatch, type TextMatch } from '../find-re
 import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { frontmatter } from '../plugins/frontmatter';
+import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import '../styles/editor.css';
 import '../styles/prism.css';
@@ -126,6 +127,8 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
         ctx.update(remarkStringifyOptionsCtx, (options) => ({
           ...options,
           ...markdownStringifyOverrides,
+          // 注入自定义 list 处理器：按节点保留的 bullet 字符输出（见 plugins/list-marker）。
+          handlers: { ...options.handlers, list: listMarkerHandler },
         }));
       })
       .config((ctx) => {
@@ -145,6 +148,7 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(gfm)
       .use(frontmatter)
       .use(taskList)
+      .use(listMarker)
       .use(history)
       .use(listener)
       .use(findReplacePlugin)
