@@ -44,6 +44,7 @@ import {
   type ShortcutAction,
   type ShortcutMap,
 } from '../shared/shortcuts';
+import { evaluateLatestRelease, type UpdateCheckResult } from '../shared/update-check';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -55,6 +56,9 @@ let currentFileTreeVisible = false;
 // 快捷键映射：启动时用默认值，渲染进程加载完用户设置后通过 shortcuts:sync 覆盖。
 let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
 const PRODUCT_NAME = 'InkMark';
+const GITHUB_REPOSITORY_URL = 'https://github.com/lvtian-bot/InkMark';
+const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
+const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/lvtian-bot/InkMark/releases/latest';
 const fileWatchManager = createFileWatchManager();
 const workspaceWatchManager = createWorkspaceWatchManager();
 const imageStorage = createImageStorage();
@@ -436,32 +440,15 @@ function createMenu(): void {
       ],
     },
     {
-      label: '主题',
+      label: '编辑',
       submenu: [
-        {
-          label: 'InkMark 亮色',
-          type: 'radio',
-          checked: currentThemeId === 'inkmark-light',
-          click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-light'),
-        },
-        {
-          label: 'InkMark 暗色',
-          type: 'radio',
-          checked: currentThemeId === 'inkmark-dark',
-          click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-dark'),
-        },
-        {
-          label: 'GitHub 亮色',
-          type: 'radio',
-          checked: currentThemeId === 'github-light',
-          click: () => mainWindow?.webContents.send('menu:setTheme', 'github-light'),
-        },
-        {
-          label: 'GitHub 暗色',
-          type: 'radio',
-          checked: currentThemeId === 'github-dark',
-          click: () => mainWindow?.webContents.send('menu:setTheme', 'github-dark'),
-        },
+        { label: '撤销', role: 'undo' },
+        { label: '重做', role: 'redo' },
+        { type: 'separator' },
+        { label: '剪切', role: 'cut' },
+        { label: '复制', role: 'copy' },
+        { label: '粘贴', role: 'paste' },
+        { label: '全选', role: 'selectAll' },
       ],
     },
     {
@@ -493,11 +480,48 @@ function createMenu(): void {
       ],
     },
     {
+      label: '主题',
+      submenu: [
+        {
+          label: 'InkMark 亮色',
+          type: 'radio',
+          checked: currentThemeId === 'inkmark-light',
+          click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-light'),
+        },
+        {
+          label: 'InkMark 暗色',
+          type: 'radio',
+          checked: currentThemeId === 'inkmark-dark',
+          click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-dark'),
+        },
+        {
+          label: 'GitHub 亮色',
+          type: 'radio',
+          checked: currentThemeId === 'github-light',
+          click: () => mainWindow?.webContents.send('menu:setTheme', 'github-light'),
+        },
+        {
+          label: 'GitHub 暗色',
+          type: 'radio',
+          checked: currentThemeId === 'github-dark',
+          click: () => mainWindow?.webContents.send('menu:setTheme', 'github-dark'),
+        },
+      ],
+    },
+    {
       label: '帮助',
       submenu: [
         {
+          label: '检查更新...',
+          click: () => mainWindow?.webContents.send('menu:checkForUpdates'),
+        },
+        {
+          label: 'GitHub 仓库',
+          click: () => void shell.openExternal(GITHUB_REPOSITORY_URL),
+        },
+        {
           label: `关于 ${PRODUCT_NAME}`,
-          click: () => mainWindow?.webContents.send('menu:about'),
+          click: () => app.showAboutPanel(),
         },
       ],
     },
@@ -518,6 +542,15 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  app.setAboutPanelOptions({
+    applicationName: PRODUCT_NAME,
+    applicationVersion: `版本: ${app.getVersion()}`,
+    credits: [
+      `Electron: ${process.versions.electron}`,
+      `Chromium: ${process.versions.chrome}`,
+      `Node.js: ${process.versions.node}`,
+    ].join('\n'),
+  });
   applyNativeTheme(currentThemeId);
   createMenu();
 
@@ -723,6 +756,31 @@ ipcMain.handle('app:getInfo', (event) =>
     ? { name: PRODUCT_NAME, version: app.getVersion() }
     : { name: PRODUCT_NAME, version: '' },
 );
+
+ipcMain.handle('app:checkForUpdates', async (event): Promise<UpdateCheckResult> => {
+  const currentVersion = app.getVersion();
+  if (!isTrustedRenderer(event)) {
+    return { status: 'error', currentVersion, message: '更新检查请求来源无效。' };
+  }
+  try {
+    const response = await net.fetch(GITHUB_LATEST_RELEASE_API, {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': PRODUCT_NAME },
+    });
+    if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`);
+    return evaluateLatestRelease(currentVersion, await response.json());
+  } catch (error) {
+    return {
+      status: 'error',
+      currentVersion,
+      message: error instanceof Error ? error.message : '暂时无法连接 GitHub。',
+    };
+  }
+});
+
+ipcMain.handle('app:openReleases', (event) => {
+  if (!isTrustedRenderer(event)) return;
+  void shell.openExternal(GITHUB_RELEASES_URL);
+});
 
 ipcMain.handle('image:store', (event, request: StoreImageRequest) => {
   if (!isTrustedRenderer(event)) {

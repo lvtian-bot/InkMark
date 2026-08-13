@@ -19,6 +19,8 @@ const api = {
   removeRecentFile: (path: string) => ipcRenderer.invoke('recent:remove', path),
   clearRecentFiles: () => ipcRenderer.invoke('recent:clear'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  openReleases: () => ipcRenderer.invoke('app:openReleases'),
   getFileMtime: (path: string) => ipcRenderer.invoke('file:getMtime', { path }),
   watchFile: (path: string) => ipcRenderer.send('file:watch', { path }),
   unwatchFile: (path: string) => ipcRenderer.send('file:unwatch', { path }),
@@ -80,9 +82,9 @@ const api = {
     ipcRenderer.removeAllListeners('menu:closeTab');
     ipcRenderer.on('menu:closeTab', () => cb());
   },
-  onMenuAbout: (cb: () => void) => {
-    ipcRenderer.removeAllListeners('menu:about');
-    ipcRenderer.on('menu:about', () => cb());
+  onMenuCheckForUpdates: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:checkForUpdates');
+    ipcRenderer.on('menu:checkForUpdates', () => cb());
   },
   onMenuClose: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:close');

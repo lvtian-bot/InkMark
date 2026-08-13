@@ -19,6 +19,7 @@ export type { WorkspaceEntry } from '../../../shared/workspace-tree';
 import type { WorkspaceEntry } from '../../../shared/workspace-tree';
 export type { RecentItem, RecentKind } from '../../../shared/recent-items';
 import type { RecentItem } from '../../../shared/recent-items';
+import type { UpdateCheckResult } from '../../../shared/update-check';
 
 export interface Heading {
   id: string;
@@ -69,6 +70,8 @@ export interface InkMarkAPI {
   removeRecentFile: (path: string) => Promise<void>;
   clearRecentFiles: () => Promise<void>;
   getAppInfo: () => Promise<AppInfo>;
+  checkForUpdates: () => Promise<UpdateCheckResult>;
+  openReleases: () => Promise<void>;
   getFileMtime: (path: string) => Promise<MtimeResult>;
   watchFile: (path: string) => void;
   unwatchFile: (path: string) => void;
@@ -82,7 +85,7 @@ export interface InkMarkAPI {
   onMenuSetTheme: (cb: (themeId: string) => void) => void;
   onMenuClose: (cb: () => void) => void;
   onMenuCloseTab: (cb: () => void) => void;
-  onMenuAbout: (cb: () => void) => void;
+  onMenuCheckForUpdates: (cb: () => void) => void;
   onMenuToggleSource: (cb: () => void) => void;
   onMenuToggleOutline: (cb: () => void) => void;
   onMenuOpenFolder: (cb: () => void) => void;

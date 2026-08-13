@@ -10,7 +10,7 @@ import { TabBar } from './components/TabBar';
 import { Toolbar } from './components/Toolbar';
 import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { AboutDialog } from './components/AboutDialog';
+import { UpdateDialog } from './components/UpdateDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { FindReplaceBar } from './components/FindReplaceBar';
 import { useTheme } from './hooks/useTheme';
@@ -67,7 +67,7 @@ function AppContent() {
   const updateTab = useStore((s) => s.updateTab);
   const setSourceContent = useStore((s) => s.setSourceContent);
   const setStartPage = useStore((s) => s.setStartPage);
-  const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const switchingRef = useRef(false);
@@ -331,7 +331,6 @@ function AppContent() {
     });
     window.inkmark.onMenuSettings(() => {
       closeFindReplace();
-      setIsAboutOpen(false);
       setIsSettingsOpen(true);
     });
     if (window.inkmark.onMenuSetTheme) {
@@ -369,10 +368,10 @@ function AppContent() {
     window.inkmark.onMenuClose(() => {
       void fileOps.closeWindow();
     });
-    window.inkmark.onMenuAbout(() => {
+    window.inkmark.onMenuCheckForUpdates(() => {
       closeFindReplace();
       setIsSettingsOpen(false);
-      setIsAboutOpen(true);
+      setIsUpdateOpen(true);
     });
     window.inkmark.onOpenFilePath((path: string) => {
       void fileOps.openFilePath(path);
@@ -381,7 +380,7 @@ function AppContent() {
 
   useEffect(() => {
     const handleFindShortcut = (event: KeyboardEvent): void => {
-      if (isSettingsOpen || isAboutOpen) return;
+      if (isSettingsOpen) return;
 
       const platform = window.inkmark.platform;
       if (!isStartPage && comboMatchesEvent(event, shortcuts.find, platform)) {
@@ -405,7 +404,6 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleFindShortcut);
   }, [
     closeFindReplace,
-    isAboutOpen,
     isFindReplaceOpen,
     isSettingsOpen,
     isStartPage,
@@ -631,7 +629,7 @@ function AppContent() {
       </div>
       <ConfirmDialog />
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
-      {isAboutOpen && <AboutDialog onClose={() => setIsAboutOpen(false)} />}
+      {isUpdateOpen && <UpdateDialog onClose={() => setIsUpdateOpen(false)} />}
     </div>
   );
 }
