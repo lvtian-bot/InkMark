@@ -26,7 +26,7 @@
 - [x] 固定格式工具栏（加粗/斜体/标题/列表等，常驻编辑区顶部；支持宽/适中/窄三档宽度） ✅ 2026-08-09
 - [x] 启动默认页设置 ✅ 2026-08-09
   - 可选择开始页或空白页；新建标签页始终显示开始页。
-- [ ] 所见即所得模式：光标进入段落后，相应的标记浮现，并可编辑。
+- [ ] 所见即所得模式：光标进入段落后，相应的标记浮现，并可编辑；需求与范围见 [live-preview.md](./live-preview.md)（本阶段先做块级，行级后续评估）。
 - [x] 标签页可移动 ✅ 2026-08-09
   - 拖拽标签按左右半区判断插入位置，被拖标签半透明、目标位置显示强调色指示线；顺序仅在本次会话有效，不持久化。
 - [x] 字体排版有些密集，需探讨确定 ✅ 2026-08-10
@@ -77,7 +77,7 @@
   - 设置面板新增显示开关、左右位置（默认右）与宽度；状态栏、视图菜单和开始页均提供打开文件夹与切换入口；面板支持拖拽调整宽度（左/右两侧方向均正确）。
   - 暂不做：新建/重命名/删除等改写文件系统的操作（`shell:reveal` 已在 IPC 层预留，待后续基础操作补齐时接入）。
 - [x] 所见即所得模式下保留原始 Markdown 标记符号 ✅ 2026-08-13
-  - 已实现：新增 `plugins/list-marker`，对齐 Milkdown 内置的 strong/emphasis `remarkMarker` 范式（按 mdast `position.start.offset` 回原始串取字符）。四步：① remark 插件回捞 bullet/有序标点；② `extendSchema` 给 bullet_list/ordered_list 加标记属性并改解析/序列化 runner；③ 自定义 list handler 优先按节点字符输出（忠实移植 mdast-util-to-markdown，保留 useDifferentMarker）；④ 覆盖无序列表 inputRule（unshift 到 inputRulesCtx 最前），让所见即所得里打「\* /- /+ 」新建的列表也记下字符——内置 inputRule 不传 getAttributes，原本只取默认 '-'。
+  - 已实现：新增 `plugins/list-marker`，对齐 Milkdown 内置的 strong/emphasis `remarkMarker` 范式（按 mdast `position.start.offset` 回原始串取字符）。四步：① remark 插件回捞 bullet/有序标点；② `extendSchema` 给 bullet\_list/ordered\_list 加标记属性并改解析/序列化 runner；③ 自定义 list handler 优先按节点字符输出（忠实移植 mdast-util-to-markdown，保留 useDifferentMarker）；④ 覆盖无序列表 inputRule（unshift 到 inputRulesCtx 最前），让所见即所得里打「\* /- /+ 」新建的列表也记下字符——内置 inputRule 不传 getAttributes，原本只取默认 '-'。
   - 范围：列表 `-`/`*`/`+` 与有序 `1.`/`1)` 按节点保留（文件加载与打字新建均覆盖）；加粗 `**`/`__`、斜体 `*`/`_` 由 Milkdown 内置 remarkMarker 端到端保留。
   - 回落默认：无序 `-`、有序 `.`、加粗/斜体 `*`，用于工具栏按钮新建、无 position 可回捞的粘贴内容等场景。
   - 测试：`list-marker.test.ts`（15 用例）覆盖检测纯函数与 remark 往返；`list-marker.integration.test.ts`（happy-dom）跑真实 Milkdown parse→serialize 往返，验证「文件加载」与「打字新建」两条路径在 ProseMirror 内核里确实保留 bullet。
@@ -97,7 +97,6 @@
   - 渲染层去掉 `p::before` 伪元素 + 点击坐标判定（`event.clientX > rect.left`）这套 hack：新增 `plugins/task-list-view.ts` 用 ProseMirror widget decoration 在段落行首插入真实 `<span class="task-checkbox">`，点击由全局 handler 反推 `list_item` 位置并 `setNodeMarkup` toggle；CSS 改为针对 `.task-checkbox`。刻意不覆盖 `list_item` 的 NodeView——容器节点的 contentDOM 会破坏 `<li><p>` 结构与现有列表 CSS，widget decoration 是更小、更稳的做法（原计划「NodeView 重构」的稳定渲染目标已达成，实现手段调整为 decoration）。
   - 纯判定函数 `shouldLiftTaskItemOnBackspace` 抽出并单测（7 用例）；`npm run check` 全过。
   - 未覆盖：跨项选区删除、整项 NodeSelection 删除、剪贴板合并等低频路径仍可能串台（appendTransaction 全局纠偏的成本/风险高于收益，未做），如用户反馈再针对性补。
-- [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
 - [x] 无序列表标记显示为空心圆圈，改为实心点 ✅ 2026-08-11
   - 已实现：在 `.theme-inkmark ul` 显式设置 `list-style-type: disc`（实心点）。此前项目样式只设了缩进与行距，列表符号被 Milkdown Nord 主题兜底（Tailwind prose 派系，嵌套列表按 disc→circle→square 轮换），落到空心圆；项目选择器优先级最高，覆盖主题默认，嵌套层级也统一实心点。源码模式与任务列表不受影响。
 - [x] 文件对话框记住上次打开位置 ✅ 2026-08-12
@@ -161,3 +160,4 @@
 - [ ] 专注模式
 - [ ] 可选自动保存（默认关闭）
 - [ ] 数学公式与图表（KaTeX / Mermaid）
+- [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
