@@ -46,6 +46,7 @@ import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
+import { blockMarkerReveal } from '../plugins/block-marker-reveal';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import '../styles/editor.css';
 import '../styles/prism.css';
@@ -158,6 +159,7 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(frontmatter)
       .use(taskList)
       .use(listMarker)
+      .use(blockMarkerReveal)
       .use(history)
       .use(listener)
       .use(findReplacePlugin)
