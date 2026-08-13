@@ -383,7 +383,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       <span className="settings-field-label">标记浮现（实验性）</span>
                       <span className="settings-field-hint">
                         光标进入标题、引用或列表时，行首浮现 Markdown 标记符号（#、&gt;、-
-                        等）并可编辑。仍在完善中，可能有不稳定的体验。
+                        等）并可编辑。仍在完善中，可能有不稳定的体验，未来可能会被移除。
                       </span>
                     </span>
                     <input
