@@ -376,6 +376,28 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     />
                   </label>
 
+                  <div className="settings-group-divider" role="separator" />
+
+                  <label className="settings-field settings-field-checkbox">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">标记浮现（实验性）</span>
+                      <span className="settings-field-hint">
+                        光标进入标题、引用或列表时，行首浮现 Markdown 标记符号（#、&gt;、-
+                        等）并可编辑。仍在完善中，可能有不稳定的体验。
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={draft.blockMarkerReveal}
+                      onChange={(event) =>
+                        setDraft((settings) => ({
+                          ...settings,
+                          blockMarkerReveal: event.target.checked,
+                        }))
+                      }
+                    />
+                  </label>
+
                   <label className="settings-field">
                     <span className="settings-field-copy">
                       <span className="settings-field-label">面板布局</span>

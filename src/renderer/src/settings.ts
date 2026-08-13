@@ -42,6 +42,7 @@ export interface AppSettings {
   fileTreeVisible: boolean;
   panelLayout: PanelLayout;
   fileTreeWidth: number;
+  blockMarkerReveal: boolean;
   shortcuts: ShortcutMap;
 }
 
@@ -63,6 +64,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   fileTreeVisible: false,
   panelLayout: 'outline-left',
   fileTreeWidth: 240,
+  blockMarkerReveal: false,
   shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
 };
 
@@ -80,6 +82,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     fileTreeVisible: settings.fileTreeVisible,
     panelLayout: settings.panelLayout,
     fileTreeWidth: settings.fileTreeWidth,
+    blockMarkerReveal: settings.blockMarkerReveal,
     shortcuts: settings.shortcuts,
   };
 }
@@ -173,6 +176,10 @@ function normalizeSettings(value: unknown): AppSettings {
       ? candidate.panelLayout
       : DEFAULT_SETTINGS.panelLayout,
     fileTreeWidth: normalizeFileTreeWidth(candidate.fileTreeWidth),
+    blockMarkerReveal:
+      typeof candidate.blockMarkerReveal === 'boolean'
+        ? candidate.blockMarkerReveal
+        : DEFAULT_SETTINGS.blockMarkerReveal,
     shortcuts: normalizeShortcutMap(candidate.shortcuts),
   };
 }

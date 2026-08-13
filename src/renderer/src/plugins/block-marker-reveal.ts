@@ -1,6 +1,6 @@
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
-import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
+import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import { paragraphSchema } from '@milkdown/kit/preset/commonmark';
 
 /// 所见即所得模式下的「块级标记浮现」（参照 Typora Live Preview）。
@@ -16,7 +16,14 @@ import { paragraphSchema } from '@milkdown/kit/preset/commonmark';
 /// 一级（level 1 退化为普通段落）。列表 / 引用的退出与样式切换沿用既有工具栏与 inputRule，
 /// 不在本插件改写列表 Backspace 行为（避免重蹈任务列表属性串台的覆辙）。
 
-const blockMarkerKey = new PluginKey('inkmark-block-marker-reveal');
+const blockMarkerKey = new PluginKey<boolean>('inkmark-block-marker-reveal');
+
+/// 设置开关变化时调用：向编辑器派发带 meta 的空事务，插件 state 更新 `enabled`，
+/// 触发装饰重算。不设 `addToHistory`，开关切换不污染撤销历史。
+export function setBlockMarkerReveal(view: EditorView, enabled: boolean): void {
+  const tr = view.state.tr.setMeta(blockMarkerKey, enabled).setMeta('addToHistory', false);
+  view.dispatch(tr);
+}
 
 // ---- ProseMirror ResolvedPos / Node 的最小结构投影 ----
 //
@@ -186,16 +193,26 @@ export function buildBlockMarkerDecorations(sel: SelectionLike): Decoration[] {
 export const blockMarkerReveal = $prose((ctx) => {
   const paragraphType = paragraphSchema.type(ctx);
 
-  return new Plugin({
+  return new Plugin<boolean>({
     key: blockMarkerKey,
+    state: {
+      // 默认关闭，与设置项 blockMarkerReveal 默认值一致；由 setBlockMarkerReveal 开启。
+      init: () => false,
+      apply: (tr, prev) => {
+        const next = tr.getMeta(blockMarkerKey);
+        return typeof next === 'boolean' ? next : prev;
+      },
+    },
     props: {
       decorations(state) {
+        if (!blockMarkerKey.getState(state)) return DecorationSet.empty;
         const decos = buildBlockMarkerDecorations(state.selection);
         return decos.length > 0 ? DecorationSet.create(state.doc, decos) : DecorationSet.empty;
       },
 
-      // 标题正文起始处按 `#` → 升一级（最多 6）。IME 组合中放行。
+      // 标题正文起始处按 `#` -> 升一级（最多 6）。IME 组合中放行。开关关闭时放行。
       handleTextInput(view, from, to, text) {
+        if (!blockMarkerKey.getState(view.state)) return false;
         if (view.composing) return false;
         if (text !== '#') return false;
         if (from !== to) return false;
@@ -219,8 +236,9 @@ export const blockMarkerReveal = $prose((ctx) => {
         return true;
       },
 
-      // 标题正文起始处 Backspace → 降一级；level 1 时退化为普通段落。
+      // 标题正文起始处 Backspace -> 降一级；level 1 时退化为普通段落。开关关闭时放行。
       handleKeyDown(view, event) {
+        if (!blockMarkerKey.getState(view.state)) return false;
         if (view.composing || event.isComposing || event.keyCode === 229) return false;
         if (event.key !== 'Backspace') return false;
         if (event.ctrlKey || event.metaKey || event.altKey) return false;

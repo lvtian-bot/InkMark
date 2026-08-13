@@ -8,7 +8,7 @@ import { rootCtx, parserCtx, serializerCtx, editorViewCtx } from '@milkdown/kit/
 import { EditorState, TextSelection } from '@milkdown/kit/prose/state';
 import { listMarker } from './list-marker';
 import { taskList } from './task-list';
-import { blockMarkerReveal } from './block-marker-reveal';
+import { blockMarkerReveal, setBlockMarkerReveal } from './block-marker-reveal';
 
 // 真实 Milkdown parse→serialize 往返（经 ProseMirror 文档模型 + 真实装饰渲染）。
 // 覆盖块级标记浮现：选区进入块出现 .block-marker、移走消失、标题键势升降级、
@@ -31,7 +31,8 @@ async function makeEditor() {
   return ctx as any;
 }
 
-// 把 Markdown 装进编辑器视图，并把光标放到 from。返回更新后的 view。
+// 把 Markdown 装进编辑器视图，并把光标放到 from。默认开启标记浮现（插件 state 初始为关闭）。
+// 返回更新后的 view。
 function loadIntoView(ctx: any, md: string, from: number) {
   const parser = ctx.get(parserCtx);
   const view = ctx.get(editorViewCtx);
@@ -42,6 +43,7 @@ function loadIntoView(ctx: any, md: string, from: number) {
     selection: TextSelection.create(doc, from),
   });
   view.updateState(state);
+  setBlockMarkerReveal(view, true);
   return view;
 }
 
@@ -62,6 +64,28 @@ function firstTextStart(doc: any, type: string): number {
 }
 
 describe('块级标记浮现 ProseMirror 集成', () => {
+  it('开关关闭时：光标在标题里不浮现、# 键势不拦截', async () => {
+    const ctx = await makeEditor();
+    const parser = ctx.get(parserCtx);
+    const doc = parser('## Title');
+    const view = ctx.get(editorViewCtx);
+    // 不调用 setBlockMarkerReveal，插件保持默认关闭。
+    const state = EditorState.create({
+      doc,
+      plugins: view.state.plugins,
+      selection: TextSelection.create(doc, firstTextStart(doc, 'heading')),
+    });
+    view.updateState(state);
+
+    expect(markerTexts(view)).toEqual([]);
+
+    const tryTextInput = (view: any, from: number, to: number, text: string) =>
+      view.someProp('handleTextInput', (fn: any) => fn(view, from, to, text));
+    expect(
+      tryTextInput(view, firstTextStart(doc, 'heading'), firstTextStart(doc, 'heading'), '#'),
+    ).toBeFalsy();
+  });
+
   it('光标进入标题浮现 ## ，移到段落后消失', async () => {
     const ctx = await makeEditor();
     const parser = ctx.get(parserCtx);
