@@ -193,6 +193,52 @@ function removeRecentItem(filePath: string): void {
   writeRecentFiles(next);
 }
 
+// 上次在文件对话框中确认的路径(文件或文件夹),用作下次对话框的起始位置。
+// 与 recent-files 解耦:recent 受 10 条上限约束、服务于开始页展示;lastDialogPath
+// 单独持久化、不受条数影响,保证对话框始终能回到上次位置,不会被频繁打开的文件挤掉。
+interface DialogState {
+  lastPath: string | null;
+}
+
+let dialogStateCache: DialogState | null = null;
+
+function getDialogStatePath(): string {
+  return join(app.getPath('userData'), 'dialog-state.json');
+}
+
+function loadDialogState(): DialogState {
+  if (dialogStateCache !== null) return dialogStateCache;
+  try {
+    const statePath = getDialogStatePath();
+    if (existsSync(statePath)) {
+      const data = JSON.parse(readFileSync(statePath, 'utf-8'));
+      dialogStateCache = {
+        lastPath: typeof data?.lastPath === 'string' ? data.lastPath : null,
+      };
+    } else {
+      dialogStateCache = { lastPath: null };
+    }
+  } catch {
+    dialogStateCache = { lastPath: null };
+  }
+  return dialogStateCache;
+}
+
+function getLastDialogPath(): string | undefined {
+  return loadDialogState().lastPath ?? undefined;
+}
+
+function setLastDialogPath(path: string): void {
+  const state = loadDialogState();
+  if (state.lastPath === path) return;
+  state.lastPath = path;
+  try {
+    writeFileSync(getDialogStatePath(), JSON.stringify(state), 'utf-8');
+  } catch {
+    /* ignore write errors */
+  }
+}
+
 function getFileFromArgs(argv: string[]): string[] {
   const files: string[] = [];
   for (let i = 1; i < argv.length; i++) {
@@ -548,6 +594,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
   const result = await dialog.showOpenDialog(mainWindow, {
     filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
     properties: ['openFile', 'multiSelections'],
+    defaultPath: getLastDialogPath(),
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   const files: { path: string; content: string; mtime: number }[] = [];
@@ -561,6 +608,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
       /* skip unreadable files */
     }
   }
+  if (files.length > 0) setLastDialogPath(files[0].path);
   return files.length > 0 ? files : null;
 });
 
@@ -701,9 +749,11 @@ ipcMain.handle('dialog:openFolder', async (event) => {
   if (!isTrustedRenderer(event) || !mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
+    defaultPath: getLastDialogPath(),
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   const folderPath = result.filePaths[0];
+  setLastDialogPath(folderPath);
   addRecent(folderPath, 'folder');
   return { path: folderPath };
 });

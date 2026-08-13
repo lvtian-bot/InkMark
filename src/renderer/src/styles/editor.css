@@ -206,35 +206,35 @@
 .editor-container li[data-item-type='task'] {
   list-style: none;
 }
-/* 复选框以 inline-block 进入行内流，垂直对齐交给浏览器（vertical-align），
-   避免绝对定位手算坐标、无法跟随字号的问题。
-   悬挂缩进：p 负 margin + 负 text-indent 把复选框送进 ul 的 gutter，
-   首行文字与换行行对齐；24px 需与 ul/ol 的 padding-left 保持同步。 */
+/* 悬挂缩进：p 负 margin + 负 text-indent 把 checkbox（widget decoration 插在
+   段落行首的真实 span）送进 ul 的 gutter，首行文字与换行行对齐；
+   24px 需与 ul/ol 的 padding-left 保持同步。 */
 .editor-container li[data-item-type='task'] > p {
   margin-left: -24px;
   padding-left: 24px;
   text-indent: -24px;
 }
-.editor-container li[data-item-type='task'] > p::before {
-  content: '';
+/* 真实 checkbox（task-list-view 的 widget decoration 在段落行首插入的 span），
+   替代此前的 CSS 伪元素 + 点击坐标判定。inline-block 进入行内流，垂直对齐交给
+   浏览器；text-indent 清零对抗 p 的悬挂缩进。 */
+.editor-container .task-checkbox {
   display: inline-block;
   width: 16px;
   height: 16px;
   margin-right: 8px;
   vertical-align: text-bottom;
-  /* text-indent 可继承：p 的悬挂缩进会传进伪元素，把 ✓ 推出盒子，须在此清零 */
   text-indent: 0;
   border: 1.5px solid var(--text-tertiary);
   border-radius: 3px;
   background: transparent;
   cursor: pointer;
+  user-select: none;
   transition:
     background 0.15s,
     border-color 0.15s;
 }
-/* inline-block 是原子行内级盒子，p 的删除线不会传播进复选框 */
-.editor-container li[data-item-type='task'][data-checked='true'] > p::before {
-  content: '\2713';
+/* 已完成：实心填充 + 白色 ✓。✓ 通过 ::before 注入（span 自身无文本内容）。 */
+.editor-container .task-checkbox[data-checked='true'] {
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -242,6 +242,9 @@
   text-align: center;
   background: var(--accent);
   border-color: var(--accent);
+}
+.editor-container .task-checkbox[data-checked='true']::before {
+  content: '\2713';
 }
 .editor-container li[data-item-type='task'][data-checked='true'] > p {
   color: var(--text-tertiary);

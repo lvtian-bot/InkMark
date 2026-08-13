@@ -26,7 +26,7 @@
 - [x] 固定格式工具栏（加粗/斜体/标题/列表等，常驻编辑区顶部；支持宽/适中/窄三档宽度） ✅ 2026-08-09
 - [x] 启动默认页设置 ✅ 2026-08-09
   - 可选择开始页或空白页；新建标签页始终显示开始页。
-- [ ] 预览模式：光标进入段落后，相应的标记浮现
+- [ ] 所见即所得模式：光标进入段落后，相应的标记浮现，并可编辑。
 - [x] 标签页可移动 ✅ 2026-08-09
   - 拖拽标签按左右半区判断插入位置，被拖标签半透明、目标位置显示强调色指示线；顺序仅在本次会话有效，不持久化。
 - [x] 字体排版有些密集，需探讨确定 ✅ 2026-08-10
@@ -91,11 +91,17 @@
 - [x] 文件树容易闪烁，保存时闪烁 ✅ 2026-08-11
   - 已实现：根因在主进程 `WorkspaceWatchManager` 把应用自身保存（原子写 temp + rename）触发的目录变更当成外部变更广播。新增 `recordSelfWrite`：保存/另存为时标记文件所在工作区根，开 2 秒抑制窗口，`broadcastChange` 命中未过期记录则跳过广播；复用 shared 的 `isPathInside` 归因路径，仅抑制文件确实落在该根下的情形，正常外部变更不受影响。
   - 渲染端 `useFileTree` 收到事件不再先清空 `dirCache`，改为保留旧缓存直接重载已展开目录（stale-while-revalidate），消除"读取中…"占位闪现的残余闪烁。
-- [ ] 任务列表渲染方案重构，改为稳定的任务项 NodeView。
-  - 已知回归场景（用户反馈，2026-08-11）：删除一个未完成待办（`- [ ]`）时，相邻已完成项（`- [x]`）的 `checked` 属性被错误继承，未完成项突然显示为已完成。`1bbb69a` 只堵了行首 Delete 一路；Backspace、整项删除后的合并等路径未堵，根源在 list_item 合并时的 attrs 继承，NodeView 重构时一并彻底解。
+- [x] 任务列表渲染方案重构，改为稳定的任务项 NodeView ✅ 2026-08-12
+  - 已实现：根因是 `list_item` 合并时 ProseMirror 的 `deleteBarrier`（`before.copy(wrap)`）让结果项继承前一项 `checked`，而 Milkdown 把 Backspace/Delete 都绑到 `liftFirstListItem → joinBackward`，于是非第一项位置按 Backspace 会合并并串台。从源头绕过：任务项行首 Backspace 改走真正的 `liftListItem`（退出列表变普通段落，与空项 Enter 行为一致），不再触发合并；Delete 行首非空任务项沿用 `1bbb69a` 的「删首字符」。
+  - 渲染层去掉 `p::before` 伪元素 + 点击坐标判定（`event.clientX > rect.left`）这套 hack：新增 `plugins/task-list-view.ts` 用 ProseMirror widget decoration 在段落行首插入真实 `<span class="task-checkbox">`，点击由全局 handler 反推 `list_item` 位置并 `setNodeMarkup` toggle；CSS 改为针对 `.task-checkbox`。刻意不覆盖 `list_item` 的 NodeView——容器节点的 contentDOM 会破坏 `<li><p>` 结构与现有列表 CSS，widget decoration 是更小、更稳的做法（原计划「NodeView 重构」的稳定渲染目标已达成，实现手段调整为 decoration）。
+  - 纯判定函数 `shouldLiftTaskItemOnBackspace` 抽出并单测（7 用例）；`npm run check` 全过。
+  - 未覆盖：跨项选区删除、整项 NodeSelection 删除、剪贴板合并等低频路径仍可能串台（appendTransaction 全局纠偏的成本/风险高于收益，未做），如用户反馈再针对性补。
 - [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
 - [x] 无序列表标记显示为空心圆圈，改为实心点 ✅ 2026-08-11
   - 已实现：在 `.theme-inkmark ul` 显式设置 `list-style-type: disc`（实心点）。此前项目样式只设了缩进与行距，列表符号被 Milkdown Nord 主题兜底（Tailwind prose 派系，嵌套列表按 disc→circle→square 轮换），落到空心圆；项目选择器优先级最高，覆盖主题默认，嵌套层级也统一实心点。源码模式与任务列表不受影响。
+- [x] 文件对话框记住上次打开位置 ✅ 2026-08-12
+  - 已实现：主进程新增独立的 `dialog-state.json` 持久化「上次打开位置」（文件或文件夹），不受最近列表 10 条上限影响；「打开文件」「打开文件夹」对话框均以其为起始位置，打开成功后更新。路径不存在时由系统对话框自动回落。与 `recent-files.json` 职责分开：recent 服务开始页「最近打开」展示，dialog-state 服务对话框定位。
+  - 边界：即便频繁打开文件，文件夹定位也不会被挤掉；「另存为」暂未纳入（其对话框预填上次文件名易误覆盖，风险不同）。
 
 ## 稳定性与安全
 
