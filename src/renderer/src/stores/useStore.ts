@@ -15,6 +15,7 @@ import {
   type PanelLayout,
   type ToolbarWidth,
 } from '../settings';
+import type { LanguageSetting } from '../../../shared/i18n';
 
 export interface Tab {
   id: string;
@@ -64,6 +65,7 @@ interface InkMarkState extends AppSettings {
   setPanelLayout: (layout: PanelLayout) => void;
   setFileTreeWidth: (width: number) => void;
   setToolbarWidth: (width: ToolbarWidth) => void;
+  setLanguage: (language: LanguageSetting) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
 }
@@ -254,6 +256,9 @@ export const useStore = create<InkMarkState>((set, get) => ({
   },
   setToolbarWidth: (toolbarWidth) => {
     set(saveSettings({ ...selectSettings(get()), toolbarWidth }));
+  },
+  setLanguage: (language) => {
+    set(saveSettings({ ...selectSettings(get()), language }));
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),

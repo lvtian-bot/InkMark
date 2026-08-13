@@ -16,6 +16,7 @@ import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle, type SourceSelection } from '../source-editor-ref';
 import { promptDialog } from '../confirm-dialog';
+import { useI18n } from '../i18n';
 import { formatComboForDisplay, toDisplayPlatform } from '../../../shared/shortcuts';
 import '../styles/toolbar.css';
 
@@ -156,6 +157,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
   const saveShortcut = useStore((s) => s.shortcuts.save);
   const displayPlatform = toDisplayPlatform(window.inkmark.platform);
   const isWysiwyg = viewMode === 'wysiwyg';
+  const { t } = useI18n();
 
   const handleUndo = (): void => {
     if (isWysiwyg) {
@@ -258,9 +260,9 @@ export function Toolbar({ onSave }: ToolbarProps) {
   };
 
   const handleLink = async (): Promise<void> => {
-    const href = await promptDialog('插入链接', '请输入链接地址：', {
+    const href = await promptDialog(t('toolbar.insertLinkTitle'), t('toolbar.insertLinkPrompt'), {
       placeholder: 'https://',
-      confirmLabel: '插入',
+      confirmLabel: t('toolbar.insertLinkConfirm'),
     });
     if (!href) return;
     if (isWysiwyg) {
@@ -270,7 +272,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
       if (!handle) return;
       const text = handle.getValue();
       const { from, to } = handle.getSelection();
-      const selected = text.slice(from, to) || '链接文本';
+      const selected = text.slice(from, to) || t('toolbar.linkText');
       const insert = `[${selected}](${href})`;
       applySourceEdit({
         text: text.slice(0, from) + insert + text.slice(to),
@@ -290,7 +292,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
       const lineStart = text.lastIndexOf('\n', from - 1) + 1;
       const needsNewline = lineStart > 0 && text[lineStart - 1] !== '\n';
       const prefix = needsNewline ? '\n' : '';
-      const table = prefix + '| 列1 | 列2 | 列3 |\n| --- | --- | --- |\n|  |  |  |\n|  |  |  |\n';
+      const table = prefix + t('toolbar.tableTemplate');
       applySourceEdit({
         text: text.slice(0, lineStart) + table + text.slice(lineStart),
         selection: { from: lineStart + table.length, to: lineStart + table.length },
@@ -301,24 +303,24 @@ export function Toolbar({ onSave }: ToolbarProps) {
   return (
     <div className={`toolbar toolbar-width-${toolbarWidth}`}>
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleUndo} title="撤销 (Ctrl+Z)">
+        <button className="toolbar-btn" onClick={handleUndo} title={t('toolbar.undo')}>
           <Undo2 size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleRedo} title="重做 (Ctrl+Y)">
+        <button className="toolbar-btn" onClick={handleRedo} title={t('toolbar.redo')}>
           <Redo2 size={16} />
         </button>
       </div>
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleBold} title="加粗 (Ctrl+B)">
+        <button className="toolbar-btn" onClick={handleBold} title={t('toolbar.bold')}>
           <Bold size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleItalic} title="斜体 (Ctrl+I)">
+        <button className="toolbar-btn" onClick={handleItalic} title={t('toolbar.italic')}>
           <Italic size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleStrike} title="删除线">
+        <button className="toolbar-btn" onClick={handleStrike} title={t('toolbar.strikethrough')}>
           <Strikethrough size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleInlineCode} title="行内代码">
+        <button className="toolbar-btn" onClick={handleInlineCode} title={t('toolbar.inlineCode')}>
           <Code size={16} />
         </button>
       </div>
@@ -326,41 +328,41 @@ export function Toolbar({ onSave }: ToolbarProps) {
         <button
           className="toolbar-btn toolbar-heading"
           onClick={() => handleHeading(1)}
-          title="一级标题"
+          title={t('toolbar.heading1')}
         >
           H1
         </button>
         <button
           className="toolbar-btn toolbar-heading"
           onClick={() => handleHeading(2)}
-          title="二级标题"
+          title={t('toolbar.heading2')}
         >
           H2
         </button>
         <button
           className="toolbar-btn toolbar-heading"
           onClick={() => handleHeading(3)}
-          title="三级标题"
+          title={t('toolbar.heading3')}
         >
           H3
         </button>
       </div>
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleBulletList} title="无序列表">
+        <button className="toolbar-btn" onClick={handleBulletList} title={t('toolbar.bulletList')}>
           <List size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleTaskList} title="待办任务">
+        <button className="toolbar-btn" onClick={handleTaskList} title={t('toolbar.taskList')}>
           <CircleCheck size={16} />
         </button>
       </div>
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleCodeBlock} title="代码块">
+        <button className="toolbar-btn" onClick={handleCodeBlock} title={t('toolbar.codeBlock')}>
           <Code2 size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleLink} title="链接">
+        <button className="toolbar-btn" onClick={handleLink} title={t('toolbar.link')}>
           <Link2 size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleTable} title="表格">
+        <button className="toolbar-btn" onClick={handleTable} title={t('toolbar.table')}>
           <Table size={16} />
         </button>
       </div>
@@ -368,7 +370,9 @@ export function Toolbar({ onSave }: ToolbarProps) {
         <button
           className={`toolbar-btn${isDirty ? ' active' : ''}`}
           onClick={onSave}
-          title={`保存 (${formatComboForDisplay(saveShortcut, displayPlatform)})`}
+          title={t('toolbar.save', {
+            shortcut: formatComboForDisplay(saveShortcut, displayPlatform),
+          })}
         >
           <Save size={16} />
         </button>

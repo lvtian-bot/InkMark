@@ -11,6 +11,7 @@ import {
   isLineHeightPresetId,
 } from '../font-presets';
 import { useStore } from '../stores/useStore';
+import { useI18n } from '../i18n';
 import { isThemeId } from '../types';
 import {
   DEFAULT_SHORTCUT_MAP,
@@ -32,15 +33,8 @@ interface SettingsDialogProps {
 
 type SettingsSection = 'appearance' | 'font' | 'editor' | 'startup' | 'shortcuts';
 
-const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string }> = [
-  { id: 'appearance', label: '外观' },
-  { id: 'font', label: '字体' },
-  { id: 'editor', label: '编辑器' },
-  { id: 'startup', label: '启动' },
-  { id: 'shortcuts', label: '快捷键' },
-];
-
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
+  const { t, locale } = useI18n();
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -50,6 +44,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
   const applySettings = useStore((state) => state.applySettings);
   const displayPlatform = toDisplayPlatform(window.inkmark.platform);
+
+  const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string }> = [
+    { id: 'appearance', label: t('settings.section.appearance') },
+    { id: 'font', label: t('settings.section.font') },
+    { id: 'editor', label: t('settings.section.editor') },
+    { id: 'startup', label: t('settings.section.startup') },
+    { id: 'shortcuts', label: t('settings.section.shortcuts') },
+  ];
+  const listSeparator = locale === 'zh-CN' ? '、' : ', ';
 
   useEffect(() => {
     const previouslyFocused = document.activeElement;
@@ -158,17 +161,17 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         <header className="settings-header">
           <div>
             <h2 id={titleId} className="settings-title">
-              设置
+              {t('settings.title')}
             </h2>
             <p id={descriptionId} className="settings-description">
-              调整 InkMark 的外观、字体、编辑器与启动行为。
+              {t('settings.description')}
             </p>
           </div>
           <button
             className="settings-icon-button"
             type="button"
             onClick={onClose}
-            aria-label="关闭设置"
+            aria-label={t('settings.closeAria')}
           >
             ×
           </button>
@@ -176,7 +179,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         <form className="settings-form" onSubmit={handleSubmit}>
           <div className="settings-body">
-            <nav className="settings-nav" aria-label="设置分类">
+            <nav className="settings-nav" aria-label={t('settings.navAria')}>
               {SECTIONS.map((section) => (
                 <button
                   key={section.id}
@@ -192,12 +195,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             <div ref={contentRef} className="settings-content">
               {activeSection === 'appearance' && (
                 <fieldset className="settings-group">
-                  <legend>外观</legend>
+                  <legend>{t('settings.section.appearance')}</legend>
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">主题</span>
+                      <span className="settings-field-label">
+                        {t('settings.appearance.themeLabel')}
+                      </span>
                       <span className="settings-field-hint">
-                        控制整体明暗与正文排版风格，与主题菜单一致。
+                        {t('settings.appearance.themeHint')}
                       </span>
                     </span>
                     <select
@@ -209,18 +214,44 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         }
                       }}
                     >
-                      <option value="inkmark-light">InkMark 亮色</option>
-                      <option value="inkmark-dark">InkMark 暗色</option>
-                      <option value="github-light">GitHub 亮色</option>
-                      <option value="github-dark">GitHub 暗色</option>
+                      <option value="inkmark-light">{t('theme.inkmarkLight')}</option>
+                      <option value="inkmark-dark">{t('theme.inkmarkDark')}</option>
+                      <option value="github-light">{t('theme.githubLight')}</option>
+                      <option value="github-dark">{t('theme.githubDark')}</option>
                     </select>
                   </label>
 
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">工具栏宽度</span>
+                      <span className="settings-field-label">
+                        {t('settings.appearance.languageLabel')}
+                      </span>
                       <span className="settings-field-hint">
-                        调整工具栏外框宽度，不影响正文宽度。
+                        {t('settings.appearance.languageHint')}
+                      </span>
+                    </span>
+                    <select
+                      value={draft.language}
+                      onChange={(event) => {
+                        const language = event.target.value;
+                        if (language === 'system' || language === 'zh-CN' || language === 'en') {
+                          setDraft((settings) => ({ ...settings, language }));
+                        }
+                      }}
+                    >
+                      <option value="system">{t('settings.appearance.languageSystem')}</option>
+                      <option value="zh-CN">{t('settings.appearance.languageZh')}</option>
+                      <option value="en">{t('settings.appearance.languageEn')}</option>
+                    </select>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.appearance.toolbarWidthLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.appearance.toolbarWidthHint')}
                       </span>
                     </span>
                     <select
@@ -232,9 +263,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         }
                       }}
                     >
-                      <option value="wide">宽</option>
-                      <option value="medium">适中</option>
-                      <option value="narrow">窄</option>
+                      <option value="wide">{t('settings.appearance.toolbarWide')}</option>
+                      <option value="medium">{t('settings.appearance.toolbarMedium')}</option>
+                      <option value="narrow">{t('settings.appearance.toolbarNarrow')}</option>
                     </select>
                   </label>
                 </fieldset>
@@ -242,13 +273,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
               {activeSection === 'font' && (
                 <fieldset className="settings-group">
-                  <legend>字体</legend>
+                  <legend>{t('settings.section.font')}</legend>
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">正文字体</span>
-                      <span className="settings-field-hint">
-                        编辑区的中文字体；所选字体需系统已安装，未安装时会自动回落到系统默认。
-                      </span>
+                      <span className="settings-field-label">{t('settings.font.fontLabel')}</span>
+                      <span className="settings-field-hint">{t('settings.font.fontHint')}</span>
                     </span>
                     <select
                       value={draft.fontPreset}
@@ -261,7 +290,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     >
                       {FONT_PRESETS.map((preset) => (
                         <option key={preset.id} value={preset.id}>
-                          {preset.label}
+                          {t(preset.labelKey)}
                         </option>
                       ))}
                     </select>
@@ -269,8 +298,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">字号</span>
-                      <span className="settings-field-hint">编辑区正文与标题会同步缩放。</span>
+                      <span className="settings-field-label">{t('settings.font.sizeLabel')}</span>
+                      <span className="settings-field-hint">{t('settings.font.sizeHint')}</span>
                     </span>
                     <select
                       value={draft.fontSizePreset}
@@ -283,7 +312,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     >
                       {FONT_SIZE_PRESETS.map((preset) => (
                         <option key={preset.id} value={preset.id}>
-                          {preset.label}
+                          {t(preset.labelKey)}
                         </option>
                       ))}
                     </select>
@@ -291,8 +320,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">行距</span>
-                      <span className="settings-field-hint">调整正文行与行之间的距离。</span>
+                      <span className="settings-field-label">
+                        {t('settings.font.lineHeightLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.font.lineHeightHint')}
+                      </span>
                     </span>
                     <select
                       value={draft.lineHeightPreset}
@@ -305,7 +338,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     >
                       {LINE_HEIGHT_PRESETS.map((preset) => (
                         <option key={preset.id} value={preset.id}>
-                          {preset.label}
+                          {t(preset.labelKey)}
                         </option>
                       ))}
                     </select>
@@ -313,8 +346,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">字间距</span>
-                      <span className="settings-field-hint">调整正文字符之间的松紧程度。</span>
+                      <span className="settings-field-label">
+                        {t('settings.font.letterSpacingLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.font.letterSpacingHint')}
+                      </span>
                     </span>
                     <select
                       value={draft.letterSpacingPreset}
@@ -327,7 +364,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     >
                       {LETTER_SPACING_PRESETS.map((preset) => (
                         <option key={preset.id} value={preset.id}>
-                          {preset.label}
+                          {t(preset.labelKey)}
                         </option>
                       ))}
                     </select>
@@ -337,11 +374,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
               {activeSection === 'editor' && (
                 <fieldset className="settings-group">
-                  <legend>编辑器</legend>
+                  <legend>{t('settings.section.editor')}</legend>
                   <label className="settings-field settings-field-checkbox">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">显示大纲</span>
-                      <span className="settings-field-hint">启动时在编辑区左侧显示文档结构。</span>
+                      <span className="settings-field-label">
+                        {t('settings.editor.outlineVisibleLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.editor.outlineVisibleHint')}
+                      </span>
                     </span>
                     <input
                       type="checkbox"
@@ -359,9 +400,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                   <label className="settings-field settings-field-checkbox">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">显示文件树</span>
+                      <span className="settings-field-label">
+                        {t('settings.editor.fileTreeVisibleLabel')}
+                      </span>
                       <span className="settings-field-hint">
-                        打开后可浏览文件夹内的 Markdown 文档，默认从状态栏或视图菜单切换。
+                        {t('settings.editor.fileTreeVisibleHint')}
                       </span>
                     </span>
                     <input
@@ -380,10 +423,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                   <label className="settings-field settings-field-checkbox">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">标记浮现（实验性）</span>
+                      <span className="settings-field-label">
+                        {t('settings.editor.blockMarkerLabel')}
+                      </span>
                       <span className="settings-field-hint">
-                        光标进入标题、引用或列表时，行首浮现 Markdown 标记符号（#、&gt;、-
-                        等）并可编辑。仍在完善中，可能有不稳定的体验，未来可能会被移除。
+                        {t('settings.editor.blockMarkerHint')}
                       </span>
                     </span>
                     <input
@@ -400,9 +444,11 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">面板布局</span>
+                      <span className="settings-field-label">
+                        {t('settings.editor.panelLayoutLabel')}
+                      </span>
                       <span className="settings-field-hint">
-                        选择大纲靠左还是靠右，文件树自动放在另一侧。是否显示由上面的开关单独控制。
+                        {t('settings.editor.panelLayoutHint')}
                       </span>
                     </span>
                     <select
@@ -414,8 +460,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         }
                       }}
                     >
-                      <option value="outline-left">大纲左 / 文件树右</option>
-                      <option value="outline-right">大纲右 / 文件树左</option>
+                      <option value="outline-left">
+                        {t('settings.editor.panelLayoutOutlineLeft')}
+                      </option>
+                      <option value="outline-right">
+                        {t('settings.editor.panelLayoutOutlineRight')}
+                      </option>
                     </select>
                   </label>
                 </fieldset>
@@ -423,13 +473,13 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
               {activeSection === 'startup' && (
                 <fieldset className="settings-group">
-                  <legend>启动</legend>
+                  <legend>{t('settings.section.startup')}</legend>
                   <label className="settings-field">
                     <span className="settings-field-copy">
-                      <span className="settings-field-label">启动初始页</span>
-                      <span className="settings-field-hint">
-                        应用启动时显示开始页还是空白编辑器；新建标签页始终显示开始页。
+                      <span className="settings-field-label">
+                        {t('settings.startup.pageLabel')}
                       </span>
+                      <span className="settings-field-hint">{t('settings.startup.pageHint')}</span>
                     </span>
                     <select
                       value={draft.startPageOnLaunch ? 'start' : 'blank'}
@@ -440,8 +490,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         }))
                       }
                     >
-                      <option value="start">开始页</option>
-                      <option value="blank">空白页</option>
+                      <option value="start">{t('settings.startup.pageStart')}</option>
+                      <option value="blank">{t('settings.startup.pageBlank')}</option>
                     </select>
                   </label>
                 </fieldset>
@@ -449,18 +499,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
               {activeSection === 'shortcuts' && (
                 <fieldset className="settings-group">
-                  <legend>快捷键</legend>
+                  <legend>{t('settings.section.shortcuts')}</legend>
                   <div className="settings-shortcuts-toolbar">
-                    <span className="settings-field-hint">
-                      点击「录入」后按下组合键（需含 Ctrl 或 Cmd），Esc
-                      取消。加粗、斜体等格式键沿用编辑器默认，不在此配置。
-                    </span>
+                    <span className="settings-field-hint">{t('settings.shortcuts.hint')}</span>
                     <button
                       type="button"
                       className="settings-link-button"
                       onClick={resetAllShortcuts}
                     >
-                      全部重置
+                      {t('settings.shortcuts.resetAll')}
                     </button>
                   </div>
                   <ul className="settings-shortcut-list">
@@ -476,14 +523,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                           className={`settings-shortcut-row${conflictWith.length > 0 ? ' is-conflict' : ''}${isRecording ? ' is-recording' : ''}`}
                         >
                           <div className="settings-shortcut-info">
-                            <span className="settings-shortcut-label">{meta.label}</span>
-                            {meta.hint && (
-                              <span className="settings-shortcut-hint">{meta.hint}</span>
+                            <span className="settings-shortcut-label">{t(meta.labelKey)}</span>
+                            {meta.hintKey && (
+                              <span className="settings-shortcut-hint">{t(meta.hintKey)}</span>
                             )}
                           </div>
                           <div className="settings-shortcut-control">
                             {isRecording ? (
-                              <span className="settings-shortcut-recording">按下组合键…</span>
+                              <span className="settings-shortcut-recording">
+                                {t('settings.shortcuts.recording')}
+                              </span>
                             ) : (
                               <kbd className="settings-shortcut-keys">
                                 {formatComboForDisplay(combo, displayPlatform)}
@@ -494,7 +543,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                               className="settings-shortcut-btn"
                               onClick={() => setRecordingAction(isRecording ? null : action)}
                             >
-                              {isRecording ? '取消' : '录入'}
+                              {isRecording ? t('common.cancel') : t('settings.shortcuts.record')}
                             </button>
                             <button
                               type="button"
@@ -502,14 +551,16 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                               onClick={() => resetShortcut(action)}
                               disabled={unchanged}
                             >
-                              重置
+                              {t('settings.shortcuts.reset')}
                             </button>
                           </div>
                           {conflictWith.length > 0 && (
                             <span className="settings-shortcut-conflict">
-                              {`与「${conflictWith
-                                .map((a) => SHORTCUT_ACTION_META[a].label)
-                                .join('、')}」冲突`}
+                              {t('settings.shortcuts.conflict', {
+                                names: conflictWith
+                                  .map((a) => t(SHORTCUT_ACTION_META[a].labelKey))
+                                  .join(listSeparator),
+                              })}
                             </span>
                           )}
                         </li>
@@ -527,15 +578,15 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               type="button"
               onClick={onClose}
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               className="settings-button settings-button-primary"
               type="submit"
               disabled={hasShortcutConflict}
-              title={hasShortcutConflict ? '存在快捷键冲突，请先解决' : undefined}
+              title={hasShortcutConflict ? t('settings.shortcuts.conflictTitle') : undefined}
             >
-              确定
+              {t('common.ok')}
             </button>
           </footer>
         </form>

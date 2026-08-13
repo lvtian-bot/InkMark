@@ -47,6 +47,14 @@ import {
   type ShortcutMap,
 } from '../shared/shortcuts';
 import type { UpdateState } from '../shared/update-state';
+import {
+  normalizeLanguageSetting,
+  resolveLocale,
+  translateByLocale,
+  type LanguageSetting,
+  type LocaleId,
+  type MessageKey,
+} from '../shared/i18n';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -57,16 +65,22 @@ let currentOutlineVisible = true;
 let currentFileTreeVisible = false;
 // 快捷键映射：启动时用默认值，渲染进程加载完用户设置后通过 shortcuts:sync 覆盖。
 let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
+// 语言：启动时跟随系统；渲染进程加载完用户设置后通过 language:sync 覆盖。
+let currentLanguage: LanguageSetting = 'system';
+let currentLocale: LocaleId = resolveLocale(currentLanguage, app.getLocale());
+const t = (key: MessageKey, params?: Record<string, string | number>): string =>
+  translateByLocale(currentLocale, key, params);
 const PRODUCT_NAME = 'InkMark';
 const GITHUB_REPOSITORY_URL = 'https://github.com/lvtian-bot/InkMark';
 const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
 const fileWatchManager = createFileWatchManager();
 const workspaceWatchManager = createWorkspaceWatchManager();
-const imageStorage = createImageStorage();
+const imageStorage = createImageStorage({ t });
 const updateService = createUpdateService({
   adapter: autoUpdater,
   currentVersion: app.getVersion(),
   supported: process.platform === 'win32' && app.isPackaged,
+  t,
   onStateChange: (state) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('app:update-state', state);
@@ -409,110 +423,110 @@ function shortcutAccelerator(action: ShortcutAction): string {
 function createMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: '文件',
+      label: t('menu.file'),
       submenu: [
         {
-          label: '新建',
+          label: t('menu.new'),
           accelerator: shortcutAccelerator('newFile'),
           click: () => mainWindow?.webContents.send('menu:new'),
         },
         {
-          label: '打开...',
+          label: t('menu.open'),
           accelerator: shortcutAccelerator('openFile'),
           click: () => mainWindow?.webContents.send('menu:open'),
         },
         {
-          label: '打开文件夹…',
+          label: t('menu.openFolder'),
           accelerator: shortcutAccelerator('openFolder'),
           click: () => mainWindow?.webContents.send('menu:openFolder'),
         },
         {
-          label: '关闭标签页',
+          label: t('menu.closeTab'),
           accelerator: shortcutAccelerator('closeTab'),
           click: () => mainWindow?.webContents.send('menu:closeTab'),
         },
         { type: 'separator' },
         {
-          label: '保存',
+          label: t('menu.save'),
           accelerator: shortcutAccelerator('save'),
           click: () => mainWindow?.webContents.send('menu:save'),
         },
         {
-          label: '另存为...',
+          label: t('menu.saveAs'),
           accelerator: shortcutAccelerator('saveAs'),
           click: () => mainWindow?.webContents.send('menu:saveAs'),
         },
         { type: 'separator' },
         {
-          label: '设置...',
+          label: t('menu.settings'),
           accelerator: shortcutAccelerator('settings'),
           click: () => mainWindow?.webContents.send('menu:settings'),
         },
       ],
     },
     {
-      label: '编辑',
+      label: t('menu.edit'),
       submenu: [
-        { label: '撤销', role: 'undo' },
-        { label: '重做', role: 'redo' },
+        { label: t('menu.undo'), role: 'undo' },
+        { label: t('menu.redo'), role: 'redo' },
         { type: 'separator' },
-        { label: '剪切', role: 'cut' },
-        { label: '复制', role: 'copy' },
-        { label: '粘贴', role: 'paste' },
-        { label: '全选', role: 'selectAll' },
+        { label: t('menu.cut'), role: 'cut' },
+        { label: t('menu.copy'), role: 'copy' },
+        { label: t('menu.paste'), role: 'paste' },
+        { label: t('menu.selectAll'), role: 'selectAll' },
       ],
     },
     {
-      label: '视图',
+      label: t('menu.view'),
       submenu: [
         {
-          label: '大纲',
+          label: t('menu.outline'),
           type: 'checkbox',
           checked: currentOutlineVisible,
           click: () => mainWindow?.webContents.send('menu:toggleOutline'),
         },
         {
-          label: '文件树',
+          label: t('menu.fileTree'),
           type: 'checkbox',
           checked: currentFileTreeVisible,
           click: () => mainWindow?.webContents.send('menu:toggleFileTree'),
         },
         {
-          label: '源码模式',
+          label: t('menu.sourceMode'),
           accelerator: shortcutAccelerator('toggleSource'),
           type: 'checkbox',
           checked: currentSourceMode,
           click: () => mainWindow?.webContents.send('menu:toggleSource'),
         },
         { type: 'separator' },
-        { label: '放大', role: 'zoomIn' },
-        { label: '缩小', role: 'zoomOut' },
-        { label: '重置缩放', role: 'resetZoom' },
+        { label: t('menu.zoomIn'), role: 'zoomIn' },
+        { label: t('menu.zoomOut'), role: 'zoomOut' },
+        { label: t('menu.resetZoom'), role: 'resetZoom' },
       ],
     },
     {
-      label: '主题',
+      label: t('menu.theme'),
       submenu: [
         {
-          label: 'InkMark 亮色',
+          label: t('menu.themeInkmarkLight'),
           type: 'radio',
           checked: currentThemeId === 'inkmark-light',
           click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-light'),
         },
         {
-          label: 'InkMark 暗色',
+          label: t('menu.themeInkmarkDark'),
           type: 'radio',
           checked: currentThemeId === 'inkmark-dark',
           click: () => mainWindow?.webContents.send('menu:setTheme', 'inkmark-dark'),
         },
         {
-          label: 'GitHub 亮色',
+          label: t('menu.themeGithubLight'),
           type: 'radio',
           checked: currentThemeId === 'github-light',
           click: () => mainWindow?.webContents.send('menu:setTheme', 'github-light'),
         },
         {
-          label: 'GitHub 暗色',
+          label: t('menu.themeGithubDark'),
           type: 'radio',
           checked: currentThemeId === 'github-dark',
           click: () => mainWindow?.webContents.send('menu:setTheme', 'github-dark'),
@@ -520,18 +534,18 @@ function createMenu(): void {
       ],
     },
     {
-      label: '帮助',
+      label: t('menu.help'),
       submenu: [
         {
-          label: '检查更新...',
+          label: t('menu.checkForUpdates'),
           click: () => mainWindow?.webContents.send('menu:checkForUpdates'),
         },
         {
-          label: 'GitHub 仓库',
+          label: t('menu.githubRepository'),
           click: () => void shell.openExternal(GITHUB_REPOSITORY_URL),
         },
         {
-          label: `关于 ${PRODUCT_NAME}`,
+          label: t('menu.about', { name: PRODUCT_NAME }),
           click: () => app.showAboutPanel(),
         },
       ],
@@ -555,7 +569,7 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(() => {
   app.setAboutPanelOptions({
     applicationName: PRODUCT_NAME,
-    applicationVersion: `版本: ${app.getVersion()}`,
+    applicationVersion: t('about.version', { version: app.getVersion() }),
     credits: [
       `Electron: ${process.versions.electron}`,
       `Chromium: ${process.versions.chrome}`,
@@ -624,6 +638,24 @@ ipcMain.on('shortcuts:sync', (event, shortcuts: unknown) => {
   createMenu();
 });
 
+ipcMain.on('language:sync', (event, language: unknown) => {
+  if (!isTrustedRenderer(event)) return;
+  const next = normalizeLanguageSetting(language);
+  if (next === currentLanguage) return;
+  currentLanguage = next;
+  currentLocale = resolveLocale(next, app.getLocale());
+  createMenu();
+  app.setAboutPanelOptions({
+    applicationName: PRODUCT_NAME,
+    applicationVersion: t('about.version', { version: app.getVersion() }),
+    credits: [
+      `Electron: ${process.versions.electron}`,
+      `Chromium: ${process.versions.chrome}`,
+      `Node.js: ${process.versions.node}`,
+    ].join('\n'),
+  });
+});
+
 ipcMain.on('menu:popup', (event) => {
   if (!isTrustedRenderer(event)) return;
   const menu = Menu.getApplicationMenu();
@@ -658,7 +690,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
 
 ipcMain.handle('file:save', async (event, request: unknown) => {
   if (!isTrustedRenderer(event) || !isSaveFileRequest(request)) {
-    throw new Error('无效的文件保存请求。');
+    throw new Error('Invalid file save request.');
   }
   const { content, path, knownMtime, force } = request;
   if (!force && knownMtime != null) {
@@ -678,7 +710,7 @@ ipcMain.handle('file:save', async (event, request: unknown) => {
 
 ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   if (!isTrustedRenderer(event) || !isSaveAsRequest(request)) {
-    throw new Error('无效的另存为请求。');
+    throw new Error('Invalid save-as request.');
   }
   const { content, sourcePath } = request;
   if (!mainWindow) return null;
@@ -771,7 +803,7 @@ ipcMain.handle('app:getInfo', (event) =>
 ipcMain.handle('app:getUpdateState', (event): UpdateState =>
   isTrustedRenderer(event)
     ? updateService.getState()
-    : { status: 'error', currentVersion: app.getVersion(), message: '更新请求来源无效。' },
+    : { status: 'error', currentVersion: app.getVersion(), message: t('update.requestInvalid') },
 );
 
 ipcMain.handle('app:checkForUpdates', (event): Promise<UpdateState> => {
@@ -779,7 +811,7 @@ ipcMain.handle('app:checkForUpdates', (event): Promise<UpdateState> => {
     return Promise.resolve({
       status: 'error',
       currentVersion: app.getVersion(),
-      message: '更新请求来源无效。',
+      message: t('update.requestInvalid'),
     });
   }
   return updateService.check();
@@ -790,7 +822,7 @@ ipcMain.handle('app:downloadUpdate', (event): Promise<UpdateState> => {
     return Promise.resolve({
       status: 'error',
       currentVersion: app.getVersion(),
-      message: '更新请求来源无效。',
+      message: t('update.requestInvalid'),
     });
   }
   return updateService.download();
@@ -811,21 +843,21 @@ ipcMain.handle('app:openReleases', (event) => {
 
 ipcMain.handle('image:store', (event, request: StoreImageRequest) => {
   if (!isTrustedRenderer(event)) {
-    return { status: 'error', code: 'storage-failed', message: '图片请求来源无效。' } as const;
+    return { status: 'error', code: 'storage-failed', message: t('image.requestInvalid') } as const;
   }
   return imageStorage.store(request);
 });
 
 ipcMain.handle('image:discard', (event, request: DiscardStoredImageRequest) => {
   if (!isTrustedRenderer(event)) {
-    return { status: 'error', message: '图片请求来源无效。' } as const;
+    return { status: 'error', message: t('image.requestInvalid') } as const;
   }
   return imageStorage.discard(request);
 });
 
 ipcMain.handle('image:resolveSource', (event, request: ResolveImageSourceRequest) => {
   if (!isTrustedRenderer(event)) {
-    return { status: 'error', code: 'invalid-source', message: '图片请求来源无效。' } as const;
+    return { status: 'error', code: 'invalid-source', message: t('image.requestInvalid') } as const;
   }
   return imageStorage.resolveSource(request);
 });

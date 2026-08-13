@@ -1,6 +1,7 @@
 import { ChevronRight, FileText, Folder, FolderOpen, RefreshCw } from 'lucide-react';
 import type { WorkspaceEntry } from '../types';
 import type { useFileTree } from '../hooks/useFileTree';
+import { useI18n } from '../i18n';
 import '../styles/file-tree.css';
 
 interface FileTreeProps {
@@ -87,6 +88,7 @@ function FileTreeRow({
 
 export function FileTree({ state, side, activeFilePath, onOpenFile }: FileTreeProps) {
   const { rootPath, dirCache, expanded, loadingDirs, toggleExpand, openFolderDialog } = state;
+  const { t } = useI18n();
   const rootEntries = rootPath ? dirCache.get(rootPath) : undefined;
 
   const handleOpenFolder = () => void openFolderDialog();
@@ -95,13 +97,13 @@ export function FileTree({ state, side, activeFilePath, onOpenFile }: FileTreePr
     <aside className={`file-tree side-${side}`}>
       <header className="file-tree-header">
         <span className="file-tree-title">
-          {rootPath ? rootPath.split(/[/\\]/).pop() : '文件树'}
+          {rootPath ? rootPath.split(/[/\\]/).pop() : t('fileTree.title')}
         </span>
         <button
           type="button"
           className="file-tree-action"
           onClick={handleOpenFolder}
-          title="打开文件夹"
+          title={t('fileTree.openFolder')}
         >
           <Folder size={14} />
         </button>
@@ -110,19 +112,19 @@ export function FileTree({ state, side, activeFilePath, onOpenFile }: FileTreePr
         {!rootPath ? (
           <div className="file-tree-empty">
             <Folder size={28} className="file-tree-empty-icon" />
-            <p className="file-tree-empty-text">未打开文件夹</p>
+            <p className="file-tree-empty-text">{t('fileTree.empty')}</p>
             <button type="button" className="file-tree-empty-btn" onClick={handleOpenFolder}>
-              打开文件夹
+              {t('fileTree.openFolder')}
             </button>
           </div>
         ) : !rootEntries ? (
           <div className="file-tree-empty">
             <RefreshCw size={20} className="file-tree-spinner" />
-            <p className="file-tree-empty-text">读取中…</p>
+            <p className="file-tree-empty-text">{t('fileTree.loading')}</p>
           </div>
         ) : rootEntries.length === 0 ? (
           <div className="file-tree-empty">
-            <p className="file-tree-empty-text">此文件夹为空</p>
+            <p className="file-tree-empty-text">{t('fileTree.folderEmpty')}</p>
           </div>
         ) : (
           <ul className="file-tree-list">

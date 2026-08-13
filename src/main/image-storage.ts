@@ -22,6 +22,9 @@ import type {
   StoreImageRequest,
   StoreImageResult,
 } from '../shared/image-storage';
+import type { MessageKey } from '../shared/i18n';
+
+export type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
 const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
@@ -87,26 +90,32 @@ function getDocumentDirectory(documentPath: string | null): string | null {
 
 function errorResult(
   code: Extract<StoreImageResult, { status: 'error' }>['code'],
-  message: string,
+  t: Translate,
+  key: MessageKey,
+  params?: Record<string, string | number>,
 ): StoreImageResult {
-  return { status: 'error', code, message };
+  return { status: 'error', code, message: t(key, params) };
 }
 
 function ensureSafeDirectory(directoryPath: string): void {
   mkdirSync(directoryPath, { recursive: true });
   const stats = lstatSync(directoryPath);
   if (!stats.isDirectory() || stats.isSymbolicLink()) {
-    throw new Error('附件目录不是安全的本地目录。');
+    throw new Error('The attachment directory is not a safe local directory.');
   }
 }
 
-function copyDirectoryWithoutOverwrite(sourceDirectory: string, targetDirectory: string): void {
+function copyDirectoryWithoutOverwrite(
+  sourceDirectory: string,
+  targetDirectory: string,
+  t: Translate,
+): void {
   ensureSafeDirectory(targetDirectory);
   for (const entry of readdirSync(sourceDirectory, { withFileTypes: true })) {
     const sourcePath = join(sourceDirectory, entry.name);
     const targetPath = join(targetDirectory, entry.name);
     if (entry.isDirectory()) {
-      copyDirectoryWithoutOverwrite(sourcePath, targetPath);
+      copyDirectoryWithoutOverwrite(sourcePath, targetPath, t);
       continue;
     }
     if (!entry.isFile()) continue;
@@ -114,7 +123,9 @@ function copyDirectoryWithoutOverwrite(sourceDirectory: string, targetDirectory:
     const copyResult = copyFileAtomicExclusive(sourcePath, targetPath);
     if (copyResult === 'exists') {
       if (!readFileSync(sourcePath).equals(readFileSync(targetPath))) {
-        throw new Error(`附件目录存在同名不同内容的文件：${entry.name}`);
+        throw new Error(
+          `An attachment with the same name but different content already exists: ${entry.name}`,
+        );
       }
     }
   }
@@ -166,7 +177,8 @@ function copyFileAtomicExclusive(sourcePath: string, targetPath: string): 'writt
   }
 }
 
-export function createImageStorage(): ImageStorage {
+export function createImageStorage(options: { t: Translate }): ImageStorage {
+  const { t } = options;
   const protocolPaths = new Map<string, string>();
 
   return {
@@ -177,25 +189,25 @@ export function createImageStorage(): ImageStorage {
         !(request.data instanceof Uint8Array) ||
         typeof request.fileName !== 'string'
       ) {
-        return errorResult('invalid-request', '图片请求格式无效。');
+        return errorResult('invalid-request', t, 'image.invalidRequest');
       }
       if (!request.documentPath) {
-        return errorResult('document-not-saved', '请先保存 Markdown 文档，再插入图片。');
+        return errorResult('document-not-saved', t, 'image.docNotSaved');
       }
       const documentDirectory = getDocumentDirectory(request.documentPath);
       if (!documentDirectory) {
-        return errorResult('invalid-document-path', '当前文档路径无效，无法保存图片。');
+        return errorResult('invalid-document-path', t, 'image.invalidDocPath');
       }
 
       const data = Buffer.from(request.data);
-      if (data.length === 0) return errorResult('empty-image', '图片内容为空。');
+      if (data.length === 0) return errorResult('empty-image', t, 'image.empty');
       if (data.length > MAX_IMAGE_BYTES) {
-        return errorResult('image-too-large', '图片超过 50 MB，未保存。');
+        return errorResult('image-too-large', t, 'image.tooLarge');
       }
 
       const detected = detectImage(data);
       if (!detected) {
-        return errorResult('unsupported-image-type', '仅支持 PNG、JPEG、GIF、WebP 和 SVG 图片。');
+        return errorResult('unsupported-image-type', t, 'image.unsupportedType');
       }
 
       const documentName = basename(request.documentPath, extname(request.documentPath));
@@ -223,10 +235,10 @@ export function createImageStorage(): ImageStorage {
           }
         }
       } catch {
-        return errorResult('storage-failed', '图片保存失败，请检查目录权限或磁盘空间。');
+        return errorResult('storage-failed', t, 'image.storageFailed');
       }
 
-      return errorResult('storage-failed', '同名图片过多，无法生成可用文件名。');
+      return errorResult('storage-failed', t, 'image.nameCollision');
     },
 
     resolveSource: (request) => {
@@ -235,10 +247,11 @@ export function createImageStorage(): ImageStorage {
         typeof request.source !== 'string' ||
         (request.documentPath !== null && typeof request.documentPath !== 'string')
       ) {
-        return { status: 'error', code: 'invalid-source', message: '图片请求格式无效。' };
+        return { status: 'error', code: 'invalid-source', message: t('image.invalidRequest') };
       }
       const source = request.source.trim();
-      if (!source) return { status: 'error', code: 'invalid-source', message: '图片路径为空。' };
+      if (!source)
+        return { status: 'error', code: 'invalid-source', message: t('image.pathEmpty') };
       if (
         /^https?:\/\//i.test(source) ||
         /^data:image\//i.test(source) ||
@@ -290,14 +303,18 @@ export function createImageStorage(): ImageStorage {
         return {
           status: 'error',
           code: 'document-not-saved',
-          message: '保存文档后才能显示相对路径图片。',
+          message: t('image.needSavedDoc'),
         };
       }
       if (!filePath && !hasSupportedExtension) {
-        return { status: 'error', code: 'invalid-source', message: '图片类型不受支持。' };
+        return {
+          status: 'error',
+          code: 'invalid-source',
+          message: t('image.unsupportedSourceType'),
+        };
       }
       if (!filePath) {
-        return { status: 'error', code: 'source-not-found', message: '找不到本地图片。' };
+        return { status: 'error', code: 'source-not-found', message: t('image.sourceNotFound') };
       }
 
       const keyPath = process.platform === 'win32' ? filePath.toLowerCase() : filePath;
@@ -317,11 +334,12 @@ export function createImageStorage(): ImageStorage {
       if (!existsSync(sourceAssets)) return;
       const sourceStats = lstatSync(sourceAssets);
       if (!sourceStats.isDirectory() || sourceStats.isSymbolicLink()) {
-        throw new Error('源附件目录不是安全的本地目录。');
+        throw new Error('The source attachment directory is not a safe local directory.');
       }
       copyDirectoryWithoutOverwrite(
         sourceAssets,
         join(targetDirectory, `${sourceDocumentName}.assets`),
+        t,
       );
     },
 
@@ -331,34 +349,34 @@ export function createImageStorage(): ImageStorage {
         typeof request.documentPath !== 'string' ||
         typeof request.relativePath !== 'string'
       ) {
-        return { status: 'error', message: '图片清理请求格式无效。' };
+        return { status: 'error', message: t('image.invalidRequest') };
       }
       const documentDirectory = getDocumentDirectory(request.documentPath);
-      if (!documentDirectory) return { status: 'error', message: '文档路径无效。' };
+      if (!documentDirectory) return { status: 'error', message: t('image.docPathInvalid') };
 
       const documentName = basename(request.documentPath, extname(request.documentPath));
       const assetsDirectory = resolve(documentDirectory, `${documentName}.assets`);
       try {
         const assetsStats = lstatSync(assetsDirectory);
         if (!assetsStats.isDirectory() || assetsStats.isSymbolicLink()) {
-          return { status: 'error', message: '附件目录不是安全的本地目录。' };
+          return { status: 'error', message: t('image.attachmentDirInvalid') };
         }
       } catch {
-        return { status: 'error', message: '附件目录不存在。' };
+        return { status: 'error', message: t('image.attachmentDirMissing') };
       }
       const targetPath = resolve(documentDirectory, request.relativePath);
       const pathPrefix = `${assetsDirectory}${process.platform === 'win32' ? '\\' : '/'}`;
       const comparableTarget = process.platform === 'win32' ? targetPath.toLowerCase() : targetPath;
       const comparablePrefix = process.platform === 'win32' ? pathPrefix.toLowerCase() : pathPrefix;
       if (!comparableTarget.startsWith(comparablePrefix)) {
-        return { status: 'error', message: '图片清理路径无效。' };
+        return { status: 'error', message: t('image.cleanupPathInvalid') };
       }
 
       try {
         unlinkSync(targetPath);
         return { status: 'ok' };
       } catch {
-        return { status: 'error', message: '未能清理未插入的图片。' };
+        return { status: 'error', message: t('image.cleanupFailed') };
       }
     },
 

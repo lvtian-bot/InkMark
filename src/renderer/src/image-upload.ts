@@ -1,6 +1,7 @@
 import { Fragment, type Node } from '@milkdown/kit/prose/model';
 import type { Uploader } from '@milkdown/plugin-upload';
 import { confirmDialog } from './confirm-dialog';
+import { t } from './i18n';
 import { useStore } from './stores/useStore';
 
 let activeImageUploads = 0;
@@ -16,7 +17,7 @@ export function waitForImageUploads(): Promise<void> {
 }
 
 async function showImageError(message: string): Promise<void> {
-  await confirmDialog('图片未插入', message, ['确定']);
+  await confirmDialog(t('confirm.imageNotInserted'), message, [t('common.ok')]);
 }
 
 export const storeLocalImages: Uploader = async (files, schema) => {
@@ -28,7 +29,7 @@ export const storeLocalImages: Uploader = async (files, schema) => {
     const tabId = activeTab?.id ?? null;
 
     if (!documentPath) {
-      await showImageError('请先保存 Markdown 文档，再粘贴或拖入图片。');
+      await showImageError(t('confirm.imageNotInsertedHint'));
       return Fragment.empty;
     }
 
@@ -51,7 +52,7 @@ export const storeLocalImages: Uploader = async (files, schema) => {
 
         const imageNode = schema.nodes.image.createAndFill({
           src: result.relativePath,
-          alt: file.name || '图片',
+          alt: file.name || t('image.alt'),
         });
         if (imageNode) {
           nodes.push(imageNode);
@@ -63,7 +64,7 @@ export const storeLocalImages: Uploader = async (files, schema) => {
           });
         }
       } catch {
-        await showImageError('读取图片失败，请重新选择图片。');
+        await showImageError(t('image.readFailed'));
       }
     }
 
@@ -75,7 +76,7 @@ export const storeLocalImages: Uploader = async (files, schema) => {
           window.inkmark.discardStoredImage({ documentPath, relativePath }),
         ),
       );
-      await showImageError('保存图片期间切换或另存了文档，本次图片未插入，请重新操作。');
+      await showImageError(t('image.switchedDuringUpload'));
       return Fragment.empty;
     }
 

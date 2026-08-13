@@ -5,9 +5,11 @@ import {
   useConfirmDialogState,
   usePromptDialogState,
 } from '../confirm-dialog';
+import { useI18n } from '../i18n';
 import '../styles/confirm-dialog.css';
 
 export function ConfirmDialog() {
+  const { t } = useI18n();
   const request = useConfirmDialogState();
   const promptRequest = usePromptDialogState();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -67,10 +69,10 @@ export function ConfirmDialog() {
             {message}
           </div>
           {diff && (
-            <div className="confirm-diff" aria-label="磁盘版本与当前编辑版本的差异">
+            <div className="confirm-diff" aria-label={t('confirm.diffAria')}>
               <div className="confirm-diff-legend">
-                <span className="confirm-diff-removed">− 磁盘版本</span>
-                <span className="confirm-diff-added">+ 当前编辑版本</span>
+                <span className="confirm-diff-removed">{t('confirm.diffDisk')}</span>
+                <span className="confirm-diff-added">{t('confirm.diffCurrent')}</span>
               </div>
               <pre className="confirm-diff-content">
                 {diff.map((part, index) => {

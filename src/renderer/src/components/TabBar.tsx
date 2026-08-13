@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useI18n } from '../i18n';
 import { useStore } from '../stores/useStore';
+import { tabDisplayName } from '../tab-name';
 import '../styles/tabbar.css';
 
 interface TabBarProps {
@@ -14,6 +16,7 @@ interface DropTarget {
 }
 
 export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
+  const { t } = useI18n();
   const tabs = useStore((s) => s.tabs);
   const activeTabId = useStore((s) => s.activeTabId);
   const moveTab = useStore((s) => s.moveTab);
@@ -78,7 +81,7 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
       <button
         className="tab-menu"
         onClick={() => window.inkmark.popupMenu()}
-        title={'\u83dc\u5355'}
+        title={t('tabBar.menu')}
       >
         {'\u2630'}
       </button>
@@ -94,24 +97,24 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
             onDrop={(e) => handleDrop(e, tab.id)}
             onDragEnd={handleDragEnd}
             draggable
-            title={tab.filePath ?? tab.fileName}
+            title={tab.filePath ?? tabDisplayName(tab, t)}
           >
             <div className="tab-body">
               <span className="tab-title">
                 {tab.isDirty ? '\u2022 ' : ''}
-                {tab.fileName}
+                {tabDisplayName(tab, t)}
               </span>
               <button
                 className="tab-close"
                 onClick={(e) => handleClose(e, tab.id)}
-                title="关闭标签页"
+                title={t('tabBar.closeTab')}
               >
                 {'\u00d7'}
               </button>
             </div>
           </div>
         ))}
-        <button className="tab-new" onClick={onNewTab} title="新标签页 (Ctrl+T)">
+        <button className="tab-new" onClick={onNewTab} title={t('tabBar.newTab')}>
           {'\u002b'}
         </button>
       </div>

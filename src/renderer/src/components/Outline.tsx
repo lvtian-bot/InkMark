@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import type { MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useStore } from '../stores/useStore';
+import { useI18n } from '../i18n';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
 import {
@@ -14,6 +15,7 @@ import '../styles/outline.css';
 const EMPTY_IDS: Set<string> = new Set();
 
 export function Outline({ side }: { side?: 'left' | 'right' }) {
+  const { t } = useI18n();
   const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
   const activeTabId = useStore((s) => s.activeTabId);
   const viewMode = useStore((s) => s.viewMode);
@@ -105,9 +107,9 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     return (
       <aside className={`outline${side === 'right' ? ' side-right' : ''}`}>
         <div className="outline-header">
-          <span className="outline-title">大纲</span>
+          <span className="outline-title">{t('outline.title')}</span>
         </div>
-        <div className="outline-empty">暂无大纲</div>
+        <div className="outline-empty">{t('outline.empty')}</div>
       </aside>
     );
   }
@@ -115,7 +117,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   return (
     <aside className={`outline${side === 'right' ? ' side-right' : ''}`}>
       <div className="outline-header">
-        <span className="outline-title">大纲</span>
+        <span className="outline-title">{t('outline.title')}</span>
       </div>
       <nav className="outline-list">
         {visibleHeadings.map((heading) => (

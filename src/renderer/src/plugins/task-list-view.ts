@@ -1,6 +1,7 @@
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
+import { t } from '../i18n';
 
 const taskListCheckboxKey = new PluginKey('inkmark-task-checkbox');
 
@@ -36,7 +37,7 @@ export const taskListCheckboxPlugin = $prose(() => {
                   box.dataset.liPos = String(liPos);
                   box.setAttribute('role', 'checkbox');
                   box.setAttribute('aria-checked', String(checked));
-                  box.setAttribute('aria-label', '切换任务完成状态');
+                  box.setAttribute('aria-label', t('task.toggleDone'));
                   box.contentEditable = 'false';
                   return box;
                 },

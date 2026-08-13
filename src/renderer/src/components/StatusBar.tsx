@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, FolderTree, Settings, TableOfContents } from 'lucide-react';
+import { useI18n } from '../i18n';
 import { useStore } from '../stores/useStore';
 import '../styles/status-bar.css';
 
@@ -35,6 +36,7 @@ function PanelToggle({ visible, side, icon, onToggle, showLabel, hideLabel }: Pa
 }
 
 export function StatusBar({ onOpenSettings }: StatusBarProps) {
+  const { t } = useI18n();
   const wordCount = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.wordCount ?? 0);
   const charCount = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.charCount ?? 0);
   const outlineVisible = useStore((s) => s.outlineVisible);
@@ -53,8 +55,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
       side={outlineSide}
       icon={<TableOfContents size={14} />}
       onToggle={() => setOutlineVisible(!outlineVisible)}
-      showLabel="显示大纲"
-      hideLabel="隐藏大纲"
+      showLabel={t('statusBar.showOutline')}
+      hideLabel={t('statusBar.hideOutline')}
     />
   );
   const fileTreeToggle = (
@@ -63,8 +65,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
       side={fileTreeSide}
       icon={<FolderTree size={14} />}
       onToggle={() => setFileTreeVisible(!fileTreeVisible)}
-      showLabel="显示文件树"
-      hideLabel="隐藏文件树"
+      showLabel={t('statusBar.showFileTree')}
+      hideLabel={t('statusBar.hideFileTree')}
     />
   );
 
@@ -74,23 +76,27 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
         {/* 左侧面板的开关紧跟窗口左缘 */}
         {outlineSide === 'left' && outlineToggle}
         {fileTreeSide === 'left' && fileTreeToggle}
-        <button className="status-mode-btn" onClick={toggleViewMode} title="源码模式 (Ctrl+/)">
-          源码
+        <button
+          className="status-mode-btn"
+          onClick={toggleViewMode}
+          title={t('statusBar.sourceMode')}
+        >
+          {t('statusBar.source')}
         </button>
         <button
           className="status-toggle-btn"
           type="button"
           onClick={onOpenSettings}
-          title="设置"
-          aria-label="设置"
+          title={t('statusBar.settings')}
+          aria-label={t('statusBar.settings')}
         >
           <Settings size={14} />
         </button>
       </div>
       <div className="status-right">
         <div className="status-counts">
-          <span className="status-item">{wordCount} 字</span>
-          <span className="status-item">{charCount} 字符</span>
+          <span className="status-item">{t('statusBar.wordCount', { wordCount })}</span>
+          <span className="status-item">{t('statusBar.charCount', { charCount })}</span>
         </div>
         {/* 右侧面板的开关紧跟窗口右缘 */}
         {outlineSide === 'right' && outlineToggle}

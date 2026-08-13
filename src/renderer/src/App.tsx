@@ -22,6 +22,8 @@ import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
 import { useWordCount } from './hooks/useWordCount';
 import { useStore } from './stores/useStore';
+import { I18nProvider, t as tt, useI18n } from './i18n';
+import { tabDisplayName } from './tab-name';
 import { isThemeId } from './types';
 import { editorHandle } from './editor-ref';
 import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
@@ -33,14 +35,12 @@ import { comboMatchesEvent } from './shortcut-recorder';
 
 function AppContent() {
   const { themeId, setThemeId } = useTheme();
+  const { t } = useI18n();
   useEditorFont();
   const { updateOutline, updateSourceOutline } = useOutline();
   const { updateWordCount, updateSourceWordCount } = useWordCount();
 
   const activeTabId = useStore((s) => s.activeTabId);
-  const fileName = useStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.fileName ?? '未命名',
-  );
   const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
   const isStartPage = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStartPage ?? false,
@@ -135,7 +135,9 @@ function AppContent() {
     if (prevTabIdRef.current === activeTabId) return;
     if (isImageUploadInProgress()) {
       setActiveTab(prevTabIdRef.current);
-      void confirmDialog('图片正在保存', '请等待图片插入完成后再切换文档。', ['确定']);
+      void confirmDialog(tt('confirm.imageSaving'), tt('confirm.imageSavingSwitchTab'), [
+        tt('common.ok'),
+      ]);
       return;
     }
     if (!editorHandle.current) {
@@ -445,6 +447,13 @@ function AppContent() {
     }
   }, [shortcuts]);
 
+  const language = useStore((s) => s.language);
+  useEffect(() => {
+    if (window.inkmark.syncLanguage) {
+      window.inkmark.syncLanguage(language);
+    }
+  }, [language]);
+
   useEffect(() => {
     const handleDrop = async (e: DragEvent): Promise<void> => {
       e.preventDefault();
@@ -481,9 +490,13 @@ function AppContent() {
   }, [fileOps]);
 
   useEffect(() => {
+    const activeTab = useStore
+      .getState()
+      .tabs.find((tab) => tab.id === useStore.getState().activeTabId);
+    const displayName = activeTab ? tabDisplayName(activeTab, t) : t('tabBar.unnamed');
     const mark = isDirty ? '\u2022 ' : '';
-    window.inkmark.setWindowTitle(`${mark}${fileName} - InkMark`);
-  }, [fileName, isDirty]);
+    window.inkmark.setWindowTitle(`${mark}${displayName} - InkMark`);
+  }, [activeTabId, isDirty, t]);
 
   const prevStartPageRef = useRef(isStartPage);
 
@@ -642,7 +655,9 @@ function AppContent() {
 export default function App() {
   return (
     <MilkdownProvider>
-      <AppContent />
+      <I18nProvider>
+        <AppContent />
+      </I18nProvider>
     </MilkdownProvider>
   );
 }

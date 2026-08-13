@@ -14,6 +14,7 @@ import {
   normalizeShortcutMap,
   type ShortcutMap,
 } from '../../shared/shortcuts';
+import { normalizeLanguageSetting, type LanguageSetting } from '../../shared/i18n';
 
 // AppTheme 已迁移至 ./types，这里 re-export 以保持现有 import 路径稳定。
 export type { AppTheme } from './types';
@@ -43,6 +44,7 @@ export interface AppSettings {
   panelLayout: PanelLayout;
   fileTreeWidth: number;
   blockMarkerReveal: boolean;
+  language: LanguageSetting;
   shortcuts: ShortcutMap;
 }
 
@@ -65,6 +67,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   panelLayout: 'outline-left',
   fileTreeWidth: 240,
   blockMarkerReveal: false,
+  language: 'system',
   shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
 };
 
@@ -83,6 +86,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     panelLayout: settings.panelLayout,
     fileTreeWidth: settings.fileTreeWidth,
     blockMarkerReveal: settings.blockMarkerReveal,
+    language: settings.language,
     shortcuts: settings.shortcuts,
   };
 }
@@ -180,6 +184,7 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.blockMarkerReveal === 'boolean'
         ? candidate.blockMarkerReveal
         : DEFAULT_SETTINGS.blockMarkerReveal,
+    language: normalizeLanguageSetting(candidate.language),
     shortcuts: normalizeShortcutMap(candidate.shortcuts),
   };
 }

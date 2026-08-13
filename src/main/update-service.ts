@@ -1,4 +1,6 @@
 import type { UpdateState } from '../shared/update-state';
+import type { MessageKey } from '../shared/i18n';
+import type { Translate } from './image-storage';
 
 interface UpdateInfo {
   version: string;
@@ -27,6 +29,7 @@ interface CreateUpdateServiceOptions {
   adapter: UpdateAdapter;
   currentVersion: string;
   supported: boolean;
+  t: Translate;
   onStateChange?: (state: UpdateState) => void;
 }
 
@@ -62,23 +65,23 @@ function asProgress(payload: unknown): DownloadProgress | null {
   };
 }
 
-function errorMessage(payload: unknown): string {
-  const message = payload instanceof Error ? payload.message : '更新操作失败，请稍后重试。';
-  if (/checksum|sha512|signature|integrity/i.test(message)) return '更新包校验失败，请重新下载。';
+function errorKey(payload: unknown): MessageKey {
+  const message = payload instanceof Error ? payload.message : '';
+  if (/checksum|sha512|signature|integrity/i.test(message)) return 'update.errorChecksum';
   if (/network|fetch|connect|timeout|ENOTFOUND|ECONN/i.test(message)) {
-    return '无法连接更新服务，请检查网络后重试。';
+    return 'update.errorNetwork';
   }
-  return '更新操作失败，请稍后重试。';
+  return 'update.errorGeneric';
 }
 
 export function createUpdateService(options: CreateUpdateServiceOptions): UpdateService {
-  const { adapter, currentVersion, supported, onStateChange } = options;
+  const { adapter, currentVersion, supported, t, onStateChange } = options;
   adapter.autoDownload = false;
   adapter.autoInstallOnAppQuit = false;
 
   let state: UpdateState = supported
     ? { status: 'idle', currentVersion }
-    : { status: 'unsupported', currentVersion, message: '仅正式安装版支持更新。' };
+    : { status: 'unsupported', currentVersion, message: t('update.unsupportedMessage') };
   let checkPromise: Promise<UpdateState> | null = null;
   let resolveCheck: ((next: UpdateState) => void) | null = null;
   let downloadPromise: Promise<UpdateState> | null = null;
@@ -132,7 +135,11 @@ export function createUpdateService(options: CreateUpdateServiceOptions): Update
     finishDownload({ status: 'downloaded', currentVersion, latestVersion });
   });
   adapter.on('error', (payload) => {
-    const next: UpdateState = { status: 'error', currentVersion, message: errorMessage(payload) };
+    const next: UpdateState = {
+      status: 'error',
+      currentVersion,
+      message: t(errorKey(payload)),
+    };
     if (downloadPromise) finishDownload(next);
     else finishCheck(next);
   });
@@ -149,7 +156,7 @@ export function createUpdateService(options: CreateUpdateServiceOptions): Update
         resolveCheck = resolve;
       });
       void adapter.checkForUpdates().catch((error: unknown) => {
-        finishCheck({ status: 'error', currentVersion, message: errorMessage(error) });
+        finishCheck({ status: 'error', currentVersion, message: t(errorKey(error)) });
       });
       return checkPromise;
     },
@@ -169,7 +176,7 @@ export function createUpdateService(options: CreateUpdateServiceOptions): Update
         resolveDownload = resolve;
       });
       void adapter.downloadUpdate().catch((error: unknown) => {
-        finishDownload({ status: 'error', currentVersion, message: errorMessage(error) });
+        finishDownload({ status: 'error', currentVersion, message: t(errorKey(error)) });
       });
       return downloadPromise;
     },
@@ -182,7 +189,7 @@ export function createUpdateService(options: CreateUpdateServiceOptions): Update
         setState({
           status: 'error',
           currentVersion,
-          message: '无法启动更新安装，请稍后重试。',
+          message: t('update.errorInstall'),
         });
         return false;
       }

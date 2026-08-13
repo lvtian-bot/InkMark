@@ -5,6 +5,8 @@ import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { buildConflictDiff } from '../conflict-diff';
+import { t } from '../i18n';
+import { tabDisplayName } from '../tab-name';
 import {
   decideCloseDirty,
   decideExternalChange,
@@ -55,18 +57,18 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           result = await window.inkmark.saveFile(content, tab.filePath, tab.fileMtime);
         } catch {
           await confirmDialog(
-            '保存失败',
-            `"${tab.fileName}" 保存失败，请检查文件是否被设为只读或磁盘空间是否充足。`,
-            ['确定'],
+            t('confirm.saveFailed'),
+            t('confirm.saveFailedHint1', { name: tabDisplayName(tab, t) }),
+            [t('common.ok')],
           );
           return false;
         }
         if (result.status === 'conflict') {
           const diskVersion = await window.inkmark.openFilePath(tab.filePath);
           const choice = await confirmDialog(
-            '文件已被外部修改',
-            `下方显示磁盘版本与当前编辑版本的差异。覆盖后，磁盘上的外部修改将被替换。`,
-            ['覆盖磁盘版本', '取消'],
+            t('confirm.externalModified'),
+            t('confirm.externalModifiedCoverHint'),
+            [t('confirm.overwriteDisk'), t('common.cancel')],
             {
               defaultId: 1,
               cancelId: 1,
@@ -78,7 +80,11 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           try {
             forceResult = await window.inkmark.saveFile(content, tab.filePath, null, true);
           } catch {
-            await confirmDialog('保存失败', `"${tab.fileName}" 保存失败。`, ['确定']);
+            await confirmDialog(
+              t('confirm.saveFailed'),
+              t('confirm.saveFailedShort', { name: tabDisplayName(tab, t) }),
+              [t('common.ok')],
+            );
             return false;
           }
           if (forceResult.status === 'ok') {
@@ -97,7 +103,11 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       try {
         saveAsResult = await window.inkmark.saveFileAs(content, tab.filePath);
       } catch {
-        await confirmDialog('保存失败', `"${tab.fileName}" 保存失败。`, ['确定']);
+        await confirmDialog(
+          t('confirm.saveFailed'),
+          t('confirm.saveFailedShort', { name: tabDisplayName(tab, t) }),
+          [t('common.ok')],
+        );
         return false;
       }
       if (saveAsResult) {
@@ -164,7 +174,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     try {
       results = await window.inkmark.openFileDialog();
     } catch {
-      await confirmDialog('打开失败', '无法打开文件对话框，请重试。', ['确定']);
+      await confirmDialog(t('confirm.openFailed'), t('confirm.openDialogFailed'), [t('common.ok')]);
       return;
     }
     if (!results || results.length === 0) return;
@@ -179,11 +189,15 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       try {
         result = await window.inkmark.openFilePath(path);
       } catch {
-        await confirmDialog('打开失败', `"${path}" 无法打开。`, ['确定']);
+        await confirmDialog(t('confirm.openFailed'), t('confirm.openPathFailed', { path }), [
+          t('common.ok'),
+        ]);
         return;
       }
       if (!result) {
-        await confirmDialog('打开失败', `"${path}" 可能已被删除或移动。`, ['确定']);
+        await confirmDialog(t('confirm.openFailed'), t('confirm.openPathMissing', { path }), [
+          t('common.ok'),
+        ]);
         return;
       }
       await openFileResult(result);
@@ -197,7 +211,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
   const saveAs = useCallback(async () => {
     if (isImageUploadInProgress()) {
-      await confirmDialog('图片正在保存', '请等待图片插入完成后再另存文档。', ['确定']);
+      await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingSaveAs'), [
+        t('common.ok'),
+      ]);
       return;
     }
     const currentState = useStore.getState();
@@ -207,7 +223,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       const activeTab = currentState.tabs.find((tab) => tab.id === currentState.activeTabId);
       result = await window.inkmark.saveFileAs(content, activeTab?.filePath);
     } catch {
-      await confirmDialog('保存失败', '文件保存失败，请重试。', ['确定']);
+      await confirmDialog(t('confirm.saveFailed'), t('confirm.saveFailedGeneric'), [
+        t('common.ok'),
+      ]);
       return;
     }
     if (result) {
@@ -226,18 +244,20 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       const currentState = useStore.getState();
       const id = tabId ?? currentState.activeTabId;
       if (id === currentState.activeTabId && isImageUploadInProgress()) {
-        await confirmDialog('图片正在保存', '请等待图片插入完成后再关闭文档。', ['确定']);
+        await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingCloseTab'), [
+          t('common.ok'),
+        ]);
         return false;
       }
       const tab = currentState.tabs.find((t) => t.id === id);
       if (!tab) return false;
 
       if (tab.isDirty) {
-        const choice = await confirmDialog('未保存的更改', `是否保存"${tab.fileName}"的更改？`, [
-          '保存',
-          '不保存',
-          '取消',
-        ]);
+        const choice = await confirmDialog(
+          t('confirm.unsavedChanges'),
+          t('confirm.unsavedChangesBody', { name: tabDisplayName(tab, t) }),
+          [t('common.save'), t('common.dontSave'), t('common.cancel')],
+        );
         const closeDecision = decideCloseDirty({ isDirty: true, choice });
         if (closeDecision === 'cancel') return false;
         if (closeDecision === 'save') {
@@ -258,16 +278,18 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
   const prepareToClose = useCallback(async (): Promise<boolean> => {
     if (isImageUploadInProgress()) {
-      await confirmDialog('图片正在保存', '请等待图片插入完成后再关闭窗口。', ['确定']);
+      await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingCloseWindow'), [
+        t('common.ok'),
+      ]);
       return false;
     }
     const dirtyTabs = useStore.getState().tabs.filter((t) => t.isDirty);
     for (const tab of dirtyTabs) {
-      const choice = await confirmDialog('未保存的更改', `是否保存"${tab.fileName}"的更改？`, [
-        '保存',
-        '不保存',
-        '取消',
-      ]);
+      const choice = await confirmDialog(
+        t('confirm.unsavedChanges'),
+        t('confirm.unsavedChangesBody', { name: tabDisplayName(tab, t) }),
+        [t('common.save'), t('common.dontSave'), t('common.cancel')],
+      );
       const closeDecision = decideCloseDirty({ isDirty: true, choice });
       if (closeDecision === 'cancel') return false;
       if (closeDecision === 'save') {
@@ -332,11 +354,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   const notifyMissingFile = useCallback(async (tabId: string, fileName: string): Promise<void> => {
     if (missingNotifiedTabIdsRef.current.has(tabId)) return;
     missingNotifiedTabIdsRef.current.add(tabId);
-    await confirmDialog(
-      '文件已被删除或移动',
-      `"${fileName}" 已不在原位置。你可以保留当前标签页，并使用“另存为”保存内容。`,
-      ['确定'],
-    );
+    await confirmDialog(t('confirm.fileGone'), t('confirm.fileGoneBody', { name: fileName }), [
+      t('common.ok'),
+    ]);
   }, []);
 
   const checkExternalChanges = useCallback(
@@ -394,9 +414,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                 continue;
               }
               const choice = await confirmDialog(
-                '文件已被外部修改',
-                `下方显示磁盘版本与当前编辑版本的差异。请选择使用哪个版本。`,
-                ['使用磁盘版本', '保留并在下次保存时覆盖', '取消'],
+                t('confirm.externalModified'),
+                t('confirm.externalModifiedChooseHint'),
+                [t('confirm.useDisk'), t('confirm.keepAndOverride'), t('common.cancel')],
                 {
                   defaultId: 2,
                   cancelId: 2,

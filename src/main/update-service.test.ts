@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createUpdateService, type UpdateAdapter } from './update-service';
+import type { MessageKey } from '../shared/i18n';
+
+const t = (key: MessageKey): string => key;
 
 function createAdapter(): UpdateAdapter & {
   emit: (event: string, payload?: unknown) => void;
@@ -25,7 +28,7 @@ function createAdapter(): UpdateAdapter & {
 describe('update service', () => {
   it('checks manually without automatically downloading an available update', async () => {
     const adapter = createAdapter();
-    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true });
+    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true, t });
 
     const pending = service.check();
     adapter.emit('update-available', { version: '0.2.0', releaseName: 'InkMark 0.2.0' });
@@ -44,7 +47,7 @@ describe('update service', () => {
 
   it('deduplicates repeated checks while one check is active', async () => {
     const adapter = createAdapter();
-    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true });
+    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true, t });
 
     const first = service.check();
     const second = service.check();
@@ -56,7 +59,7 @@ describe('update service', () => {
 
   it('installs only after an update has finished downloading', async () => {
     const adapter = createAdapter();
-    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true });
+    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true, t });
 
     expect(service.install()).toBe(false);
     adapter.emit('update-available', { version: '0.2.0' });
@@ -71,20 +74,20 @@ describe('update service', () => {
     adapter.quitAndInstall = vi.fn(() => {
       throw new Error('installer launch failed');
     });
-    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true });
+    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: true, t });
     adapter.emit('update-downloaded', { version: '0.2.0' });
 
     expect(service.install()).toBe(false);
     expect(service.getState()).toEqual({
       status: 'error',
       currentVersion: '0.1.0',
-      message: '无法启动更新安装，请稍后重试。',
+      message: 'update.errorInstall',
     });
   });
 
   it('does not invoke the adapter in unsupported builds', async () => {
     const adapter = createAdapter();
-    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: false });
+    const service = createUpdateService({ adapter, currentVersion: '0.1.0', supported: false, t });
 
     await service.check();
     await service.download();

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { UpdateState } from '../../../shared/update-state';
 import { requestUpdateInstall } from '../update-install';
+import { useI18n } from '../i18n';
 import '../styles/update-dialog.css';
 
 interface UpdateDialogProps {
@@ -15,6 +16,7 @@ function formatBytes(value: number): string {
 }
 
 export function UpdateDialog({ onClose, prepareToClose }: UpdateDialogProps) {
+  const { t } = useI18n();
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [state, setState] = useState<UpdateState | null>(null);
 
@@ -45,18 +47,18 @@ export function UpdateDialog({ onClose, prepareToClose }: UpdateDialogProps) {
 
   const title =
     state?.status === 'available'
-      ? `发现新版本 ${state.latestVersion}`
+      ? t('update.availableTitle', { version: state.latestVersion })
       : state?.status === 'downloading'
-        ? `正在下载 InkMark ${state.latestVersion}`
+        ? t('update.downloadingTitle', { version: state.latestVersion })
         : state?.status === 'downloaded'
-          ? `InkMark ${state.latestVersion} 已下载`
+          ? t('update.downloadedTitle', { version: state.latestVersion })
           : state?.status === 'latest'
-            ? '当前已是最新版本'
+            ? t('update.latestTitle')
             : state?.status === 'error'
-              ? '检查更新失败'
+              ? t('update.errorTitle')
               : state?.status === 'unsupported'
-                ? '当前环境不支持更新'
-                : '正在检查更新…';
+                ? t('update.unsupportedTitle')
+                : t('update.checking');
 
   const startDownload = (): void => {
     void window.inkmark.downloadUpdate().then(setState);
@@ -87,18 +89,26 @@ export function UpdateDialog({ onClose, prepareToClose }: UpdateDialogProps) {
           </div>
           <p className="update-description">
             {(!state || state.status === 'idle' || state.status === 'checking') &&
-              '正在连接 GitHub Releases，请稍候。'}
+              t('update.connecting')}
             {state?.status === 'latest' &&
-              `当前版本 ${state.currentVersion}，最新版本 ${state.latestVersion}。`}
+              t('update.latestDescription', {
+                currentVersion: state.currentVersion,
+                latestVersion: state.latestVersion,
+              })}
             {state?.status === 'available' &&
-              `${state.releaseName} 已发布，当前版本为 ${state.currentVersion}。是否现在下载？`}
+              t('update.availableDescription', {
+                releaseName: state.releaseName,
+                currentVersion: state.currentVersion,
+              })}
             {state?.status === 'downloading' &&
               (state.total > 0
-                ? `已下载 ${formatBytes(state.transferred)} / ${formatBytes(state.total)}`
-                : '正在准备下载，请稍候。')}
-            {state?.status === 'downloaded' &&
-              '可以立即重启并安装，或选择稍后。普通退出不会自动安装。'}
-            {state?.status === 'error' && `${state.message} 你也可以直接前往发布页查看。`}
+                ? t('update.downloadProgress', {
+                    transferred: formatBytes(state.transferred),
+                    total: formatBytes(state.total),
+                  })
+                : t('update.downloadPreparing'))}
+            {state?.status === 'downloaded' && t('update.downloadedDescription')}
+            {state?.status === 'error' && t('update.errorDescription', { message: state.message })}
             {state?.status === 'unsupported' && state.message}
           </p>
           {state?.status === 'downloading' && (
@@ -119,7 +129,7 @@ export function UpdateDialog({ onClose, prepareToClose }: UpdateDialogProps) {
                 className="update-secondary-btn"
                 onClick={() => void window.inkmark.openReleases()}
               >
-                查看发布页
+                {t('update.viewReleases')}
               </button>
             )}
             {state?.status === 'error' && (
@@ -127,21 +137,21 @@ export function UpdateDialog({ onClose, prepareToClose }: UpdateDialogProps) {
                 className="update-secondary-btn"
                 onClick={() => void window.inkmark.checkForUpdates().then(setState)}
               >
-                重新检查
+                {t('update.checkAgain')}
               </button>
             )}
             {state?.status === 'available' && (
               <button className="update-close-btn" onClick={startDownload}>
-                下载更新
+                {t('update.downloadUpdate')}
               </button>
             )}
             {state?.status === 'downloaded' && (
               <button className="update-close-btn" onClick={install}>
-                重启并安装
+                {t('update.restartInstall')}
               </button>
             )}
             <button ref={closeButtonRef} className="update-secondary-btn" onClick={onClose}>
-              {state?.status === 'downloaded' ? '稍后安装' : '关闭'}
+              {state?.status === 'downloaded' ? t('update.later') : t('common.close')}
             </button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { ConflictDiffPart } from './conflict-diff';
+import { t } from './i18n';
 
 export interface ConfirmRequest {
   title: string;
@@ -80,8 +81,8 @@ export function promptDialog(
       message,
       placeholder: options?.placeholder,
       defaultValue: options?.defaultValue,
-      confirmLabel: options?.confirmLabel ?? '确定',
-      cancelLabel: options?.cancelLabel ?? '取消',
+      confirmLabel: options?.confirmLabel ?? t('common.ok'),
+      cancelLabel: options?.cancelLabel ?? t('common.cancel'),
     };
     promptResolver = resolve;
     emit();

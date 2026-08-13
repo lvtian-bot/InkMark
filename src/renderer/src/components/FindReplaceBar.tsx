@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Replace, ReplaceAll, X } from 'lucide-react';
 import type { FindReplaceController } from '../hooks/useFindReplace';
+import { useI18n } from '../i18n';
 import '../styles/find-replace.css';
 
 interface FindReplaceBarProps {
@@ -22,11 +23,16 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
     setReplacement,
     showReplace,
   } = controller;
+  const { t } = useI18n();
   const hasMatch = matchCount > 0;
-  const matchSummary = query ? (hasMatch ? `${activeIndex + 1} / ${matchCount}` : '无结果') : '';
+  const matchSummary = query
+    ? hasMatch
+      ? `${activeIndex + 1} / ${matchCount}`
+      : t('find.noResults')
+    : '';
 
   return (
-    <div className="find-replace-bar" role="search" aria-label="查找与替换">
+    <div className="find-replace-bar" role="search" aria-label={t('find.barAria')}>
       <div className="find-replace-row">
         <div className="find-replace-input-wrap">
           <input
@@ -41,8 +47,8 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
                 else next();
               }
             }}
-            placeholder="查找"
-            aria-label="查找内容"
+            placeholder={t('find.findPlaceholder')}
+            aria-label={t('find.findAria')}
             spellCheck={false}
           />
           <span className={`find-replace-count ${query && !hasMatch ? 'is-empty' : ''}`}>
@@ -54,8 +60,8 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
           type="button"
           onClick={previous}
           disabled={!hasMatch}
-          title="上一处 (Shift+Enter)"
-          aria-label="上一处"
+          title={t('find.prevTooltip')}
+          aria-label={t('find.prevAria')}
         >
           <ChevronUp size={16} />
         </button>
@@ -64,8 +70,8 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
           type="button"
           onClick={next}
           disabled={!hasMatch}
-          title="下一处 (Enter)"
-          aria-label="下一处"
+          title={t('find.nextTooltip')}
+          aria-label={t('find.nextAria')}
         >
           <ChevronDown size={16} />
         </button>
@@ -73,8 +79,8 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
           className="find-replace-icon-button"
           type="button"
           onClick={close}
-          title="关闭 (Esc)"
-          aria-label="关闭查找"
+          title={t('find.closeTooltip')}
+          aria-label={t('find.closeAria')}
         >
           <X size={16} />
         </button>
@@ -91,8 +97,8 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
                 replaceCurrent();
               }
             }}
-            placeholder="替换为"
-            aria-label="替换内容"
+            placeholder={t('find.replacePlaceholder')}
+            aria-label={t('find.replaceAria')}
             spellCheck={false}
           />
           <button
@@ -100,8 +106,8 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
             type="button"
             onClick={replaceCurrent}
             disabled={!hasMatch}
-            title="替换当前"
-            aria-label="替换当前"
+            title={t('find.replaceCurrent')}
+            aria-label={t('find.replaceCurrent')}
           >
             <Replace size={16} />
           </button>
@@ -110,8 +116,8 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
             type="button"
             onClick={replaceAll}
             disabled={!hasMatch}
-            title="全部替换"
-            aria-label="全部替换"
+            title={t('find.replaceAll')}
+            aria-label={t('find.replaceAll')}
           >
             <ReplaceAll size={16} />
           </button>

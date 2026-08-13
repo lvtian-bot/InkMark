@@ -76,6 +76,8 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+  /* 英文按钮文案较长时允许换行，避免超出对话框宽度。 */
+  flex-wrap: wrap;
 }
 .confirm-btn {
   min-width: 84px;

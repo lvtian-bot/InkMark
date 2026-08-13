@@ -116,6 +116,9 @@ const api = {
   syncShortcuts: (shortcuts: ShortcutMap) => {
     ipcRenderer.send('shortcuts:sync', shortcuts);
   },
+  syncLanguage: (language: string) => {
+    ipcRenderer.send('language:sync', language);
+  },
   popupMenu: () => {
     ipcRenderer.send('menu:popup');
   },

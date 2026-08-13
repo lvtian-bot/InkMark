@@ -2,6 +2,8 @@
 // 主进程用它生成 Electron 菜单 accelerator，渲染进程用它匹配 DOM 键盘事件与显示。
 // 本文件不得依赖 DOM 或 Node 环境（保持 shared 无副作用的约束）。
 
+import type { MessageKey } from './i18n';
+
 /** 可配置的应用功能快捷键动作。格式类（加粗/斜体/列表等）不在此列，沿用编辑器库默认。 */
 export type ShortcutAction =
   | 'newFile'
@@ -43,25 +45,25 @@ export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
 
 export interface ShortcutActionMeta {
   action: ShortcutAction;
-  label: string;
-  hint?: string;
+  labelKey: MessageKey;
+  hintKey?: MessageKey;
 }
 
 export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = {
-  newFile: { action: 'newFile', label: '新建文件' },
-  openFile: { action: 'openFile', label: '打开文件' },
-  openFolder: { action: 'openFolder', label: '打开文件夹' },
-  closeTab: { action: 'closeTab', label: '关闭标签页' },
-  save: { action: 'save', label: '保存' },
-  saveAs: { action: 'saveAs', label: '另存为' },
-  find: { action: 'find', label: '查找' },
-  replace: { action: 'replace', label: '替换' },
+  newFile: { action: 'newFile', labelKey: 'shortcut.newFile' },
+  openFile: { action: 'openFile', labelKey: 'shortcut.openFile' },
+  openFolder: { action: 'openFolder', labelKey: 'shortcut.openFolder' },
+  closeTab: { action: 'closeTab', labelKey: 'shortcut.closeTab' },
+  save: { action: 'save', labelKey: 'shortcut.save' },
+  saveAs: { action: 'saveAs', labelKey: 'shortcut.saveAs' },
+  find: { action: 'find', labelKey: 'shortcut.find' },
+  replace: { action: 'replace', labelKey: 'shortcut.replace' },
   toggleSource: {
     action: 'toggleSource',
-    label: '切换源码模式',
-    hint: '另保留 Alt+E 作为固定第二入口，不可配置。',
+    labelKey: 'shortcut.toggleSource',
+    hintKey: 'shortcut.toggleSourceHint',
   },
-  settings: { action: 'settings', label: '打开设置' },
+  settings: { action: 'settings', labelKey: 'shortcut.settings' },
 };
 
 /** 允许作为快捷键主键的字符（小写）。纯修饰键与不可打印键不在内。 */

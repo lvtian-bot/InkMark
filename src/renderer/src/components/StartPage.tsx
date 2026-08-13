@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FilePlus, FileText, Folder, X } from 'lucide-react';
+import { useI18n } from '../i18n';
 import type { RecentItem, RecentKind } from '../types';
 import '../styles/start-page.css';
 
@@ -26,6 +27,7 @@ function splitPath(path: string): { name: string; dir: string } {
 }
 
 export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder }: StartPageProps) {
+  const { t } = useI18n();
   const [recent, setRecent] = useState<RecentRow[]>([]);
   const [appName, setAppName] = useState('InkMark');
 
@@ -55,7 +57,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
           <section className="start-col">
             <h1 className="start-brand">{appName}</h1>
             <div className="start-col-head">
-              <h2 className="start-col-title">新建</h2>
+              <h2 className="start-col-title">{t('startPage.new')}</h2>
             </div>
             <ul className="start-list">
               <li className="start-row start-row--primary" onClick={onCreateBlank}>
@@ -63,7 +65,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                   <FilePlus size={18} />
                 </span>
                 <span className="start-row-text">
-                  <span className="start-row-name">新建空白文档</span>
+                  <span className="start-row-name">{t('startPage.newBlankDoc')}</span>
                 </span>
               </li>
               <li className="start-row" onClick={onOpenFile}>
@@ -71,7 +73,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                   <FileText size={18} />
                 </span>
                 <span className="start-row-text">
-                  <span className="start-row-name">打开文件…</span>
+                  <span className="start-row-name">{t('startPage.openFile')}</span>
                 </span>
               </li>
               {onOpenFolder && (
@@ -80,7 +82,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                     <Folder size={18} />
                   </span>
                   <span className="start-row-text">
-                    <span className="start-row-name">打开文件夹…</span>
+                    <span className="start-row-name">{t('startPage.openFolder')}</span>
                   </span>
                 </li>
               )}
@@ -92,10 +94,10 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
               InkMark
             </div>
             <div className="start-col-head">
-              <h2 className="start-col-title">最近打开</h2>
+              <h2 className="start-col-title">{t('startPage.recent')}</h2>
               {recent.length > 0 && (
                 <button className="start-clear" onClick={handleClearAll}>
-                  清除全部
+                  {t('startPage.clearAll')}
                 </button>
               )}
             </div>
@@ -119,8 +121,8 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                       <button
                         type="button"
                         className="start-row-remove"
-                        title="从最近列表中移除"
-                        aria-label="从最近列表中移除"
+                        title={t('startPage.removeRecent')}
+                        aria-label={t('startPage.removeRecent')}
                         onClick={(e) => {
                           e.stopPropagation();
                           void handleRemove(item.path);
@@ -133,7 +135,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                 })}
               </ul>
             ) : (
-              <p className="start-empty-hint">暂无最近打开的文件或文件夹</p>
+              <p className="start-empty-hint">{t('startPage.recentEmpty')}</p>
             )}
           </section>
         </div>
