@@ -87,6 +87,17 @@
       ],
       "icon": "build/icon.png"
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "allowElevation": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "InkMark",
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
+    },
     "fileAssociations": [
       {
         "ext": "md",
