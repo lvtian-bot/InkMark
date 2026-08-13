@@ -19,7 +19,7 @@ export type { WorkspaceEntry } from '../../../shared/workspace-tree';
 import type { WorkspaceEntry } from '../../../shared/workspace-tree';
 export type { RecentItem, RecentKind } from '../../../shared/recent-items';
 import type { RecentItem } from '../../../shared/recent-items';
-import type { UpdateCheckResult } from '../../../shared/update-check';
+import type { UpdateState } from '../../../shared/update-state';
 
 export interface Heading {
   id: string;
@@ -70,7 +70,11 @@ export interface InkMarkAPI {
   removeRecentFile: (path: string) => Promise<void>;
   clearRecentFiles: () => Promise<void>;
   getAppInfo: () => Promise<AppInfo>;
-  checkForUpdates: () => Promise<UpdateCheckResult>;
+  getUpdateState: () => Promise<UpdateState>;
+  checkForUpdates: () => Promise<UpdateState>;
+  downloadUpdate: () => Promise<UpdateState>;
+  installUpdate: () => Promise<boolean>;
+  onUpdateState: (cb: (state: UpdateState) => void) => () => void;
   openReleases: () => Promise<void>;
   getFileMtime: (path: string) => Promise<MtimeResult>;
   watchFile: (path: string) => void;

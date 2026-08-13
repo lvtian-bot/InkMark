@@ -2,6 +2,7 @@
   "name": "inkmark",
   "version": "0.1.0",
   "description": "InkMark",
+  "repository": "https://github.com/lvtian-bot/InkMark",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -30,6 +31,7 @@
     "@milkdown/theme-nord": "^7.22.0",
     "codemirror": "^6.0.2",
     "diff": "^9.0.0",
+    "electron-updater": "^6.8.9",
     "github-markdown-css": "^5.9.0",
     "lucide-react": "^1.30.0",
     "prosemirror-state": "^1.4.3",
@@ -71,6 +73,13 @@
     },
     "files": [
       "out/**/*"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "lvtian-bot",
+        "repo": "InkMark"
+      }
     ],
     "win": {
       "target": [

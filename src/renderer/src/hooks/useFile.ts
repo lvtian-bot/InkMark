@@ -256,7 +256,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     [saveTab, closeTabStore],
   );
 
-  const closeWindow = useCallback(async (): Promise<boolean> => {
+  const prepareToClose = useCallback(async (): Promise<boolean> => {
     if (isImageUploadInProgress()) {
       await confirmDialog('图片正在保存', '请等待图片插入完成后再关闭窗口。', ['确定']);
       return false;
@@ -275,9 +275,14 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         if (!saved) return false;
       }
     }
-    await window.inkmark.closeWindow();
     return true;
   }, [saveTab]);
+
+  const closeWindow = useCallback(async (): Promise<boolean> => {
+    if (!(await prepareToClose())) return false;
+    await window.inkmark.closeWindow();
+    return true;
+  }, [prepareToClose]);
 
   const markDirty = useCallback(() => {
     if (suppressDirtyRef.current) {
@@ -473,6 +478,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       save,
       saveAs,
       closeTab,
+      prepareToClose,
       closeWindow,
       markDirty,
       checkExternalChanges,
@@ -484,6 +490,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       save,
       saveAs,
       closeTab,
+      prepareToClose,
       closeWindow,
       markDirty,
       checkExternalChanges,

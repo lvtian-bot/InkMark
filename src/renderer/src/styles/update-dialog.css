@@ -42,6 +42,21 @@
   background: var(--border-color);
 }
 
+.update-progress {
+  height: 7px;
+  margin-top: 16px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border-radius: 999px;
+}
+
+.update-progress-value {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+  transition: width 160ms ease-out;
+}
+
 .update-actions {
   display: flex;
   justify-content: flex-end;

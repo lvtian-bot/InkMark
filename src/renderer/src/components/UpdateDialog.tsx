@@ -1,34 +1,73 @@
 import { useEffect, useRef, useState } from 'react';
-import type { UpdateCheckResult } from '../../../shared/update-check';
+import type { UpdateState } from '../../../shared/update-state';
+import { requestUpdateInstall } from '../update-install';
 import '../styles/update-dialog.css';
 
 interface UpdateDialogProps {
   onClose: () => void;
+  prepareToClose: () => Promise<boolean>;
 }
 
-export function UpdateDialog({ onClose }: UpdateDialogProps) {
+function formatBytes(value: number): string {
+  if (value < 1024) return `${Math.round(value)} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function UpdateDialog({ onClose, prepareToClose }: UpdateDialogProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const [result, setResult] = useState<UpdateCheckResult | null>(null);
+  const [state, setState] = useState<UpdateState | null>(null);
 
   useEffect(() => {
     closeButtonRef.current?.focus();
     let active = true;
-    void window.inkmark.checkForUpdates().then((nextResult) => {
-      if (active) setResult(nextResult);
+    const removeListener = window.inkmark.onUpdateState((nextState) => {
+      if (active) setState(nextState);
+    });
+    void window.inkmark.getUpdateState().then((currentState) => {
+      if (!active) return;
+      setState(currentState);
+      if (
+        currentState.status === 'idle' ||
+        currentState.status === 'latest' ||
+        currentState.status === 'error'
+      ) {
+        void window.inkmark.checkForUpdates().then((nextState) => {
+          if (active) setState(nextState);
+        });
+      }
     });
     return () => {
       active = false;
+      removeListener();
     };
   }, []);
 
   const title =
-    result?.status === 'available'
-      ? `发现新版本 ${result.latestVersion}`
-      : result?.status === 'latest'
-        ? '当前已是最新版本'
-        : result?.status === 'error'
-          ? '检查更新失败'
-          : '正在检查更新…';
+    state?.status === 'available'
+      ? `发现新版本 ${state.latestVersion}`
+      : state?.status === 'downloading'
+        ? `正在下载 InkMark ${state.latestVersion}`
+        : state?.status === 'downloaded'
+          ? `InkMark ${state.latestVersion} 已下载`
+          : state?.status === 'latest'
+            ? '当前已是最新版本'
+            : state?.status === 'error'
+              ? '检查更新失败'
+              : state?.status === 'unsupported'
+                ? '当前环境不支持更新'
+                : '正在检查更新…';
+
+  const startDownload = (): void => {
+    void window.inkmark.downloadUpdate().then(setState);
+  };
+
+  const install = (): void => {
+    void requestUpdateInstall({
+      prepareToClose,
+      install: () => window.inkmark.installUpdate(),
+    });
+  };
 
   return (
     <div className="update-overlay" onClick={onClose}>
@@ -47,23 +86,62 @@ export function UpdateDialog({ onClose }: UpdateDialogProps) {
             {title}
           </div>
           <p className="update-description">
-            {!result && '正在连接 GitHub Releases，请稍候。'}
-            {result?.status === 'latest' &&
-              `当前版本 ${result.currentVersion}，GitHub 最新版本 ${result.latestVersion}。`}
-            {result?.status === 'available' &&
-              `${result.releaseName} 已发布，当前版本为 ${result.currentVersion}。`}
-            {result?.status === 'error' && `${result.message} 你也可以直接前往发布页查看。`}
+            {(!state || state.status === 'idle' || state.status === 'checking') &&
+              '正在连接 GitHub Releases，请稍候。'}
+            {state?.status === 'latest' &&
+              `当前版本 ${state.currentVersion}，最新版本 ${state.latestVersion}。`}
+            {state?.status === 'available' &&
+              `${state.releaseName} 已发布，当前版本为 ${state.currentVersion}。是否现在下载？`}
+            {state?.status === 'downloading' &&
+              (state.total > 0
+                ? `已下载 ${formatBytes(state.transferred)} / ${formatBytes(state.total)}`
+                : '正在准备下载，请稍候。')}
+            {state?.status === 'downloaded' &&
+              '可以立即重启并安装，或选择稍后。普通退出不会自动安装。'}
+            {state?.status === 'error' && `${state.message} 你也可以直接前往发布页查看。`}
+            {state?.status === 'unsupported' && state.message}
           </p>
+          {state?.status === 'downloading' && (
+            <div
+              className="update-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(state.percent)}
+            >
+              <div className="update-progress-value" style={{ width: `${state.percent}%` }} />
+            </div>
+          )}
           <div className="update-divider" />
           <div className="update-actions">
-            <button
-              className="update-secondary-btn"
-              onClick={() => void window.inkmark.openReleases()}
-            >
-              查看发布页
-            </button>
-            <button ref={closeButtonRef} className="update-close-btn" onClick={onClose}>
-              关闭
+            {(state?.status === 'error' || state?.status === 'unsupported') && (
+              <button
+                className="update-secondary-btn"
+                onClick={() => void window.inkmark.openReleases()}
+              >
+                查看发布页
+              </button>
+            )}
+            {state?.status === 'error' && (
+              <button
+                className="update-secondary-btn"
+                onClick={() => void window.inkmark.checkForUpdates().then(setState)}
+              >
+                重新检查
+              </button>
+            )}
+            {state?.status === 'available' && (
+              <button className="update-close-btn" onClick={startDownload}>
+                下载更新
+              </button>
+            )}
+            {state?.status === 'downloaded' && (
+              <button className="update-close-btn" onClick={install}>
+                重启并安装
+              </button>
+            )}
+            <button ref={closeButtonRef} className="update-secondary-btn" onClick={onClose}>
+              {state?.status === 'downloaded' ? '稍后安装' : '关闭'}
             </button>
           </div>
         </div>

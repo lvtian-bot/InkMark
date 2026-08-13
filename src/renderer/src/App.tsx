@@ -629,7 +629,12 @@ function AppContent() {
       </div>
       <ConfirmDialog />
       {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
-      {isUpdateOpen && <UpdateDialog onClose={() => setIsUpdateOpen(false)} />}
+      {isUpdateOpen && (
+        <UpdateDialog
+          onClose={() => setIsUpdateOpen(false)}
+          prepareToClose={fileOps.prepareToClose}
+        />
+      )}
     </div>
   );
 }

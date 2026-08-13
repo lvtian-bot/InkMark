@@ -7,6 +7,7 @@ import type {
 import type { WorkspaceEntry } from '../shared/workspace-tree';
 import type { RecentItem } from '../shared/recent-items';
 import type { ShortcutMap } from '../shared/shortcuts';
+import type { UpdateState } from '../shared/update-state';
 
 const api = {
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
@@ -19,7 +20,15 @@ const api = {
   removeRecentFile: (path: string) => ipcRenderer.invoke('recent:remove', path),
   clearRecentFiles: () => ipcRenderer.invoke('recent:clear'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
-  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  getUpdateState: () => ipcRenderer.invoke('app:getUpdateState') as Promise<UpdateState>,
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates') as Promise<UpdateState>,
+  downloadUpdate: () => ipcRenderer.invoke('app:downloadUpdate') as Promise<UpdateState>,
+  installUpdate: () => ipcRenderer.invoke('app:installUpdate') as Promise<boolean>,
+  onUpdateState: (cb: (state: UpdateState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: UpdateState) => cb(state);
+    ipcRenderer.on('app:update-state', listener);
+    return () => ipcRenderer.removeListener('app:update-state', listener);
+  },
   openReleases: () => ipcRenderer.invoke('app:openReleases'),
   getFileMtime: (path: string) => ipcRenderer.invoke('file:getMtime', { path }),
   watchFile: (path: string) => ipcRenderer.send('file:watch', { path }),

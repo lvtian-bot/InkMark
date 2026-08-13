@@ -20,9 +20,11 @@ import {
   readdirSync,
 } from 'fs';
 import { pathToFileURL } from 'url';
+import { autoUpdater } from 'electron-updater';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
+import { createUpdateService } from './update-service';
 import type {
   DiscardStoredImageRequest,
   ResolveImageSourceRequest,
@@ -44,7 +46,7 @@ import {
   type ShortcutAction,
   type ShortcutMap,
 } from '../shared/shortcuts';
-import { evaluateLatestRelease, type UpdateCheckResult } from '../shared/update-check';
+import type { UpdateState } from '../shared/update-state';
 
 let mainWindow: BrowserWindow | null = null;
 let forceClose = false;
@@ -58,10 +60,19 @@ let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
 const PRODUCT_NAME = 'InkMark';
 const GITHUB_REPOSITORY_URL = 'https://github.com/lvtian-bot/InkMark';
 const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
-const GITHUB_LATEST_RELEASE_API = 'https://api.github.com/repos/lvtian-bot/InkMark/releases/latest';
 const fileWatchManager = createFileWatchManager();
 const workspaceWatchManager = createWorkspaceWatchManager();
 const imageStorage = createImageStorage();
+const updateService = createUpdateService({
+  adapter: autoUpdater,
+  currentVersion: app.getVersion(),
+  supported: process.platform === 'win32' && app.isPackaged,
+  onStateChange: (state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('app:update-state', state);
+    }
+  },
+});
 
 app.enableSandbox();
 
@@ -757,24 +768,40 @@ ipcMain.handle('app:getInfo', (event) =>
     : { name: PRODUCT_NAME, version: '' },
 );
 
-ipcMain.handle('app:checkForUpdates', async (event): Promise<UpdateCheckResult> => {
-  const currentVersion = app.getVersion();
+ipcMain.handle('app:getUpdateState', (event): UpdateState =>
+  isTrustedRenderer(event)
+    ? updateService.getState()
+    : { status: 'error', currentVersion: app.getVersion(), message: '更新请求来源无效。' },
+);
+
+ipcMain.handle('app:checkForUpdates', (event): Promise<UpdateState> => {
   if (!isTrustedRenderer(event)) {
-    return { status: 'error', currentVersion, message: '更新检查请求来源无效。' };
-  }
-  try {
-    const response = await net.fetch(GITHUB_LATEST_RELEASE_API, {
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': PRODUCT_NAME },
-    });
-    if (!response.ok) throw new Error(`GitHub 返回 ${response.status}`);
-    return evaluateLatestRelease(currentVersion, await response.json());
-  } catch (error) {
-    return {
+    return Promise.resolve({
       status: 'error',
-      currentVersion,
-      message: error instanceof Error ? error.message : '暂时无法连接 GitHub。',
-    };
+      currentVersion: app.getVersion(),
+      message: '更新请求来源无效。',
+    });
   }
+  return updateService.check();
+});
+
+ipcMain.handle('app:downloadUpdate', (event): Promise<UpdateState> => {
+  if (!isTrustedRenderer(event)) {
+    return Promise.resolve({
+      status: 'error',
+      currentVersion: app.getVersion(),
+      message: '更新请求来源无效。',
+    });
+  }
+  return updateService.download();
+});
+
+ipcMain.handle('app:installUpdate', (event): boolean => {
+  if (!isTrustedRenderer(event)) return false;
+  forceClose = true;
+  const started = updateService.install();
+  if (!started) forceClose = false;
+  return started;
 });
 
 ipcMain.handle('app:openReleases', (event) => {
