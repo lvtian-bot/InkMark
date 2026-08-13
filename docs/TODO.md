@@ -102,6 +102,12 @@
 - [x] 文件对话框记住上次打开位置 ✅ 2026-08-12
   - 已实现：主进程新增独立的 `dialog-state.json` 持久化「上次打开位置」（文件或文件夹），不受最近列表 10 条上限影响；「打开文件」「打开文件夹」对话框均以其为起始位置，打开成功后更新。路径不存在时由系统对话框自动回落。与 `recent-files.json` 职责分开：recent 服务开始页「最近打开」展示，dialog-state 服务对话框定位。
   - 边界：即便频繁打开文件，文件夹定位也不会被挤掉；「另存为」暂未纳入（其对话框预填上次文件名易误覆盖，风险不同）。
+- [x] 序列化时去除非用户输入的 `<br />` 空行占位 ✅ 2026-08-13
+  - 已实现：根因是 Milkdown `preserveEmptyLine` 特性——paragraph 序列化 runner 对空段落（列表回车产生的空列表项、文档空行）注入 mdast `html` 节点 `<br />` 作占位；序列化方向只走 `remark.stringify`、不运行负责清理的 `remark-preserve-empty-line` 插件（仅解析方向生效），`<br />` 原样落进文件，表现为 `* <br />`。与「保留列表标记」功能无关。
+  - 修复：`markdown-stringify-options.ts` 新增 `dropBrPlaceholderHandler`（丢弃值为 `<br />`/`<br>`/`<br/>` 的 html 节点，其余 html 原样），经 `Editor.tsx` 注入 `remarkStringifyOptionsCtx` 的 `handlers.html`。用户手写的 `<br />` 在解析阶段已被删除，故序列化层遇到的必为特性注入，丢弃安全。
+  - 排查：穷举序列化方向所有 toMarkdown runner，唯一的非 Markdown 注入即此处；`html.ts` 透传用户 raw HTML、`hardbreak` 为标准硬换行，均非凭空注入；无 `<!---->`/`&nbsp;` 等。
+  - 取舍：顺带关闭文档级「空行保留」——所见即所得里多按回车产生的空段落不再用 `<br />` 强行保留，回归标准 Markdown（多余空行折叠为段落分隔，段落不丢），与 Typora/VSCode 一致。
+  - 测试：`serialize-br-placeholder.test.ts`（8 用例）覆盖纯函数与真实内核序列化（空列表项/有序列表/嵌套不误伤/往返稳定）。
 
 ## 稳定性与安全
 

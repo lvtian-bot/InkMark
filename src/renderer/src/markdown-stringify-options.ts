@@ -28,3 +28,26 @@ export const markdownStringifyOverrides: MarkdownStringifyOverrides = {
   emphasis: '*',
   strong: '*',
 };
+
+// remark-stringify 的 html 节点最小类型。只用 value 字段，避免引入 mdast 传递依赖。
+interface HtmlMdastNode {
+  value?: unknown;
+}
+
+/// 丢弃 Milkdown `preserveEmptyLine` 特性注入的 `<br />` 空行占位（仅序列化方向）。
+///
+/// 背景：commonmark 预设的 paragraph 序列化 runner 在遇到空段落时（列表回车产生的
+/// 空列表项、或文档中的空行），会注入 mdast `html` 节点 `<br />` 作占位，以便重新
+/// 解析时还原空行。但序列化方向只走 `remark.stringify`、不运行负责清理的
+/// `remark-preserve-empty-line` 插件（它只在解析方向生效），于是 `<br />` 直接落进
+/// 保存的文件，污染纯 Markdown 文本（用户看到的就是 `* <br />`）。
+///
+/// 处理：把值为 `<br />`/`<br>`/`<br/>` 的 html 节点输出为空，其余 html 原样保留。
+/// 安全性：用户手写的 `<br />` 在解析阶段已被 `remark-preserve-empty-line` 删除，
+/// 不会进入 ProseMirror 文档，所以序列化层遇到的 `<br />` 必来自该特性注入，丢弃它
+/// 不影响任何用户内容。代价是所见即所得里多按回车产生的「多余空行」不再被强行保留，
+/// 回归标准 Markdown 行为（多余空行折叠为正常段落分隔）。
+export function dropBrPlaceholderHandler(node: HtmlMdastNode | undefined): string {
+  const value = typeof node?.value === 'string' ? node.value : '';
+  return /^<br\s*\/?>$/i.test(value) ? '' : value;
+}

@@ -52,7 +52,10 @@ import '../styles/prism.css';
 import '../styles/themes/github.css';
 import githubLightUrl from 'github-markdown-css/github-markdown-light.css?url';
 import githubDarkUrl from 'github-markdown-css/github-markdown-dark.css?url';
-import { markdownStringifyOverrides } from '../markdown-stringify-options';
+import {
+  markdownStringifyOverrides,
+  dropBrPlaceholderHandler,
+} from '../markdown-stringify-options';
 
 const GITHUB_LINK_ID = 'inkmark-github-theme';
 
@@ -128,7 +131,13 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
           ...options,
           ...markdownStringifyOverrides,
           // 注入自定义 list 处理器：按节点保留的 bullet 字符输出（见 plugins/list-marker）。
-          handlers: { ...options.handlers, list: listMarkerHandler },
+          // 注入 html 处理器：丢弃 preserveEmptyLine 特性注入的 <br /> 空行占位，
+          // 避免空列表项等空段落保存成 `* <br />` 污染 Markdown 文本（见 markdown-stringify-options）。
+          handlers: {
+            ...options.handlers,
+            list: listMarkerHandler,
+            html: dropBrPlaceholderHandler,
+          },
         }));
       })
       .config((ctx) => {
