@@ -173,7 +173,6 @@ export const messages = {
   'statusBar.showFileTree': '显示文件树',
   'statusBar.hideFileTree': '隐藏文件树',
   'statusBar.sourceMode': '源码模式 (Ctrl+/)',
-  'statusBar.source': '源码',
   'statusBar.settings': '设置',
   'statusBar.wordCount': '{wordCount} 字',
   'statusBar.charCount': '{charCount} 字符',

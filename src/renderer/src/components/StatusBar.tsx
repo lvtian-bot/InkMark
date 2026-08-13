@@ -1,4 +1,11 @@
-import { ChevronLeft, ChevronRight, FolderTree, Settings, TableOfContents } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  CodeXml,
+  FolderTree,
+  Settings,
+  TableOfContents,
+} from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useStore } from '../stores/useStore';
 import '../styles/status-bar.css';
@@ -45,6 +52,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const setFileTreeVisible = useStore((s) => s.setFileTreeVisible);
   const panelLayout = useStore((s) => s.panelLayout);
   const toggleViewMode = useStore((s) => s.toggleViewMode);
+  const viewMode = useStore((s) => s.viewMode);
+  const isSourceMode = viewMode === 'source';
 
   const outlineSide = panelLayout === 'outline-left' ? 'left' : 'right';
   const fileTreeSide = panelLayout === 'outline-left' ? 'right' : 'left';
@@ -77,11 +86,13 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
         {outlineSide === 'left' && outlineToggle}
         {fileTreeSide === 'left' && fileTreeToggle}
         <button
-          className="status-mode-btn"
+          className={`status-mode-btn${isSourceMode ? ' active' : ''}`}
           onClick={toggleViewMode}
           title={t('statusBar.sourceMode')}
+          aria-label={t('statusBar.sourceMode')}
+          aria-pressed={isSourceMode}
         >
-          {t('statusBar.source')}
+          <CodeXml size={14} />
         </button>
         <button
           className="status-toggle-btn"

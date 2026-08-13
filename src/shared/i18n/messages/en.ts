@@ -181,7 +181,6 @@ export const messages: Record<MessageKey, string> = {
   'statusBar.showFileTree': 'Show File Tree',
   'statusBar.hideFileTree': 'Hide File Tree',
   'statusBar.sourceMode': 'Source Mode (Ctrl+/)',
-  'statusBar.source': 'Source',
   'statusBar.settings': 'Settings',
   'statusBar.wordCount': '{wordCount} words',
   'statusBar.charCount': '{charCount} chars',
