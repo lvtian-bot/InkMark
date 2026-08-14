@@ -35,13 +35,11 @@ import {
   replaceAll as replaceAllAction,
   callCommand,
 } from '@milkdown/kit/utils';
-import {
-  TextSelection,
-  type EditorState as ProseMirrorEditorState,
-} from '@milkdown/kit/prose/state';
+import { TextSelection } from '@milkdown/kit/prose/state';
 import { editorHandle } from '../editor-ref';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
-import { findLiteralMatches, isValidTextMatch, type TextMatch } from '../find-replace';
+import { isValidTextMatch, type TextMatch } from '../find-replace';
+import { findTextMatchesInDocument } from '../find-replace-doc';
 import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { frontmatter } from '../plugins/frontmatter';
@@ -59,52 +57,6 @@ import {
 } from '../markdown-stringify-options';
 
 const GITHUB_LINK_ID = 'inkmark-github-theme';
-
-function findTextMatchesInDocument(doc: ProseMirrorEditorState['doc'], query: string): TextMatch[] {
-  if (!query) return [];
-
-  const matches: TextMatch[] = [];
-
-  doc.descendants((block, blockPos) => {
-    if (!block.isTextblock) return true;
-
-    let segmentText = '';
-    let positions: number[] = [];
-    let expectedNextPos: number | null = null;
-
-    const flushSegment = (): void => {
-      for (const match of findLiteralMatches(segmentText, query)) {
-        const from = positions[match.from];
-        const lastPosition = positions[match.to - 1];
-        if (from !== undefined && lastPosition !== undefined) {
-          matches.push({ from, to: lastPosition + 1 });
-        }
-      }
-      segmentText = '';
-      positions = [];
-      expectedNextPos = null;
-    };
-
-    block.descendants((child, relativePos) => {
-      if (!child.isText || !child.text) return true;
-
-      const absolutePos = blockPos + 1 + relativePos;
-      if (expectedNextPos !== null && absolutePos !== expectedNextPos) flushSegment();
-
-      segmentText += child.text;
-      for (let index = 0; index < child.text.length; index += 1) {
-        positions.push(absolutePos + index);
-      }
-      expectedNextPos = absolutePos + child.nodeSize;
-      return false;
-    });
-
-    flushSegment();
-    return false;
-  });
-
-  return matches;
-}
 
 interface EditorProps {
   onDocChange: (doc: unknown) => void;
@@ -416,6 +368,24 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
         try {
           const view = ed.ctx.get(editorViewCtx);
           setFindDecorations(view, matches, activeIndex);
+          // 跳转：把激活匹配滚入正文可视区。不依赖 ProseMirror 的 scrollIntoView()——
+          // 本项目正文滚动容器是外层 .editor-container，内置滚动在该布局下不可靠
+          // （大纲跳转同样采用手动滚动）。仅当匹配落在安全区外才滚动，避免在视口内抖动。
+          const activeMatch = matches[activeIndex];
+          if (activeMatch && isValidTextMatch(activeMatch, view.state.doc.content.size)) {
+            const container = document.querySelector('.editor-container') as HTMLElement | null;
+            if (container) {
+              const containerTop = container.getBoundingClientRect().top;
+              const relativeTop = view.coordsAtPos(activeMatch.from).top - containerTop;
+              // 顶部留白避开浮动查找栏（top:52 + 高度）与标题栏；底部留一点呼吸空间。
+              const topMargin = 110;
+              const bottomMargin = 24;
+              const safeBottom = container.clientHeight - bottomMargin;
+              if (relativeTop < topMargin || relativeTop > safeBottom) {
+                container.scrollTop += relativeTop - topMargin;
+              }
+            }
+          }
         } catch (e) {
           console.error('showTextMatches error:', e);
         }

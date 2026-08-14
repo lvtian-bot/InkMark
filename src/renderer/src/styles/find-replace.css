@@ -2,15 +2,30 @@
   position: relative;
 }
 
+/* 跟随工具栏宽度档位（App.tsx 同步挂在 .editor-main 上），上限与 toolbar.css 一致 */
+.editor-main.toolbar-width-medium .find-replace-bar {
+  --findbar-align-max: calc(var(--editor-max-width) - var(--editor-side-padding));
+}
+
+.editor-main.toolbar-width-narrow .find-replace-bar {
+  --findbar-align-max: calc(
+    var(--editor-max-width) - var(--editor-side-padding) - var(--editor-side-padding)
+  );
+}
+
 .find-replace-bar {
   position: absolute;
   top: 52px;
-  right: 20px;
+  /* 与工具栏右对齐：复用工具栏自己的几何 —— 实际宽度取 min(档位上限, 100% - 24px) 居中，
+     再加工具栏 translateX 的半个滚动条补偿；百分比基准同为 .editor-main，任意窗口宽度下精确对齐。
+     档位上限由 .editor-main 上的 toolbar-width-* 类联动（见下方覆盖规则）。 */
+  --findbar-align-max: var(--editor-max-width);
+  right: calc((100% - min(var(--findbar-align-max), 100% - 24px)) / 2 + var(--scrollbar-w) / 2);
   z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: min(360px, calc(100% - 40px));
+  width: min(420px, calc(100% - 40px));
   padding: 8px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -99,9 +114,10 @@
   opacity: 0.45;
 }
 
+/* 占位与按钮同宽（30px），让两行固定元素总宽一致：输入框右缘与按钮列逐列对齐 */
 .find-replace-spacer {
-  width: 34px;
-  flex: 0 0 34px;
+  width: 30px;
+  flex: 0 0 30px;
 }
 
 .editor-container .inkmark-find-match {

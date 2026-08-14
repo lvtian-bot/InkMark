@@ -47,6 +47,7 @@ function AppContent() {
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStartPage ?? false,
   );
   const outlineWidth = useStore((s) => s.outlineWidth);
+  const toolbarWidth = useStore((s) => s.toolbarWidth);
   const outlineVisible = useStore((s) => s.outlineVisible);
   const fileTreeVisible = useStore((s) => s.fileTreeVisible);
   const panelLayout = useStore((s) => s.panelLayout);
@@ -592,7 +593,8 @@ function AppContent() {
             />
           </>
         )}
-        <main className="editor-main">
+        {/* toolbar-width 档位类同时供工具栏与查找面板使用：面板按同一几何与工具栏右对齐 */}
+        <main className={`editor-main toolbar-width-${toolbarWidth}`}>
           {isStartPage && (
             <StartPage
               onCreateBlank={() => setStartPage(false)}

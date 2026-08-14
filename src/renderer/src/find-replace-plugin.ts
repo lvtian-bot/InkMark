@@ -31,7 +31,9 @@ export const findReplacePlugin = $prose(() => {
           return DecorationSet.create(transaction.doc, nextDecorations);
         }
 
-        if (transaction.docChanged) return DecorationSet.empty;
+        // 文档改动时让装饰随 mapping 自动迁移（位置被删则自动移除），保持高亮可见；
+        // 精确匹配由 useFindReplace 的 refresh() 在内容变化后重算。这里不再整片清空，
+        // 否则编辑期间会出现“计数仍在、高亮全部消失”的窗口。
         return decorations.map(transaction.mapping, transaction.doc);
       },
     },
@@ -49,10 +51,12 @@ export function setFindDecorations(
   let transaction = view.state.tr.setMeta(findDecorationKey, { matches, activeIndex });
   const activeMatch = matches[activeIndex];
 
+  // 仅设置选区（编辑器获焦时可见），不在此处滚动：滚动由调用方 showTextMatches
+  // 针对外层 .editor-container 手动完成，因为 ProseMirror 的 scrollIntoView 在本布局下不可靠。
   if (activeMatch && isValidTextMatch(activeMatch, view.state.doc.content.size)) {
-    transaction = transaction
-      .setSelection(TextSelection.create(view.state.doc, activeMatch.from, activeMatch.to))
-      .scrollIntoView();
+    transaction = transaction.setSelection(
+      TextSelection.create(view.state.doc, activeMatch.from, activeMatch.to),
+    );
   }
 
   view.dispatch(transaction.setMeta('addToHistory', false));
