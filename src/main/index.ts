@@ -20,11 +20,10 @@ import {
   readdirSync,
 } from 'fs';
 import { pathToFileURL } from 'url';
-import { autoUpdater } from 'electron-updater';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
-import { createUpdateService } from './update-service';
+import { createUpdateService, type UpdateService } from './update-service';
 import type {
   DiscardStoredImageRequest,
   ResolveImageSourceRequest,
@@ -103,17 +102,27 @@ const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
 const fileWatchManager = createFileWatchManager();
 const workspaceWatchManager = createWorkspaceWatchManager();
 const imageStorage = createImageStorage({ t });
-const updateService = createUpdateService({
-  adapter: autoUpdater,
-  currentVersion: app.getVersion(),
-  supported: process.platform === 'win32' && app.isPackaged,
-  t,
-  onStateChange: (state) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('app:update-state', state);
-    }
-  },
-});
+// electron-updater 依赖图较大，推迟到首次访问更新功能时再动态加载，
+// 避免在 app ready 前评估整棵模块、拖慢窗口创建。
+let updateServicePromise: Promise<UpdateService> | null = null;
+function getUpdateService(): Promise<UpdateService> {
+  if (!updateServicePromise) {
+    updateServicePromise = import('electron-updater').then(({ autoUpdater }) =>
+      createUpdateService({
+        adapter: autoUpdater,
+        currentVersion: app.getVersion(),
+        supported: process.platform === 'win32' && app.isPackaged,
+        t,
+        onStateChange: (state) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('app:update-state', state);
+          }
+        },
+      }),
+    );
+  }
+  return updateServicePromise;
+}
 
 app.enableSandbox();
 
@@ -352,6 +361,8 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
+    // 与浅色标题栏同色，减轻渲染进程首帧前的白闪；深色主题真值在渲染进程，此处只能兜底。
+    backgroundColor: '#eef4f9',
     title: PRODUCT_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -829,38 +840,43 @@ ipcMain.handle('app:getInfo', (event) =>
     : { name: PRODUCT_NAME, version: '' },
 );
 
-ipcMain.handle('app:getUpdateState', (event): UpdateState =>
-  isTrustedRenderer(event)
-    ? updateService.getState()
-    : { status: 'error', currentVersion: app.getVersion(), message: t('update.requestInvalid') },
-);
-
-ipcMain.handle('app:checkForUpdates', (event): Promise<UpdateState> => {
+ipcMain.handle('app:getUpdateState', async (event): Promise<UpdateState> => {
   if (!isTrustedRenderer(event)) {
-    return Promise.resolve({
+    return {
       status: 'error',
       currentVersion: app.getVersion(),
       message: t('update.requestInvalid'),
-    });
+    };
   }
-  return updateService.check();
+  return (await getUpdateService()).getState();
 });
 
-ipcMain.handle('app:downloadUpdate', (event): Promise<UpdateState> => {
+ipcMain.handle('app:checkForUpdates', async (event): Promise<UpdateState> => {
   if (!isTrustedRenderer(event)) {
-    return Promise.resolve({
+    return {
       status: 'error',
       currentVersion: app.getVersion(),
       message: t('update.requestInvalid'),
-    });
+    };
   }
-  return updateService.download();
+  return (await getUpdateService()).check();
 });
 
-ipcMain.handle('app:installUpdate', (event): boolean => {
+ipcMain.handle('app:downloadUpdate', async (event): Promise<UpdateState> => {
+  if (!isTrustedRenderer(event)) {
+    return {
+      status: 'error',
+      currentVersion: app.getVersion(),
+      message: t('update.requestInvalid'),
+    };
+  }
+  return (await getUpdateService()).download();
+});
+
+ipcMain.handle('app:installUpdate', async (event): Promise<boolean> => {
   if (!isTrustedRenderer(event)) return false;
   forceClose = true;
-  const started = updateService.install();
+  const started = (await getUpdateService()).install();
   if (!started) forceClose = false;
   return started;
 });

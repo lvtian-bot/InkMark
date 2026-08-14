@@ -190,6 +190,11 @@
   - 不在启动或后台定时检查，不自动下载，普通退出和下次启动均不自动安装。重启安装前复用现有关闭流程保护未保存文档，用户取消时继续保留已下载状态。
   - 使用 `electron-updater` 对接 NSIS 安装包、`.blockmap` 和 `latest.yml`；开发版不执行更新。
 
+- [x] 启动性能优化：按需加载与本地构建产物清理 ✅ 2026-08-14
+  - 已实现：源码模式（CodeMirror 栈，约 424KB）与设置/更新对话框拆为独立 chunk 按需加载，首帧后空闲预取源码模式代码，首次切换无感知；SourceEditor 晚挂载时从当前标签 sourceContent 初始化内容；electron-updater 改为首次更新操作时动态加载，不再拖慢主进程 ready；窗口增加 backgroundColor 减轻启动白闪。关键路径 JS 由 2.61MB 降至 2.17MB。
+  - 构建卫生：`build`、`build:win` 前置清空 out/（此前 `emptyOutDir: false` 致历史产物无限累积并进入本地打包结果；正式安装包走 CI 干净检出，不受影响）。
+  - 后续：`useOutline`/`useWordCount` 经 `source-document` 急切引用 `@codemirror/language`（连带 view/state），CodeMirror 核心仍留在主 bundle；进一步拆分需把源码大纲/字数统计改为异步或改用直连 lezer 解析，风险与收益待评估。
+
 ## 暂不需要
 
 - [ ] 导出 HTML / PDF / 富文本

@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EditorState as SourceEditorState } from '@codemirror/state';
 import { MilkdownProvider } from '@milkdown/react';
 import { Editor } from './components/Editor';
-import { SourceEditor } from './components/SourceEditor';
 import { StatusBar } from './components/StatusBar';
 import { Outline } from './components/Outline';
 import { FileTree } from './components/FileTree';
@@ -10,8 +9,6 @@ import { TabBar } from './components/TabBar';
 import { Toolbar } from './components/Toolbar';
 import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { UpdateDialog } from './components/UpdateDialog';
-import { SettingsDialog } from './components/SettingsDialog';
 import { FindReplaceBar } from './components/FindReplaceBar';
 import { ExternalUpdateBanner } from './components/ExternalUpdateBanner';
 import { useTheme } from './hooks/useTheme';
@@ -33,6 +30,18 @@ import { editorStateCache } from './editor-state-cache';
 import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { comboMatchesEvent } from './shortcut-recorder';
+
+// 源码模式与低频对话框拆成独立 chunk，避免它们的代码（CodeMirror 全家桶等）
+// 拖慢启动首帧；首次使用时按需加载。查找替换等高频路径不懒加载。
+const SourceEditor = lazy(() =>
+  import('./components/SourceEditor').then((m) => ({ default: m.SourceEditor })),
+);
+const SettingsDialog = lazy(() =>
+  import('./components/SettingsDialog').then((m) => ({ default: m.SettingsDialog })),
+);
+const UpdateDialog = lazy(() =>
+  import('./components/UpdateDialog').then((m) => ({ default: m.UpdateDialog })),
+);
 
 function AppContent() {
   const { themeId, setThemeId } = useTheme();
@@ -81,6 +90,15 @@ function AppContent() {
   useEffect(() => {
     viewModeRef.current = viewMode;
   }, [viewMode]);
+
+  useEffect(() => {
+    // 首帧后空闲时预取源码模式 chunk：与上面的 lazy() 同一 import 说明符，
+    // 模块已缓存后用户首次切换源码模式无需等待加载。
+    const idleId = window.requestIdleCallback(() => {
+      void import('./components/SourceEditor');
+    });
+    return () => window.cancelIdleCallback(idleId);
+  }, []);
 
   const setMarkdown = useCallback((md: string) => {
     if (!editorHandle.current) return false;
@@ -624,7 +642,9 @@ function AppContent() {
           <div
             className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}
           >
-            <SourceEditor onChange={handleSourceChange} />
+            <Suspense fallback={null}>
+              <SourceEditor onChange={handleSourceChange} />
+            </Suspense>
           </div>
           <StatusBar onOpenSettings={() => setIsSettingsOpen(true)} />
         </main>
@@ -657,12 +677,18 @@ function AppContent() {
         )}
       </div>
       <ConfirmDialog />
-      {isSettingsOpen && <SettingsDialog onClose={() => setIsSettingsOpen(false)} />}
+      {isSettingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsDialog onClose={() => setIsSettingsOpen(false)} />
+        </Suspense>
+      )}
       {isUpdateOpen && (
-        <UpdateDialog
-          onClose={() => setIsUpdateOpen(false)}
-          prepareToClose={fileOps.prepareToClose}
-        />
+        <Suspense fallback={null}>
+          <UpdateDialog
+            onClose={() => setIsUpdateOpen(false)}
+            prepareToClose={fileOps.prepareToClose}
+          />
+        </Suspense>
       )}
     </div>
   );

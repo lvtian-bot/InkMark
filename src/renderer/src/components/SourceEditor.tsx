@@ -87,7 +87,13 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
         ],
       });
 
-    const state = createState('');
+    // 懒加载下挂载可能晚于 App 的模式/标签切换 effect（它们经 sourceEditorHandle 注入内容，
+    // 句柄未就绪时会跳过），因此挂载时从当前标签 sourceContent 初始化；急切挂载时该值
+    // 恒为空串，行为不变。
+    const { tabs, activeTabId: initialTabId } = useStore.getState();
+    const initialDoc = tabs.find((tab) => tab.id === initialTabId)?.sourceContent ?? '';
+
+    const state = createState(initialDoc);
 
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
