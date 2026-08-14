@@ -68,6 +68,19 @@ describe('isShortcutCombo', () => {
   });
 });
 
+describe('DEFAULT_SHORTCUT_MAP', () => {
+  it('新建标签页与新建空白文档分离：Ctrl+T 与 Ctrl+N 互不冲突', () => {
+    expect(DEFAULT_SHORTCUT_MAP.newFile).toEqual({ mod: true, alt: false, shift: false, key: 't' });
+    expect(DEFAULT_SHORTCUT_MAP.newBlankDoc).toEqual({
+      mod: true,
+      alt: false,
+      shift: false,
+      key: 'n',
+    });
+    expect(comboEquals(DEFAULT_SHORTCUT_MAP.newFile, DEFAULT_SHORTCUT_MAP.newBlankDoc)).toBe(false);
+  });
+});
+
 describe('normalizeShortcutMap', () => {
   it('空输入返回全部默认值的拷贝', () => {
     const result = normalizeShortcutMap(undefined);

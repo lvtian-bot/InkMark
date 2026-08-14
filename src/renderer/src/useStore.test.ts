@@ -1,5 +1,50 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { useStore } from './stores/useStore';
+
+describe('useStore addTab', () => {
+  // store 是模块级单例，测试间共享状态；记录初始状态，每个用例结束后恢复，
+  // 避免本组用例新增的标签页污染其它用例对「初始仅一个标签页」的假设。
+  const initialState = {
+    tabs: useStore.getState().tabs,
+    activeTabId: useStore.getState().activeTabId,
+  };
+
+  afterEach(() => {
+    useStore.setState(initialState);
+  });
+
+  it('addTab({ startPage: false }) 创建跳过开始页的空白文档标签', () => {
+    const { addTab } = useStore.getState();
+    const tabId = addTab({ startPage: false });
+
+    const state = useStore.getState();
+    const tab = state.tabs.find((t) => t.id === tabId);
+    expect(tab).toBeDefined();
+    expect(tab!.isStartPage).toBe(false);
+    expect(tab!.filePath).toBeNull();
+    expect(tab!.sourceContent).toBe('');
+    expect(state.activeTabId).toBe(tabId);
+  });
+
+  it('缺省 addTab() 仍创建开始页标签', () => {
+    const { addTab } = useStore.getState();
+    const tabId = addTab();
+
+    const state = useStore.getState();
+    const tab = state.tabs.find((t) => t.id === tabId);
+    expect(tab!.isStartPage).toBe(true);
+  });
+
+  it('externalUpdatePending 默认为 false，且 updateTab 可置位（外部改动提示条状态）', () => {
+    const { addTab, updateTab } = useStore.getState();
+    const tabId = addTab({ startPage: false });
+    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
+    expect(tab!.externalUpdatePending).toBe(false);
+
+    updateTab(tabId, { externalUpdatePending: true });
+    expect(useStore.getState().tabs.find((t) => t.id === tabId)!.externalUpdatePending).toBe(true);
+  });
+});
 
 describe('useStore closeTab', () => {
   it('关闭最后一个标签页后回到欢迎页，而非清空标签或关闭应用', () => {

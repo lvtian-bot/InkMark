@@ -15,6 +15,7 @@ export const messages = {
   'menu.theme': '主题',
   'menu.help': '帮助',
   'menu.new': '新建',
+  'menu.newBlankDoc': '新建空白文档',
   'menu.open': '打开...',
   'menu.openFolder': '打开文件夹…',
   'menu.closeTab': '关闭标签页',
@@ -126,7 +127,8 @@ export const messages = {
   'settings.shortcuts.conflict': '与「{names}」冲突',
   'settings.shortcuts.conflictTitle': '存在快捷键冲突，请先解决',
 
-  'shortcut.newFile': '新建文件',
+  'shortcut.newFile': '新建标签页',
+  'shortcut.newBlankDoc': '新建空白文档',
   'shortcut.openFile': '打开文件',
   'shortcut.openFolder': '打开文件夹',
   'shortcut.closeTab': '关闭标签页',
@@ -240,6 +242,10 @@ export const messages = {
   'confirm.diffAria': '磁盘版本与当前编辑版本的差异',
   'confirm.diffDisk': '− 磁盘版本',
   'confirm.diffCurrent': '+ 当前编辑版本',
+
+  'externalUpdate.banner': '文件已被外部更新',
+  'externalUpdate.clickToReload': '点击重新加载',
+  'externalUpdate.aria': '文件已被外部更新，点击重新加载最新版本',
 
   'image.alt': '图片',
   'image.readFailed': '读取图片失败，请重新选择图片。',

@@ -30,6 +30,8 @@ export interface Tab {
   wysiwygScrollTop: number;
   sourceScrollTop: number;
   fileMtime: number | null;
+  /** 外部改动已发生、等待用户点击提示条后加载磁盘版本（不静默刷新）。 */
+  externalUpdatePending: boolean;
 }
 
 interface InkMarkState extends AppSettings {
@@ -42,6 +44,8 @@ interface InkMarkState extends AppSettings {
     filePath?: string | null;
     content?: string;
     fileMtime?: number | null;
+    /** 显式指定是否显示开始页；缺省时按调用方传入的 startPageOnLaunch 决定。 */
+    startPage?: boolean;
   }) => string;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
@@ -88,11 +92,12 @@ function createTab(
     filePath?: string | null;
     content?: string;
     fileMtime?: number | null;
+    startPage?: boolean;
   },
   startPageOnLaunch: boolean = initialSettings.startPageOnLaunch,
 ): Tab {
   const filePath = init?.filePath ?? null;
-  const isStartPage = filePath ? false : startPageOnLaunch;
+  const isStartPage = filePath ? false : (init?.startPage ?? startPageOnLaunch);
   return {
     id: nextTabId(),
     filePath,
@@ -106,6 +111,7 @@ function createTab(
     wysiwygScrollTop: 0,
     sourceScrollTop: 0,
     fileMtime: init?.fileMtime ?? null,
+    externalUpdatePending: false,
   };
 }
 

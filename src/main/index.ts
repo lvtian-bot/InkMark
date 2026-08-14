@@ -458,6 +458,11 @@ function createMenu(): void {
           click: () => mainWindow?.webContents.send('menu:new'),
         },
         {
+          label: t('menu.newBlankDoc'),
+          accelerator: shortcutAccelerator('newBlankDoc'),
+          click: () => mainWindow?.webContents.send('menu:newBlankDoc'),
+        },
+        {
           label: t('menu.open'),
           accelerator: shortcutAccelerator('openFile'),
           click: () => mainWindow?.webContents.send('menu:open'),

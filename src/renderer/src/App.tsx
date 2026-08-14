@@ -13,6 +13,7 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { UpdateDialog } from './components/UpdateDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { FindReplaceBar } from './components/FindReplaceBar';
+import { ExternalUpdateBanner } from './components/ExternalUpdateBanner';
 import { useTheme } from './hooks/useTheme';
 import { useEditorFont } from './hooks/useEditorFont';
 import { useFile } from './hooks/useFile';
@@ -59,6 +60,9 @@ function AppContent() {
   const fileTreeSide = panelLayout === 'outline-left' ? 'right' : 'left';
   const activeFilePath = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.filePath ?? null,
+  );
+  const externalUpdatePending = useStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.externalUpdatePending ?? false,
   );
   const viewMode = useStore((s) => s.viewMode);
   const setOutlineWidth = useStore((s) => s.setOutlineWidth);
@@ -322,6 +326,11 @@ function AppContent() {
     window.inkmark.onMenuNew(() => {
       void fileOps.newFile();
     });
+    if (window.inkmark.onMenuNewBlankDoc) {
+      window.inkmark.onMenuNewBlankDoc(() => {
+        void fileOps.newBlankDoc();
+      });
+    }
     window.inkmark.onMenuOpen(() => {
       void fileOps.openFile();
     });
@@ -601,6 +610,9 @@ function AppContent() {
             />
           )}
           {!isStartPage && <Toolbar onSave={() => void fileOps.save()} />}
+          {!isStartPage && externalUpdatePending && (
+            <ExternalUpdateBanner onReload={() => void fileOps.reloadActiveTab()} />
+          )}
           {!isStartPage && isFindReplaceOpen && <FindReplaceBar controller={findReplace} />}
           <div
             className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}

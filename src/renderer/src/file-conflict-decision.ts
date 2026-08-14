@@ -2,7 +2,7 @@
 // 这些判断从 useFile hook 中抽出，便于单元测试且不依赖 IPC、弹窗或 React。
 // 文件丢失（missing）的判定由 useFile 的事件层和 mtime 查询层负责，不在这里处理。
 
-export type ExternalChangeDecision = 'noop' | 'silent-reload' | 'conflict';
+export type ExternalChangeDecision = 'noop' | 'prompt' | 'conflict';
 
 export interface ExternalChangeInput {
   fileMtime: number | null;
@@ -13,10 +13,11 @@ export interface ExternalChangeInput {
 // 判定某个已打开标签在面对外部文件变化时应走哪条分支。
 // 调用前应已确认文件存在（missing 由事件/查询层先行过滤）。
 // 返回值与 useFile 的 checkExternalChanges 中 mtime 比较后的分支一一对应。
+// 干净标签页不静默刷新（change-review.md 默认状态）：仅提示用户，点击后再加载磁盘版本。
 export function decideExternalChange(input: ExternalChangeInput): ExternalChangeDecision {
   const { fileMtime, diskMtime, isDirty } = input;
   if (fileMtime == null || diskMtime === fileMtime) return 'noop';
-  return isDirty ? 'conflict' : 'silent-reload';
+  return isDirty ? 'conflict' : 'prompt';
 }
 
 export type ConflictChoiceAction = 'reload' | 'keep-and-override' | 'cancel';

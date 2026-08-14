@@ -16,10 +16,8 @@ describe('decideExternalChange', () => {
     expect(decideExternalChange({ fileMtime: null, diskMtime: 100, isDirty: true })).toBe('noop');
   });
 
-  it('silently reloads a clean tab when the disk mtime changed', () => {
-    expect(decideExternalChange({ fileMtime: 100, diskMtime: 200, isDirty: false })).toBe(
-      'silent-reload',
-    );
+  it('prompts a clean tab when the disk mtime changed (no silent reload)', () => {
+    expect(decideExternalChange({ fileMtime: 100, diskMtime: 200, isDirty: false })).toBe('prompt');
   });
 
   it('asks for conflict resolution when a dirty tab faces an external change', () => {

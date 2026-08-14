@@ -7,6 +7,7 @@ import type { MessageKey } from './i18n';
 /** 可配置的应用功能快捷键动作。格式类（加粗/斜体/列表等）不在此列，沿用编辑器库默认。 */
 export type ShortcutAction =
   | 'newFile'
+  | 'newBlankDoc'
   | 'openFile'
   | 'openFolder'
   | 'closeTab'
@@ -32,6 +33,7 @@ export type ShortcutMap = Record<ShortcutAction, ShortcutCombo>;
 
 export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
   'newFile',
+  'newBlankDoc',
   'openFile',
   'openFolder',
   'closeTab',
@@ -51,6 +53,7 @@ export interface ShortcutActionMeta {
 
 export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = {
   newFile: { action: 'newFile', labelKey: 'shortcut.newFile' },
+  newBlankDoc: { action: 'newBlankDoc', labelKey: 'shortcut.newBlankDoc' },
   openFile: { action: 'openFile', labelKey: 'shortcut.openFile' },
   openFolder: { action: 'openFolder', labelKey: 'shortcut.openFolder' },
   closeTab: { action: 'closeTab', labelKey: 'shortcut.closeTab' },
@@ -157,6 +160,7 @@ export function comboEquals(a: ShortcutCombo, b: ShortcutCombo): boolean {
 /** 默认快捷键映射，对齐改造前的硬编码值（菜单 accelerator 与渲染进程 keydown）。 */
 export const DEFAULT_SHORTCUT_MAP: Readonly<ShortcutMap> = {
   newFile: { mod: true, alt: false, shift: false, key: 't' },
+  newBlankDoc: { mod: true, alt: false, shift: false, key: 'n' },
   openFile: { mod: true, alt: false, shift: false, key: 'o' },
   openFolder: { mod: true, alt: false, shift: true, key: 'o' },
   closeTab: { mod: true, alt: false, shift: false, key: 'w' },

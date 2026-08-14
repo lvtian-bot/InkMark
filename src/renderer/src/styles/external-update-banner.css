@@ -1,0 +1,54 @@
+/* 「文件已被外部更新」提示条：位于编辑区顶部、工具栏之下，整条可点击加载最新版本。
+   暖色强调但不抢编辑区焦点，亮/暗主题均通过 CSS 变量与 color-mix 适配。 */
+.external-update-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 24px);
+  max-width: var(--editor-max-width);
+  margin: 8px auto 0;
+  padding: 7px 12px;
+  border: 1px solid color-mix(in srgb, #e0a020 45%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, #e0a020 10%, var(--bg-primary));
+  color: var(--text-primary);
+  font: 13px var(--font-family);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    border-color 0.1s,
+    background 0.1s;
+}
+
+.external-update-banner:hover {
+  border-color: color-mix(in srgb, #e0a020 70%, var(--border-color));
+  background: color-mix(in srgb, #e0a020 16%, var(--bg-primary));
+}
+
+.external-update-banner:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.external-update-banner-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #e0a020;
+}
+
+.external-update-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-update-banner-action {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 600;
+}

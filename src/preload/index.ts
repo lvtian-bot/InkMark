@@ -51,6 +51,10 @@ const api = {
     ipcRenderer.removeAllListeners('menu:new');
     ipcRenderer.on('menu:new', () => cb());
   },
+  onMenuNewBlankDoc: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:newBlankDoc');
+    ipcRenderer.on('menu:newBlankDoc', () => cb());
+  },
   onMenuOpen: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:open');
     ipcRenderer.on('menu:open', () => cb());

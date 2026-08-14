@@ -82,6 +82,7 @@ export interface InkMarkAPI {
   onFileWatchEvent: (cb: (event: FileWatchEvent) => void) => () => void;
   onOpenFilePath: (cb: (path: string) => void) => void;
   onMenuNew: (cb: () => void) => void;
+  onMenuNewBlankDoc: (cb: () => void) => void;
   onMenuOpen: (cb: () => void) => void;
   onMenuSave: (cb: () => void) => void;
   onMenuSaveAs: (cb: () => void) => void;

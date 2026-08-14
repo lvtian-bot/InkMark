@@ -17,6 +17,7 @@ export const messages: Record<MessageKey, string> = {
   'menu.theme': 'Theme',
   'menu.help': 'Help',
   'menu.new': 'New',
+  'menu.newBlankDoc': 'New Blank Document',
   'menu.open': 'Open...',
   'menu.openFolder': 'Open Folder...',
   'menu.closeTab': 'Close Tab',
@@ -133,7 +134,8 @@ export const messages: Record<MessageKey, string> = {
   'settings.shortcuts.conflict': 'Conflicts with {names}',
   'settings.shortcuts.conflictTitle': 'Resolve shortcut conflicts first',
 
-  'shortcut.newFile': 'New File',
+  'shortcut.newFile': 'New Tab',
+  'shortcut.newBlankDoc': 'New Blank Document',
   'shortcut.openFile': 'Open File',
   'shortcut.openFolder': 'Open Folder',
   'shortcut.closeTab': 'Close Tab',
@@ -255,6 +257,10 @@ export const messages: Record<MessageKey, string> = {
   'confirm.diffAria': 'Differences between the disk version and the current edit',
   'confirm.diffDisk': '− Disk Version',
   'confirm.diffCurrent': '+ Current Edit',
+
+  'externalUpdate.banner': 'File changed externally',
+  'externalUpdate.clickToReload': 'Click to reload',
+  'externalUpdate.aria': 'The file changed externally. Click to load the latest version.',
 
   'image.alt': 'image',
   'image.readFailed': 'Failed to read the image, please choose it again.',

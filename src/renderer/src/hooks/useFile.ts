@@ -89,13 +89,21 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           }
           if (forceResult.status === 'ok') {
             missingNotifiedTabIdsRef.current.delete(tabId);
-            updateTab(tabId, { isDirty: false, fileMtime: forceResult.mtime });
+            updateTab(tabId, {
+              isDirty: false,
+              fileMtime: forceResult.mtime,
+              externalUpdatePending: false,
+            });
             return true;
           }
           return false;
         }
         missingNotifiedTabIdsRef.current.delete(tabId);
-        updateTab(tabId, { isDirty: false, fileMtime: result.mtime });
+        updateTab(tabId, {
+          isDirty: false,
+          fileMtime: result.mtime,
+          externalUpdatePending: false,
+        });
         return true;
       }
 
@@ -117,6 +125,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           fileName: saveAsResult.path.split(/[/\\]/).pop()!,
           isDirty: false,
           fileMtime: saveAsResult.mtime,
+          externalUpdatePending: false,
         });
         return true;
       }
@@ -127,6 +136,11 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
   const newFile = useCallback(() => {
     addTab();
+  }, [addTab]);
+
+  const newBlankDoc = useCallback(() => {
+    // 空白文档标签：跳过开始页，直接进入空编辑器（与开始页「新建空白文档」同语义）。
+    addTab({ startPage: false });
   }, [addTab]);
 
   const openFileResult = useCallback(
@@ -312,7 +326,10 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       return;
     }
     setDirty(true);
-  }, [setDirty]);
+    // 用户开始编辑后，等待重载的提示条不再有意义——继续显示会诱使用户点击
+    // 而丢弃刚输入的未保存内容；之后的外部改动会走脏标签的冲突弹窗。
+    updateTab(useStore.getState().activeTabId, { externalUpdatePending: false });
+  }, [setDirty, updateTab]);
 
   const reloadTab = useCallback(
     async (tabId: string): Promise<boolean> => {
@@ -344,6 +361,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         sourceContent: result.content,
         fileMtime: result.mtime,
         isDirty: false,
+        externalUpdatePending: false,
       });
       missingNotifiedTabIdsRef.current.delete(tabId);
       return true;
@@ -351,13 +369,18 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     [updateTab],
   );
 
-  const notifyMissingFile = useCallback(async (tabId: string, fileName: string): Promise<void> => {
-    if (missingNotifiedTabIdsRef.current.has(tabId)) return;
-    missingNotifiedTabIdsRef.current.add(tabId);
-    await confirmDialog(t('confirm.fileGone'), t('confirm.fileGoneBody', { name: fileName }), [
-      t('common.ok'),
-    ]);
-  }, []);
+  const notifyMissingFile = useCallback(
+    async (tabId: string, fileName: string): Promise<void> => {
+      if (missingNotifiedTabIdsRef.current.has(tabId)) return;
+      missingNotifiedTabIdsRef.current.add(tabId);
+      // 文件已丢失，等待重载的提示条不再有意义。
+      updateTab(tabId, { externalUpdatePending: false });
+      await confirmDialog(t('confirm.fileGone'), t('confirm.fileGoneBody', { name: fileName }), [
+        t('common.ok'),
+      ]);
+    },
+    [updateTab],
+  );
 
   const checkExternalChanges = useCallback(
     async (watchEvent?: FileWatchEvent): Promise<void> => {
@@ -434,11 +457,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                 updateTab(currentTab.id, { fileMtime: diskVersion.mtime });
               }
             } else {
-              const reloaded = await reloadTab(currentTab.id);
-              if (!reloaded) {
-                const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
-                if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
-              }
+              // 干净标签页不静默刷新（change-review.md 默认状态）：仅标记待重载，
+              // 由用户点击编辑区顶部的提示条后再加载磁盘版本。
+              updateTab(currentTab.id, { externalUpdatePending: true });
             }
           }
         }
@@ -448,6 +469,18 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     },
     [getTabMarkdown, notifyMissingFile, reloadTab, updateTab],
   );
+
+  const reloadActiveTab = useCallback(async (): Promise<void> => {
+    // 编辑区「文件已被外部更新」提示条的点击入口：加载磁盘上的最新版本
+    //（提示期间文件再次被外部改动时，此处读到的就是最新版本）。
+    const tabId = useStore.getState().activeTabId;
+    const reloaded = await reloadTab(tabId);
+    if (!reloaded) {
+      const latestTab = useStore.getState().tabs.find((tab) => tab.id === tabId);
+      // 仅对真实文件标签提示丢失；无路径标签（如开始页）不存在待重载场景。
+      if (latestTab?.filePath) await notifyMissingFile(latestTab.id, latestTab.fileName);
+    }
+  }, [notifyMissingFile, reloadTab]);
 
   useEffect(() => {
     return window.inkmark.onFileWatchEvent((event) => {
@@ -493,6 +526,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   return useMemo(
     () => ({
       newFile,
+      newBlankDoc,
       openFile,
       openFilePath,
       save,
@@ -502,9 +536,11 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       closeWindow,
       markDirty,
       checkExternalChanges,
+      reloadActiveTab,
     }),
     [
       newFile,
+      newBlankDoc,
       openFile,
       openFilePath,
       save,
@@ -514,6 +550,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       closeWindow,
       markDirty,
       checkExternalChanges,
+      reloadActiveTab,
     ],
   );
 }
