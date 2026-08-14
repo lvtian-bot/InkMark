@@ -195,6 +195,10 @@
   - 构建卫生：`build`、`build:win` 前置清空 out/（此前 `emptyOutDir: false` 致历史产物无限累积并进入本地打包结果；正式安装包走 CI 干净检出，不受影响）。
   - 后续：`useOutline`/`useWordCount` 经 `source-document` 急切引用 `@codemirror/language`（连带 view/state），CodeMirror 核心仍留在主 bundle；进一步拆分需把源码大纲/字数统计改为异步或改用直连 lezer 解析，风险与收益待评估。
 
+- [ ] 应用内更新下载 404：latest.yml 引用文件名与实际资产名不一致
+  - 现象：electron-builder 生成的 latest.yml 引用 `InkMark-Setup-x.y.z.exe`（连字符），GitHub 上传的资产名是 `InkMark.Setup.x.y.z.exe`（ productName 含空格被替换成点号），更新器按前者下载得到 404，「检查更新」能发现新版但「下载」失败。v0.1.1 起存在；v0.1.2 发布时已手动修正该版 latest.yml 的 url/path 应急恢复。
+  - 待定根治：在 build 配置显式设置 `artifactName` 让产物名与 latest.yml 一致；会改变用户可见的安装包文件名（如 `InkMark-Setup-0.1.3.exe`），确认后再做。
+
 ## 暂不需要
 
 - [ ] 导出 HTML / PDF / 富文本
