@@ -66,10 +66,37 @@ let currentFileTreeVisible = false;
 // 快捷键映射：启动时用默认值，渲染进程加载完用户设置后通过 shortcuts:sync 覆盖。
 let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
 // 语言：启动时跟随系统；渲染进程加载完用户设置后通过 language:sync 覆盖。
+// 注意：不在模块加载期调用 app.getLocale()——ready 之前语言可能尚未确定，
+// 会错误地得到 en-US；系统语言统一在 ready 后或收到渲染进程上报时再解析。
 let currentLanguage: LanguageSetting = 'system';
-let currentLocale: LocaleId = resolveLocale(currentLanguage, app.getLocale());
+let currentLocale: LocaleId = 'en';
+let systemLanguage = '';
 const t = (key: MessageKey, params?: Record<string, string | number>): string =>
   translateByLocale(currentLocale, key, params);
+
+/** 解析系统首选语言：优先取用户首选语言列表第一项（与渲染端 navigator.language 同源）。 */
+function resolveSystemLanguage(): string {
+  const preferred = app.getPreferredSystemLanguages()[0];
+  if (preferred && preferred.trim() !== '') return preferred;
+  return app.getLocale();
+}
+
+/** 应用语言设置并同步原生菜单与关于面板；实际语言未变化时跳过重建。 */
+function applyLocale(language: LanguageSetting, system: string): void {
+  const next = resolveLocale(language, system);
+  if (next === currentLocale) return;
+  currentLocale = next;
+  createMenu();
+  app.setAboutPanelOptions({
+    applicationName: PRODUCT_NAME,
+    applicationVersion: t('about.version', { version: app.getVersion() }),
+    credits: [
+      `Electron: ${process.versions.electron}`,
+      `Chromium: ${process.versions.chrome}`,
+      `Node.js: ${process.versions.node}`,
+    ].join('\n'),
+  });
+}
 const PRODUCT_NAME = 'InkMark';
 const GITHUB_REPOSITORY_URL = 'https://github.com/lvtian-bot/InkMark';
 const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
@@ -567,6 +594,9 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 app.whenReady().then(() => {
+  // ready 之后系统语言才可靠，先解析再建菜单；渲染进程随后会按设置再次同步。
+  systemLanguage = resolveSystemLanguage();
+  currentLocale = resolveLocale(currentLanguage, systemLanguage);
   app.setAboutPanelOptions({
     applicationName: PRODUCT_NAME,
     applicationVersion: t('about.version', { version: app.getVersion() }),
@@ -638,22 +668,16 @@ ipcMain.on('shortcuts:sync', (event, shortcuts: unknown) => {
   createMenu();
 });
 
-ipcMain.on('language:sync', (event, language: unknown) => {
+ipcMain.on('language:sync', (event, language: unknown, systemLanguageValue: unknown) => {
   if (!isTrustedRenderer(event)) return;
-  const next = normalizeLanguageSetting(language);
-  if (next === currentLanguage) return;
-  currentLanguage = next;
-  currentLocale = resolveLocale(next, app.getLocale());
-  createMenu();
-  app.setAboutPanelOptions({
-    applicationName: PRODUCT_NAME,
-    applicationVersion: t('about.version', { version: app.getVersion() }),
-    credits: [
-      `Electron: ${process.versions.electron}`,
-      `Chromium: ${process.versions.chrome}`,
-      `Node.js: ${process.versions.node}`,
-    ].join('\n'),
-  });
+  currentLanguage = normalizeLanguageSetting(language);
+  // 渲染进程上报 navigator.language 作为系统语言依据（与界面同源，最可靠）；
+  // 上报缺失时回落系统首选语言解析。
+  systemLanguage =
+    typeof systemLanguageValue === 'string' && systemLanguageValue.trim() !== ''
+      ? systemLanguageValue
+      : resolveSystemLanguage();
+  applyLocale(currentLanguage, systemLanguage);
 });
 
 ipcMain.on('menu:popup', (event) => {

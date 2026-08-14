@@ -101,7 +101,7 @@ export interface InkMarkAPI {
   syncOutlineVisible: (visible: boolean) => void;
   syncFileTreeVisible: (visible: boolean) => void;
   syncShortcuts: (shortcuts: ShortcutMap) => void;
-  syncLanguage: (language: string) => void;
+  syncLanguage: (language: string, systemLanguage: string) => void;
   openFolderDialog: () => Promise<{ path: string } | null>;
   listDirectory: (path: string) => Promise<{ path: string; entries: WorkspaceEntry[] } | null>;
   revealInFolder: (path: string) => Promise<void>;

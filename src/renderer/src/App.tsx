@@ -450,7 +450,9 @@ function AppContent() {
   const language = useStore((s) => s.language);
   useEffect(() => {
     if (window.inkmark.syncLanguage) {
-      window.inkmark.syncLanguage(language);
+      // 连同 navigator.language 一起上报：主进程「跟随系统」时以此为系统语言依据，
+      // 与界面语言同源，避免主进程自身解析（app.getLocale）与界面不一致。
+      window.inkmark.syncLanguage(language, navigator.language);
     }
   }, [language]);
 
