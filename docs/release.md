@@ -10,11 +10,11 @@
 4. 创建与包版本一致的标签（例如 `v0.0.7`），并将标签推送到远端。
 5. **主动跟踪 Release workflow**：推送标签后，执行人必须通过 `gh run list` / `gh run watch` 或 GitHub 页面实时跟踪 Release 工作流执行过程，直至所有步骤全部完成。严禁推完标签不跟踪；若工作流失败，必须立即介入排查处理。
 6. 确认 GitHub Release 页面已成功生成该版本，且包含 `.exe` 安装包、`.exe.blockmap` 和 `latest.yml` 完整发布产物。
-7. 在本地保留同版本安装包，以下两种方式任选其一：
-   - **通过 GitHub CLI 直接下载（推荐）**：运行 `gh release download <tag> --dir dist`，直接将远端正式发布的安装包同步到本地 `dist/`；
-   - **本地构建**：运行 `npm run build:win`，保留本地 `dist/` 中生成的同版本安装包。
+7. 核对 `latest.yml` 的 `url`/`path` 引用的文件名与实际上传资产名一致。当前存在已知缺陷：`latest.yml` 引用连字符名（`InkMark-Setup-x.y.z.exe`）而资产为点号名（`InkMark.Setup.x.y.z.exe`），会让应用内更新下载 404（见 TODO「应用内更新下载 404」）。不一致时修正该文件并以 `gh release upload <tag> latest.yml --clobber` 覆盖，再通过 GitHub API（资产 CDN 有缓存）复核生效。
 
-完成标准：GitHub Actions Release 工作流成功执行、GitHub Release 发布成功且产物完整，并且本地能够找到同版本的 Windows 安装包。仅创建标签、仅推送远端、仅通过本地构建或工作流中途失败均不视为完成发布。
+完成标准：GitHub Actions Release 工作流成功执行、GitHub Release 发布成功且产物完整、`latest.yml` 与资产名一致（应用内更新可用）。仅创建标签、仅推送远端或工作流中途失败均不视为完成发布。
+
+本地留存说明（2026-08-14 起）：发布产物以 GitHub Release 为准，用户通过应用内「检查更新」升级，不再要求下载安装包到本地留存；需要排查打包问题时仍可本地 `npm run build:win`。
 
 ## 人工验证边界
 

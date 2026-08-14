@@ -199,6 +199,9 @@
   - 现象：electron-builder 生成的 latest.yml 引用 `InkMark-Setup-x.y.z.exe`（连字符），GitHub 上传的资产名是 `InkMark.Setup.x.y.z.exe`（ productName 含空格被替换成点号），更新器按前者下载得到 404，「检查更新」能发现新版但「下载」失败。v0.1.1 起存在；v0.1.2 发布时已手动修正该版 latest.yml 的 url/path 应急恢复。
   - 待定根治：在 build 配置显式设置 `artifactName` 让产物名与 latest.yml 一致；会改变用户可见的安装包文件名（如 `InkMark-Setup-0.1.3.exe`），确认后再做。
 
+- [x] 发布流程取消本地安装包留存，以应用内更新为准 ✅ 2026-08-14
+  - 已实现：release.md 移除「下载安装包到本地 / 本地构建留存」步骤及对应完成标准，新增发布后核对 latest.yml 与资产名一致的检查项（命名不一致缺陷根治前每次发布需核对）；本地已下载的 0.1.2 安装包同步清理。
+
 ## 暂不需要
 
 - [ ] 导出 HTML / PDF / 富文本
