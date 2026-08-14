@@ -1,14 +1,14 @@
 {
   "name": "inkmark",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "InkMark",
   "repository": "https://github.com/lvtian-bot/InkMark",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "node -e \"fs.rmSync('out', { force: true, recursive: true })\" && electron-vite build",
     "preview": "electron-vite preview",
-    "build:win": "electron-vite build && electron-builder --win",
+    "build:win": "node -e \"fs.rmSync('out', { force: true, recursive: true })\" && electron-vite build && electron-builder --win",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json",
     "check": "npm run lint && npm run typecheck && npm test && npm run format:check && npm run build",
