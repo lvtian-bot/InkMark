@@ -195,9 +195,9 @@
   - 构建卫生：`build`、`build:win` 前置清空 out/（此前 `emptyOutDir: false` 致历史产物无限累积并进入本地打包结果；正式安装包走 CI 干净检出，不受影响）。
   - 后续：`useOutline`/`useWordCount` 经 `source-document` 急切引用 `@codemirror/language`（连带 view/state），CodeMirror 核心仍留在主 bundle；进一步拆分需把源码大纲/字数统计改为异步或改用直连 lezer 解析，风险与收益待评估。
 
-- [ ] 应用内更新下载 404：latest.yml 引用文件名与实际资产名不一致
-  - 现象：electron-builder 生成的 latest.yml 引用 `InkMark-Setup-x.y.z.exe`（连字符），GitHub 上传的资产名是 `InkMark.Setup.x.y.z.exe`（ productName 含空格被替换成点号），更新器按前者下载得到 404，「检查更新」能发现新版但「下载」失败。v0.1.1 起存在；v0.1.2 发布时已手动修正该版 latest.yml 的 url/path 应急恢复。
-  - 待定根治：在 build 配置显式设置 `artifactName` 让产物名与 latest.yml 一致；会改变用户可见的安装包文件名（如 `InkMark-Setup-0.1.3.exe`），确认后再做。
+- [x] 应用内更新下载 404：latest.yml 引用文件名与实际资产名不一致 ✅ 2026-08-14
+  - 现象：NSIS 默认产物名带空格（`InkMark Setup x.y.z.exe`），latest.yml 写入打包工具的连字符安全名（`InkMark-Setup-x.y.z.exe`），而 CI 经第三方 action 按磁盘原名上传、GitHub 把空格替换成点号（`InkMark.Setup.x.y.z.exe`），更新器按清单名下载得到 404。v0.1.1 起存在；v0.1.2 发布时已手动修正该版 latest.yml 应急恢复。
+  - 已根治（2026-08-14）：`nsis.artifactName` 显式指定 `${productName}-Setup-${version}.${ext}`，磁盘名 = 清单名 = 上传名，本地打包已验证一致；自 v0.1.3 生效，安装包文件名改为连字符风格。
 
 - [x] 发布流程取消本地安装包留存，以应用内更新为准 ✅ 2026-08-14
   - 已实现：release.md 移除「下载安装包到本地 / 本地构建留存」步骤及对应完成标准，新增发布后核对 latest.yml 与资产名一致的检查项（命名不一致缺陷根治前每次发布需核对）；本地已下载的 0.1.2 安装包同步清理。

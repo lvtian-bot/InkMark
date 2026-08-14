@@ -10,7 +10,7 @@
 4. 创建与包版本一致的标签（例如 `v0.0.7`），并将标签推送到远端。
 5. **主动跟踪 Release workflow**：推送标签后，执行人必须通过 `gh run list` / `gh run watch` 或 GitHub 页面实时跟踪 Release 工作流执行过程，直至所有步骤全部完成。严禁推完标签不跟踪；若工作流失败，必须立即介入排查处理。
 6. 确认 GitHub Release 页面已成功生成该版本，且包含 `.exe` 安装包、`.exe.blockmap` 和 `latest.yml` 完整发布产物。
-7. 核对 `latest.yml` 的 `url`/`path` 引用的文件名与实际上传资产名一致。当前存在已知缺陷：`latest.yml` 引用连字符名（`InkMark-Setup-x.y.z.exe`）而资产为点号名（`InkMark.Setup.x.y.z.exe`），会让应用内更新下载 404（见 TODO「应用内更新下载 404」）。不一致时修正该文件并以 `gh release upload <tag> latest.yml --clobber` 覆盖，再通过 GitHub API（资产 CDN 有缓存）复核生效。
+7. 核对 `latest.yml` 的 `url`/`path` 与实际上传资产名一致。v0.1.3 起 `nsis.artifactName` 已显式指定无空格文件名（`${productName}-Setup-${version}.${ext}`），磁盘名、清单名与上传名三者恒一致，正常无需干预；若发现不一致（应用内更新会下载 404），修正该文件并以 `gh release upload <tag> latest.yml --clobber` 覆盖，再通过 GitHub API（资产 CDN 有缓存）复核生效。
 
 完成标准：GitHub Actions Release 工作流成功执行、GitHub Release 发布成功且产物完整、`latest.yml` 与资产名一致（应用内更新可用）。仅创建标签、仅推送远端或工作流中途失败均不视为完成发布。
 
