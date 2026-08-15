@@ -506,13 +506,13 @@ function createMenu(): void {
       submenu: [
         {
           label: t('menu.new'),
-          accelerator: shortcutAccelerator('newFile'),
-          click: () => mainWindow?.webContents.send('menu:new'),
-        },
-        {
-          label: t('menu.newBlankDoc'),
           accelerator: shortcutAccelerator('newBlankDoc'),
           click: () => mainWindow?.webContents.send('menu:newBlankDoc'),
+        },
+        {
+          label: t('menu.newTab'),
+          accelerator: shortcutAccelerator('newFile'),
+          click: () => mainWindow?.webContents.send('menu:new'),
         },
         {
           label: t('menu.open'),
@@ -558,6 +558,17 @@ function createMenu(): void {
         { label: t('menu.copy'), role: 'copy' },
         { label: t('menu.paste'), role: 'paste' },
         { label: t('menu.selectAll'), role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: t('menu.find'),
+          accelerator: shortcutAccelerator('find'),
+          click: () => mainWindow?.webContents.send('menu:find'),
+        },
+        {
+          label: t('menu.replace'),
+          accelerator: shortcutAccelerator('replace'),
+          click: () => mainWindow?.webContents.send('menu:replace'),
+        },
       ],
     },
     {
@@ -741,11 +752,25 @@ ipcMain.on('language:sync', (event, language: unknown, systemLanguageValue: unkn
   applyLocale(currentLanguage, systemLanguage);
 });
 
-ipcMain.on('menu:popup', (event) => {
+ipcMain.on('menu:popup', (event, pos?: unknown) => {
   if (!isTrustedRenderer(event)) return;
   const menu = Menu.getApplicationMenu();
   if (menu && mainWindow) {
-    menu.popup();
+    const popupOptions: Electron.PopupOptions = { window: mainWindow };
+    if (
+      pos &&
+      typeof pos === 'object' &&
+      'x' in pos &&
+      'y' in pos &&
+      typeof (pos as { x: unknown }).x === 'number' &&
+      typeof (pos as { y: unknown }).y === 'number' &&
+      Number.isFinite((pos as { x: number }).x) &&
+      Number.isFinite((pos as { y: number }).y)
+    ) {
+      popupOptions.x = Math.round((pos as { x: number }).x);
+      popupOptions.y = Math.round((pos as { y: number }).y);
+    }
+    menu.popup(popupOptions);
   }
 });
 

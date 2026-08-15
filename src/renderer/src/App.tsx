@@ -368,6 +368,22 @@ function AppContent() {
         if (isThemeId(id)) setThemeId(id);
       });
     }
+    if (window.inkmark.onMenuFind) {
+      window.inkmark.onMenuFind(() => {
+        const s = useStore.getState();
+        const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
+        if (activeTab?.isStartPage) return;
+        openFindReplace(false);
+      });
+    }
+    if (window.inkmark.onMenuReplace) {
+      window.inkmark.onMenuReplace(() => {
+        const s = useStore.getState();
+        const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
+        if (activeTab?.isStartPage) return;
+        openFindReplace(true);
+      });
+    }
     if (window.inkmark.onMenuToggleSource) {
       window.inkmark.onMenuToggleSource(() => toggleViewMode());
     }
@@ -406,7 +422,15 @@ function AppContent() {
     window.inkmark.onOpenFilePath((path: string) => {
       void fileOps.openFilePath(path);
     });
-  }, [closeFindReplace, fileOps, fileTree, setFileTreeVisible, setThemeId, toggleViewMode]);
+  }, [
+    closeFindReplace,
+    fileOps,
+    fileTree,
+    openFindReplace,
+    setFileTreeVisible,
+    setThemeId,
+    toggleViewMode,
+  ]);
 
   useEffect(() => {
     // 全局功能快捷键：用捕获阶段监听，确保在 CodeMirror / ProseMirror 等编辑器 keymap

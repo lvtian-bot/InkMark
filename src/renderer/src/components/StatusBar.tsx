@@ -6,6 +6,7 @@ import {
   Settings,
   TableOfContents,
 } from 'lucide-react';
+import { formatComboForDisplay, toDisplayPlatform } from '../../../shared/shortcuts';
 import { useI18n } from '../i18n';
 import { useStore } from '../stores/useStore';
 import '../styles/status-bar.css';
@@ -54,6 +55,16 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const toggleViewMode = useStore((s) => s.toggleViewMode);
   const viewMode = useStore((s) => s.viewMode);
   const isSourceMode = viewMode === 'source';
+  const toggleSourceShortcut = useStore((s) => s.shortcuts.toggleSource);
+  const settingsShortcut = useStore((s) => s.shortcuts.settings);
+  const displayPlatform = toDisplayPlatform(navigator.platform);
+
+  const sourceModeTitle = t('statusBar.sourceMode', {
+    shortcut: formatComboForDisplay(toggleSourceShortcut, displayPlatform),
+  });
+  const settingsTitle = t('statusBar.settings', {
+    shortcut: formatComboForDisplay(settingsShortcut, displayPlatform),
+  });
 
   const outlineSide = panelLayout === 'outline-left' ? 'left' : 'right';
   const fileTreeSide = panelLayout === 'outline-left' ? 'right' : 'left';
@@ -88,8 +99,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
         <button
           className={`status-mode-btn${isSourceMode ? ' active' : ''}`}
           onClick={toggleViewMode}
-          title={t('statusBar.sourceMode')}
-          aria-label={t('statusBar.sourceMode')}
+          title={sourceModeTitle}
+          aria-label={sourceModeTitle}
           aria-pressed={isSourceMode}
         >
           <CodeXml size={14} />
@@ -98,8 +109,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
           className="status-toggle-btn"
           type="button"
           onClick={onOpenSettings}
-          title={t('statusBar.settings')}
-          aria-label={t('statusBar.settings')}
+          title={settingsTitle}
+          aria-label={settingsTitle}
         >
           <Settings size={14} />
         </button>

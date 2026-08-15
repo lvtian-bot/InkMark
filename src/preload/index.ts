@@ -99,6 +99,14 @@ const api = {
     ipcRenderer.removeAllListeners('menu:checkForUpdates');
     ipcRenderer.on('menu:checkForUpdates', () => cb());
   },
+  onMenuFind: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:find');
+    ipcRenderer.on('menu:find', () => cb());
+  },
+  onMenuReplace: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:replace');
+    ipcRenderer.on('menu:replace', () => cb());
+  },
   onMenuClose: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:close');
     ipcRenderer.on('menu:close', () => cb());
@@ -123,8 +131,8 @@ const api = {
   syncLanguage: (language: string, systemLanguage: string) => {
     ipcRenderer.send('language:sync', language, systemLanguage);
   },
-  popupMenu: () => {
-    ipcRenderer.send('menu:popup');
+  popupMenu: (pos?: { x: number; y: number }) => {
+    ipcRenderer.send('menu:popup', pos);
   },
   storeImage: (request: StoreImageRequest) => ipcRenderer.invoke('image:store', request),
   discardStoredImage: (request: DiscardStoredImageRequest) =>

@@ -53,6 +53,18 @@ describe('i18n 翻译', () => {
       'New version 0.2.0 available',
     );
     expect(translateByLocale('zh-CN', 'statusBar.wordCount', { wordCount: 12 })).toBe('12 字');
+    expect(translateByLocale('zh-CN', 'statusBar.sourceMode', { shortcut: 'Ctrl+E' })).toBe(
+      '源码模式 (Ctrl+E)',
+    );
+    expect(translateByLocale('zh-CN', 'statusBar.settings', { shortcut: 'Ctrl+,' })).toBe(
+      '设置 (Ctrl+,)',
+    );
+    expect(translateByLocale('zh-CN', 'tabBar.newTab', { shortcut: 'Ctrl+T' })).toBe(
+      '新标签页 (Ctrl+T)',
+    );
+    expect(translateByLocale('en', 'statusBar.sourceMode', { shortcut: 'Cmd+E' })).toBe(
+      'Source Mode (Cmd+E)',
+    );
   });
 
   it('缺失占位符参数时保留占位符原样，便于发现缺参', () => {

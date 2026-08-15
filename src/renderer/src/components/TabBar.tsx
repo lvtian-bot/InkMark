@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatComboForDisplay, toDisplayPlatform } from '../../../shared/shortcuts';
 import { useI18n } from '../i18n';
 import { useStore } from '../stores/useStore';
 import { tabDisplayName } from '../tab-name';
@@ -20,6 +21,11 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
   const tabs = useStore((s) => s.tabs);
   const activeTabId = useStore((s) => s.activeTabId);
   const moveTab = useStore((s) => s.moveTab);
+  const newFileShortcut = useStore((s) => s.shortcuts.newFile);
+  const displayPlatform = toDisplayPlatform(navigator.platform);
+  const newTabTitle = t('tabBar.newTab', {
+    shortcut: formatComboForDisplay(newFileShortcut, displayPlatform),
+  });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
@@ -80,7 +86,13 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
     <div className="tab-bar">
       <button
         className="tab-menu"
-        onClick={() => window.inkmark.popupMenu()}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          window.inkmark.popupMenu({
+            x: Math.round(rect.left),
+            y: Math.round(rect.bottom),
+          });
+        }}
         title={t('tabBar.menu')}
       >
         {'\u2630'}
@@ -114,7 +126,7 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
             </div>
           </div>
         ))}
-        <button className="tab-new" onClick={onNewTab} title={t('tabBar.newTab')}>
+        <button className="tab-new" onClick={onNewTab} title={newTabTitle}>
           {'\u002b'}
         </button>
       </div>

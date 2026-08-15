@@ -85,25 +85,10 @@ export const ALLOWED_COMBO_KEYS: ReadonlySet<string> = new Set([
   '\\',
 ]);
 
-// Electron accelerator 键名映射：我们的 combo.key → accelerator 片段。
-// 字母/数字直接大写；标点必须用 Electron 的 Key 名，否则 accelerator 不生效。
-const KEY_TO_ACCELERATOR: Record<string, string> = {
-  '/': 'Slash',
-  ',': 'Comma',
-  '.': 'Period',
-  '-': 'Minus',
-  '=': 'Equal',
-  ';': 'Semicolon',
-  "'": 'Quote',
-  '`': 'Backquote',
-  '[': 'BracketLeft',
-  ']': 'BracketRight',
-  '\\': 'Backslash',
-};
-
 function acceleratorKey(key: string): string | null {
+  if (!ALLOWED_COMBO_KEYS.has(key)) return null;
   if (/^[a-z0-9]$/.test(key)) return key.toUpperCase();
-  return KEY_TO_ACCELERATOR[key] ?? null;
+  return key;
 }
 
 /** 把组合键转成 Electron accelerator 字符串（如 "CmdOrCtrl+Shift+O" / "Alt+E"）。无法表示时返回 null。 */

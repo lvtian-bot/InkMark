@@ -26,12 +26,12 @@ describe('comboToAccelerator', () => {
     );
   });
 
-  it('标点用 Electron Key 名', () => {
+  it('标点使用标准字符生成 accelerator', () => {
     expect(comboToAccelerator({ mod: true, alt: false, shift: false, key: '/' })).toBe(
-      'CmdOrCtrl+Slash',
+      'CmdOrCtrl+/',
     );
     expect(comboToAccelerator({ mod: true, alt: false, shift: false, key: ',' })).toBe(
-      'CmdOrCtrl+Comma',
+      'CmdOrCtrl+,',
     );
   });
 

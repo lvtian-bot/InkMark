@@ -91,6 +91,8 @@ export interface InkMarkAPI {
   onMenuClose: (cb: () => void) => void;
   onMenuCloseTab: (cb: () => void) => void;
   onMenuCheckForUpdates: (cb: () => void) => void;
+  onMenuFind: (cb: () => void) => void;
+  onMenuReplace: (cb: () => void) => void;
   onMenuToggleSource: (cb: () => void) => void;
   onMenuToggleOutline: (cb: () => void) => void;
   onMenuOpenFolder: (cb: () => void) => void;
@@ -109,7 +111,7 @@ export interface InkMarkAPI {
   watchWorkspace: (path: string) => void;
   unwatchWorkspace: () => void;
   onWorkspaceWatchEvent: (cb: (event: { path: string }) => void) => () => void;
-  popupMenu: () => void;
+  popupMenu: (pos?: { x: number; y: number }) => void;
   storeImage: (request: StoreImageRequest) => Promise<StoreImageResult>;
   discardStoredImage: (request: DiscardStoredImageRequest) => Promise<DiscardStoredImageResult>;
   resolveImageSource: (request: ResolveImageSourceRequest) => Promise<ResolveImageSourceResult>;
