@@ -101,6 +101,45 @@ export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = 
   exit: { action: 'exit', labelKey: 'shortcut.exit' },
 };
 
+export interface ShortcutGroup {
+  id: string;
+  labelKey: MessageKey;
+  actions: readonly ShortcutAction[];
+}
+
+export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
+  {
+    id: 'file',
+    labelKey: 'settings.shortcuts.groupFile',
+    actions: [
+      'newFile',
+      'newBlankDoc',
+      'openFile',
+      'openFolder',
+      'revealInFolder',
+      'closeTab',
+      'save',
+      'saveAs',
+      'exit',
+    ],
+  },
+  {
+    id: 'edit',
+    labelKey: 'settings.shortcuts.groupEdit',
+    actions: ['find', 'replace', 'toggleSource'],
+  },
+  {
+    id: 'view',
+    labelKey: 'settings.shortcuts.groupView',
+    actions: ['toggleOutline', 'toggleFileTree', 'toggleToolbar', 'toggleAlwaysOnTop'],
+  },
+  {
+    id: 'general',
+    labelKey: 'settings.shortcuts.groupGeneral',
+    actions: ['settings'],
+  },
+];
+
 /** 允许作为快捷键主键的字符（小写）。纯修饰键与不可打印键不在内。 */
 export const ALLOWED_COMBO_KEYS: ReadonlySet<string> = new Set([
   ...'abcdefghijklmnopqrstuvwxyz',

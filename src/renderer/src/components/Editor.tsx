@@ -45,7 +45,6 @@ import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { breaks } from '../plugins/breaks';
-import { blockMarkerReveal, setBlockMarkerReveal } from '../plugins/block-marker-reveal';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import '../styles/editor.css';
 import '../styles/prism.css';
@@ -75,7 +74,6 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
   const armedRef = useRef(false);
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
-  const blockMarkerEnabled = useStore((s) => s.blockMarkerReveal);
   const strictLineBreaks = useStore((s) => s.strictLineBreaks);
   const initialStrictRef = useRef(strictLineBreaks);
 
@@ -119,7 +117,6 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(taskList)
       .use(listMarker)
       .use(breaks)
-      .use(blockMarkerReveal)
       .use(history)
       .use(listener)
       .use(findReplacePlugin)
@@ -482,19 +479,6 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       editorHandle.current = null;
     };
   }, [loading, get]);
-
-  // 块级标记浮现开关：编辑器就绪后同步初始值，之后每次变化派发空事务触发装饰重算。
-  useEffect(() => {
-    if (loading) return;
-    const ed = get();
-    if (!ed) return;
-    try {
-      const view = ed.ctx.get(editorViewCtx);
-      setBlockMarkerReveal(view, blockMarkerEnabled);
-    } catch {
-      /* 编辑器尚未就绪，忽略 */
-    }
-  }, [loading, get, blockMarkerEnabled]);
 
   // 严格换行开关：设置变化时重新解析当前文档（跳过初始挂载）。
   useEffect(() => {

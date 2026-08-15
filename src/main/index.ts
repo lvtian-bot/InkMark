@@ -245,6 +245,7 @@ function saveWindowState(win: BrowserWindow): void {
 }
 
 const MAX_RECENT_FILES = 10;
+const MAX_RECENT_FOLDERS = 3;
 let recentFilesCache: RecentItem[] | null = null;
 
 function getRecentFilesPath(): string {
@@ -278,7 +279,10 @@ function writeRecentFiles(items: RecentItem[]): void {
 }
 
 function addRecent(filePath: string, kind: RecentKind): void {
-  const next = addOrUpdateRecent(getRecentFiles(), filePath, kind, MAX_RECENT_FILES);
+  const next = addOrUpdateRecent(getRecentFiles(), filePath, kind, {
+    maxFiles: MAX_RECENT_FILES,
+    maxFolders: MAX_RECENT_FOLDERS,
+  });
   if (next === getRecentFiles()) return;
   writeRecentFiles(next);
   createMenu();
@@ -508,7 +512,10 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
   if (items.length === 0) {
     return [{ label: t('menu.noRecentFiles'), enabled: false }];
   }
-  const list: Electron.MenuItemConstructorOptions[] = items.map((item) => {
+  const folderItems = items.filter((item) => item.kind === 'folder');
+  const fileItems = items.filter((item) => item.kind === 'file');
+
+  const toMenuItem = (item: RecentItem): Electron.MenuItemConstructorOptions => {
     const isFolder = item.kind === 'folder';
     const baseName = basename(item.path) || item.path;
     const label = isFolder ? `${baseName}/` : baseName;
@@ -523,7 +530,18 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
         }
       },
     };
-  });
+  };
+
+  const list: Electron.MenuItemConstructorOptions[] = [];
+  if (folderItems.length > 0) {
+    list.push(...folderItems.map(toMenuItem));
+  }
+  if (folderItems.length > 0 && fileItems.length > 0) {
+    list.push({ type: 'separator' });
+  }
+  if (fileItems.length > 0) {
+    list.push(...fileItems.map(toMenuItem));
+  }
   list.push({ type: 'separator' });
   list.push({
     label: t('menu.clearRecent'),

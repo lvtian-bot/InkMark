@@ -121,22 +121,6 @@
 .editor-container.theme-inkmark li {
   margin: 0.2em 0;
 }
-/* ---- 块级标记浮现（Live Preview · 块级）----
-   光标进入标题/引用/列表时，用淡化等宽字体显示原始 Markdown 标记字符（#、>、-、1.），
-   对齐源码模式 cm-mark-faded 的观感。reveal-list 抑制原生 disc/decimal，避免与字符标记重叠。
-   选择器带元素类型以与 .theme-inkmark ul 的特异性持平，靠源序（本块在列表规则之后）取胜。*/
-.editor-container .block-marker {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  user-select: none;
-}
-.editor-container ul.reveal-list,
-.editor-container ol.reveal-list,
-.editor-container .reveal-list ul,
-.editor-container .reveal-list ol,
-.editor-container .reveal-list li {
-  list-style: none;
-}
 .editor-container.theme-inkmark table {
   border-collapse: collapse;
   display: block;

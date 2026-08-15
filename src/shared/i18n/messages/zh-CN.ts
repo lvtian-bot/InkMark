@@ -88,6 +88,7 @@ export const messages = {
   'settings.description': '调整 InkMark 的外观、字体、编辑器与启动行为。',
   'settings.closeAria': '关闭设置',
   'settings.navAria': '设置分类',
+  'settings.section.general': '常规',
   'settings.section.appearance': '外观',
   'settings.section.font': '字体',
   'settings.section.editor': '编辑器',
@@ -127,9 +128,6 @@ export const messages = {
   'settings.editor.fileTreeVisibleLabel': '显示文件树',
   'settings.editor.fileTreeVisibleHint':
     '打开后可浏览文件夹内的 Markdown 文档，默认从状态栏或视图菜单切换。',
-  'settings.editor.blockMarkerLabel': '标记浮现（实验性）',
-  'settings.editor.blockMarkerHint':
-    '光标进入标题、引用或列表时，行首浮现 Markdown 标记符号（#、>、- 等）并可编辑。仍在完善中，可能有不稳定的体验，未来可能会被移除。',
   'settings.editor.strictLineBreaksLabel': '严格换行',
   'settings.editor.strictLineBreaksHint':
     '关闭时单次回车即换行（与 Obsidian 默认一致）；开启时遵循标准 Markdown，单次回车合并为空格。',
@@ -150,6 +148,10 @@ export const messages = {
   'settings.shortcuts.reset': '重置',
   'settings.shortcuts.conflict': '与「{names}」冲突',
   'settings.shortcuts.conflictTitle': '存在快捷键冲突，请先解决',
+  'settings.shortcuts.groupFile': '文件与标签',
+  'settings.shortcuts.groupEdit': '编辑与查找',
+  'settings.shortcuts.groupView': '视图与面板',
+  'settings.shortcuts.groupGeneral': '常规与偏好',
 
   'shortcut.newFile': '新建标签页',
   'shortcut.newBlankDoc': '新建空白文档',

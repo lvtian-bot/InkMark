@@ -91,6 +91,7 @@ export const messages: Record<MessageKey, string> = {
   'settings.description': 'Customize InkMark appearance, fonts, editor, and startup behavior.',
   'settings.closeAria': 'Close settings',
   'settings.navAria': 'Settings sections',
+  'settings.section.general': 'General',
   'settings.section.appearance': 'Appearance',
   'settings.section.font': 'Font',
   'settings.section.editor': 'Editor',
@@ -133,9 +134,6 @@ export const messages: Record<MessageKey, string> = {
   'settings.editor.fileTreeVisibleLabel': 'Show File Tree',
   'settings.editor.fileTreeVisibleHint':
     'Browse Markdown documents in a folder; toggle from the status bar or the View menu.',
-  'settings.editor.blockMarkerLabel': 'Markdown Markers (Experimental)',
-  'settings.editor.blockMarkerHint':
-    'Shows editable Markdown markers (#, >, -, etc.) at line starts when the cursor enters headings, quotes, or lists. Still in progress; may be unstable and could be removed.',
   'settings.editor.strictLineBreaksLabel': 'Strict Line Breaks',
   'settings.editor.strictLineBreaksHint':
     'When off, single line breaks render as new lines (like Obsidian default). When on, follows standard Markdown where single line breaks collapse to spaces.',
@@ -157,6 +155,10 @@ export const messages: Record<MessageKey, string> = {
   'settings.shortcuts.reset': 'Reset',
   'settings.shortcuts.conflict': 'Conflicts with {names}',
   'settings.shortcuts.conflictTitle': 'Resolve shortcut conflicts first',
+  'settings.shortcuts.groupFile': 'Files & Tabs',
+  'settings.shortcuts.groupEdit': 'Edit & Search',
+  'settings.shortcuts.groupView': 'View & Panels',
+  'settings.shortcuts.groupGeneral': 'General & Preferences',
 
   'shortcut.newFile': 'New Tab',
   'shortcut.newBlankDoc': 'New Blank Document',

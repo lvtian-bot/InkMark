@@ -12,10 +12,10 @@
 }
 
 .settings-dialog {
-  width: 640px;
+  width: 780px;
   height: 560px;
-  max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 48px);
+  max-width: min(840px, calc(100vw - 32px));
+  max-height: min(600px, calc(100vh - 32px));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -23,47 +23,42 @@
   font-family: var(--font-family);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 14px;
-  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.24);
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.24);
   animation: settings-dialog-in 0.2s ease-out;
 }
 
 .settings-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 22px 24px 18px;
+  gap: 12px;
+  height: 38px;
+  padding: 0 8px 0 16px;
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .settings-title {
   color: var(--text-primary);
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.settings-description {
-  margin-top: 5px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .settings-icon-button {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: 5px;
   cursor: pointer;
 }
 
@@ -89,7 +84,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 148px;
+  width: 164px;
   flex-shrink: 0;
   padding: 12px 8px;
   border-right: 1px solid var(--border-color);
@@ -102,12 +97,12 @@
   padding: 8px 12px;
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   text-align: left;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   cursor: pointer;
   transition:
     background 0.12s,
@@ -138,25 +133,13 @@
   border: 0;
 }
 
-.settings-group + .settings-group {
-  margin-top: 4px;
-  border-top: 1px solid var(--border-color);
-}
-
-.settings-group-divider {
-  height: 1px;
-  margin: 8px 0;
-  border: 0;
-  border-top: 1px solid var(--border-color);
-}
-
 .settings-group legend {
   width: 100%;
-  padding: 18px 0 6px;
+  padding: 16px 0 6px;
   color: var(--text-tertiary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .settings-field {
@@ -164,36 +147,41 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  min-height: 66px;
+  min-height: 60px;
   padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-field:last-child {
+  border-bottom: 0;
 }
 
 .settings-field-copy {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
 }
 
 .settings-field-label {
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .settings-field-hint {
   color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .settings-field select,
 .settings-field input[type='number'] {
-  height: 32px;
+  height: 34px;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 7px;
@@ -201,28 +189,8 @@
 
 .settings-field select {
   /* 用 min-width 而非固定 width：英文选项较长时按内容自适应，避免截断。 */
-  min-width: 132px;
+  min-width: 136px;
   padding: 0 30px 0 10px;
-  cursor: pointer;
-}
-
-.settings-number-control {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.settings-field input[type='number'] {
-  width: 86px;
-  padding: 0 8px;
-}
-
-.settings-field input[type='checkbox'] {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -231,9 +199,60 @@
   border-color: var(--text-tertiary);
 }
 
+/* Switch 切换开关 */
+.settings-switch {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.settings-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.settings-switch-slider {
+  position: absolute;
+  inset: 0;
+  background-color: #d1d5db;
+  border-radius: 22px;
+  transition: background-color 0.18s ease;
+}
+
+[data-theme='dark'] .settings-switch-slider {
+  background-color: #4b5563;
+}
+
+.settings-switch-slider::before {
+  position: absolute;
+  content: '';
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.settings-switch input:checked + .settings-switch-slider {
+  background-color: var(--accent);
+}
+
+.settings-switch input:checked + .settings-switch-slider::before {
+  transform: translateX(16px);
+}
+
 .settings-icon-button:focus-visible,
 .settings-field select:focus-visible,
 .settings-field input:focus-visible,
+.settings-switch input:focus-visible + .settings-switch-slider,
 .settings-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -243,16 +262,17 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  padding: 18px 24px;
+  padding: 14px 20px;
   border-top: 1px solid var(--border-color);
+  background: var(--bg-primary);
 }
 
 .settings-button {
   min-width: 76px;
-  height: 32px;
+  height: 34px;
   padding: 0 16px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   border-radius: 7px;
   cursor: pointer;
@@ -345,11 +365,6 @@
     flex-direction: column;
     gap: 10px;
   }
-
-  .settings-field-checkbox {
-    align-items: center;
-    flex-direction: row;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -365,8 +380,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 6px;
-  padding: 9px 10px;
+  margin-top: 4px;
+  margin-bottom: 10px;
+  padding: 9px 12px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -375,6 +391,8 @@
 .settings-shortcuts-toolbar .settings-field-hint {
   flex: 1;
   min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .settings-link-button {
@@ -382,7 +400,7 @@
   padding: 4px 8px;
   color: var(--accent);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   background: transparent;
   border: 0;
@@ -392,6 +410,20 @@
 
 .settings-link-button:hover {
   text-decoration: underline;
+}
+
+.settings-shortcut-group-title {
+  margin: 18px 0 4px;
+  padding-bottom: 4px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-shortcut-group:first-of-type .settings-shortcut-group-title {
+  margin-top: 8px;
 }
 
 .settings-shortcut-list {
@@ -406,7 +438,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px 16px;
-  padding: 10px 0;
+  padding: 9px 0;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -436,13 +468,13 @@
 
 .settings-shortcut-label {
   color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .settings-shortcut-hint {
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -458,11 +490,11 @@
   display: inline-flex;
   align-items: center;
   min-width: 72px;
-  height: 26px;
+  height: 28px;
   padding: 0 8px;
   color: var(--text-primary);
   font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
-  font-size: 12px;
+  font-size: 13px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -475,11 +507,11 @@
 }
 
 .settings-shortcut-btn {
-  height: 26px;
+  height: 28px;
   padding: 0 10px;
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -508,7 +540,7 @@
 .settings-shortcut-conflict {
   flex-basis: 100%;
   color: #c0392b;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .settings-button:disabled {

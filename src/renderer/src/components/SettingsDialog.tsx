@@ -23,6 +23,7 @@ import {
   DEFAULT_SHORTCUT_MAP,
   SHORTCUT_ACTIONS,
   SHORTCUT_ACTION_META,
+  SHORTCUT_GROUPS,
   comboEquals,
   findShortcutConflicts,
   formatComboForDisplay,
@@ -37,25 +38,24 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
-type SettingsSection = 'appearance' | 'font' | 'editor' | 'startup' | 'shortcuts';
+type SettingsSection = 'general' | 'appearance' | 'font' | 'editor' | 'shortcuts';
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const { t, locale } = useI18n();
   const titleId = useId();
-  const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<AppSettings>(() => selectSettings(useStore.getState()));
-  const [activeSection, setActiveSection] = useState<SettingsSection>('appearance');
+  const [activeSection, setActiveSection] = useState<SettingsSection>('general');
   const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
   const applySettings = useStore((state) => state.applySettings);
   const displayPlatform = toDisplayPlatform(window.inkmark.platform);
 
   const SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string }> = [
+    { id: 'general', label: t('settings.section.general') },
     { id: 'appearance', label: t('settings.section.appearance') },
     { id: 'font', label: t('settings.section.font') },
     { id: 'editor', label: t('settings.section.editor') },
-    { id: 'startup', label: t('settings.section.startup') },
     { id: 'shortcuts', label: t('settings.section.shortcuts') },
   ];
   const listSeparator = locale === 'zh-CN' ? '、' : ', ';
@@ -161,18 +161,12 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        aria-describedby={descriptionId}
         onClick={(event) => event.stopPropagation()}
       >
         <header className="settings-header">
-          <div>
-            <h2 id={titleId} className="settings-title">
-              {t('settings.title')}
-            </h2>
-            <p id={descriptionId} className="settings-description">
-              {t('settings.description')}
-            </p>
-          </div>
+          <h2 id={titleId} className="settings-title">
+            {t('settings.title')}
+          </h2>
           <button
             className="settings-icon-button"
             type="button"
@@ -199,6 +193,56 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             </nav>
 
             <div ref={contentRef} className="settings-content">
+              {activeSection === 'general' && (
+                <fieldset className="settings-group">
+                  <legend>{t('settings.section.general')}</legend>
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.appearance.languageLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.appearance.languageHint')}
+                      </span>
+                    </span>
+                    <select
+                      value={draft.language}
+                      onChange={(event) => {
+                        const language = event.target.value;
+                        if (language === 'system' || language === 'zh-CN' || language === 'en') {
+                          setDraft((settings) => ({ ...settings, language }));
+                        }
+                      }}
+                    >
+                      <option value="system">{t('settings.appearance.languageSystem')}</option>
+                      <option value="zh-CN">{t('settings.appearance.languageZh')}</option>
+                      <option value="en">{t('settings.appearance.languageEn')}</option>
+                    </select>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.startup.pageLabel')}
+                      </span>
+                      <span className="settings-field-hint">{t('settings.startup.pageHint')}</span>
+                    </span>
+                    <select
+                      value={draft.startPageOnLaunch ? 'start' : 'blank'}
+                      onChange={(event) =>
+                        setDraft((settings) => ({
+                          ...settings,
+                          startPageOnLaunch: event.target.value === 'start',
+                        }))
+                      }
+                    >
+                      <option value="start">{t('settings.startup.pageStart')}</option>
+                      <option value="blank">{t('settings.startup.pageBlank')}</option>
+                    </select>
+                  </label>
+                </fieldset>
+              )}
+
               {activeSection === 'appearance' && (
                 <fieldset className="settings-group">
                   <legend>{t('settings.section.appearance')}</legend>
@@ -225,51 +269,6 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       <option value="github-light">{t('theme.githubLight')}</option>
                       <option value="github-dark">{t('theme.githubDark')}</option>
                     </select>
-                  </label>
-
-                  <label className="settings-field">
-                    <span className="settings-field-copy">
-                      <span className="settings-field-label">
-                        {t('settings.appearance.languageLabel')}
-                      </span>
-                      <span className="settings-field-hint">
-                        {t('settings.appearance.languageHint')}
-                      </span>
-                    </span>
-                    <select
-                      value={draft.language}
-                      onChange={(event) => {
-                        const language = event.target.value;
-                        if (language === 'system' || language === 'zh-CN' || language === 'en') {
-                          setDraft((settings) => ({ ...settings, language }));
-                        }
-                      }}
-                    >
-                      <option value="system">{t('settings.appearance.languageSystem')}</option>
-                      <option value="zh-CN">{t('settings.appearance.languageZh')}</option>
-                      <option value="en">{t('settings.appearance.languageEn')}</option>
-                    </select>
-                  </label>
-
-                  <label className="settings-field settings-field-checkbox">
-                    <span className="settings-field-copy">
-                      <span className="settings-field-label">
-                        {t('settings.appearance.toolbarVisibleLabel')}
-                      </span>
-                      <span className="settings-field-hint">
-                        {t('settings.appearance.toolbarVisibleHint')}
-                      </span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.toolbarVisible}
-                      onChange={(event) =>
-                        setDraft((settings) => ({
-                          ...settings,
-                          toolbarVisible: event.target.checked,
-                        }))
-                      }
-                    />
                   </label>
 
                   <label className="settings-field">
@@ -426,76 +425,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               {activeSection === 'editor' && (
                 <fieldset className="settings-group">
                   <legend>{t('settings.section.editor')}</legend>
-                  <label className="settings-field settings-field-checkbox">
-                    <span className="settings-field-copy">
-                      <span className="settings-field-label">
-                        {t('settings.editor.outlineVisibleLabel')}
-                      </span>
-                      <span className="settings-field-hint">
-                        {t('settings.editor.outlineVisibleHint')}
-                      </span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.outlineVisible}
-                      onChange={(event) =>
-                        setDraft((settings) => ({
-                          ...settings,
-                          outlineVisible: event.target.checked,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <div className="settings-group-divider" role="separator" />
-
-                  <label className="settings-field settings-field-checkbox">
-                    <span className="settings-field-copy">
-                      <span className="settings-field-label">
-                        {t('settings.editor.fileTreeVisibleLabel')}
-                      </span>
-                      <span className="settings-field-hint">
-                        {t('settings.editor.fileTreeVisibleHint')}
-                      </span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.fileTreeVisible}
-                      onChange={(event) =>
-                        setDraft((settings) => ({
-                          ...settings,
-                          fileTreeVisible: event.target.checked,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <div className="settings-group-divider" role="separator" />
-
-                  <label className="settings-field settings-field-checkbox">
-                    <span className="settings-field-copy">
-                      <span className="settings-field-label">
-                        {t('settings.editor.blockMarkerLabel')}
-                      </span>
-                      <span className="settings-field-hint">
-                        {t('settings.editor.blockMarkerHint')}
-                      </span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.blockMarkerReveal}
-                      onChange={(event) =>
-                        setDraft((settings) => ({
-                          ...settings,
-                          blockMarkerReveal: event.target.checked,
-                        }))
-                      }
-                    />
-                  </label>
-
-                  <div className="settings-group-divider" role="separator" />
-
-                  <label className="settings-field settings-field-checkbox">
+                  <div className="settings-field">
                     <span className="settings-field-copy">
                       <span className="settings-field-label">
                         {t('settings.editor.strictLineBreaksLabel')}
@@ -504,17 +434,23 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         {t('settings.editor.strictLineBreaksHint')}
                       </span>
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={draft.strictLineBreaks}
-                      onChange={(event) =>
-                        setDraft((settings) => ({
-                          ...settings,
-                          strictLineBreaks: event.target.checked,
-                        }))
-                      }
-                    />
-                  </label>
+                    <label
+                      className="settings-switch"
+                      aria-label={t('settings.editor.strictLineBreaksLabel')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.strictLineBreaks}
+                        onChange={(event) =>
+                          setDraft((settings) => ({
+                            ...settings,
+                            strictLineBreaks: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span className="settings-switch-slider" />
+                    </label>
+                  </div>
 
                   <label className="settings-field">
                     <span className="settings-field-copy">
@@ -545,32 +481,6 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 </fieldset>
               )}
 
-              {activeSection === 'startup' && (
-                <fieldset className="settings-group">
-                  <legend>{t('settings.section.startup')}</legend>
-                  <label className="settings-field">
-                    <span className="settings-field-copy">
-                      <span className="settings-field-label">
-                        {t('settings.startup.pageLabel')}
-                      </span>
-                      <span className="settings-field-hint">{t('settings.startup.pageHint')}</span>
-                    </span>
-                    <select
-                      value={draft.startPageOnLaunch ? 'start' : 'blank'}
-                      onChange={(event) =>
-                        setDraft((settings) => ({
-                          ...settings,
-                          startPageOnLaunch: event.target.value === 'start',
-                        }))
-                      }
-                    >
-                      <option value="start">{t('settings.startup.pageStart')}</option>
-                      <option value="blank">{t('settings.startup.pageBlank')}</option>
-                    </select>
-                  </label>
-                </fieldset>
-              )}
-
               {activeSection === 'shortcuts' && (
                 <fieldset className="settings-group">
                   <legend>{t('settings.section.shortcuts')}</legend>
@@ -584,63 +494,70 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       {t('settings.shortcuts.resetAll')}
                     </button>
                   </div>
-                  <ul className="settings-shortcut-list">
-                    {SHORTCUT_ACTIONS.map((action) => {
-                      const meta = SHORTCUT_ACTION_META[action];
-                      const combo = draft.shortcuts[action];
-                      const conflictWith = shortcutConflicts.get(action) ?? [];
-                      const isRecording = recordingAction === action;
-                      const unchanged = comboEquals(combo, DEFAULT_SHORTCUT_MAP[action]);
-                      return (
-                        <li
-                          key={action}
-                          className={`settings-shortcut-row${conflictWith.length > 0 ? ' is-conflict' : ''}${isRecording ? ' is-recording' : ''}`}
-                        >
-                          <div className="settings-shortcut-info">
-                            <span className="settings-shortcut-label">{t(meta.labelKey)}</span>
-                            {meta.hintKey && (
-                              <span className="settings-shortcut-hint">{t(meta.hintKey)}</span>
-                            )}
-                          </div>
-                          <div className="settings-shortcut-control">
-                            {isRecording ? (
-                              <span className="settings-shortcut-recording">
-                                {t('settings.shortcuts.recording')}
-                              </span>
-                            ) : (
-                              <kbd className="settings-shortcut-keys">
-                                {formatComboForDisplay(combo, displayPlatform)}
-                              </kbd>
-                            )}
-                            <button
-                              type="button"
-                              className="settings-shortcut-btn"
-                              onClick={() => setRecordingAction(isRecording ? null : action)}
+                  {SHORTCUT_GROUPS.map((group) => (
+                    <div key={group.id} className="settings-shortcut-group">
+                      <h3 className="settings-shortcut-group-title">{t(group.labelKey)}</h3>
+                      <ul className="settings-shortcut-list">
+                        {group.actions.map((action) => {
+                          const meta = SHORTCUT_ACTION_META[action];
+                          const combo = draft.shortcuts[action];
+                          const conflictWith = shortcutConflicts.get(action) ?? [];
+                          const isRecording = recordingAction === action;
+                          const unchanged = comboEquals(combo, DEFAULT_SHORTCUT_MAP[action]);
+                          return (
+                            <li
+                              key={action}
+                              className={`settings-shortcut-row${conflictWith.length > 0 ? ' is-conflict' : ''}${isRecording ? ' is-recording' : ''}`}
                             >
-                              {isRecording ? t('common.cancel') : t('settings.shortcuts.record')}
-                            </button>
-                            <button
-                              type="button"
-                              className="settings-shortcut-btn"
-                              onClick={() => resetShortcut(action)}
-                              disabled={unchanged}
-                            >
-                              {t('settings.shortcuts.reset')}
-                            </button>
-                          </div>
-                          {conflictWith.length > 0 && (
-                            <span className="settings-shortcut-conflict">
-                              {t('settings.shortcuts.conflict', {
-                                names: conflictWith
-                                  .map((a) => t(SHORTCUT_ACTION_META[a].labelKey))
-                                  .join(listSeparator),
-                              })}
-                            </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
+                              <div className="settings-shortcut-info">
+                                <span className="settings-shortcut-label">{t(meta.labelKey)}</span>
+                                {meta.hintKey && (
+                                  <span className="settings-shortcut-hint">{t(meta.hintKey)}</span>
+                                )}
+                              </div>
+                              <div className="settings-shortcut-control">
+                                {isRecording ? (
+                                  <span className="settings-shortcut-recording">
+                                    {t('settings.shortcuts.recording')}
+                                  </span>
+                                ) : (
+                                  <kbd className="settings-shortcut-keys">
+                                    {formatComboForDisplay(combo, displayPlatform)}
+                                  </kbd>
+                                )}
+                                <button
+                                  type="button"
+                                  className="settings-shortcut-btn"
+                                  onClick={() => setRecordingAction(isRecording ? null : action)}
+                                >
+                                  {isRecording
+                                    ? t('common.cancel')
+                                    : t('settings.shortcuts.record')}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="settings-shortcut-btn"
+                                  onClick={() => resetShortcut(action)}
+                                  disabled={unchanged}
+                                >
+                                  {t('settings.shortcuts.reset')}
+                                </button>
+                              </div>
+                              {conflictWith.length > 0 && (
+                                <span className="settings-shortcut-conflict">
+                                  {t('settings.shortcuts.conflict', {
+                                    names: conflictWith
+                                      .map((a) => t(SHORTCUT_ACTION_META[a].labelKey))
+                                      .join(listSeparator),
+                                  })}
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
                 </fieldset>
               )}
             </div>
