@@ -10,13 +10,19 @@ export type ShortcutAction =
   | 'newBlankDoc'
   | 'openFile'
   | 'openFolder'
+  | 'revealInFolder'
   | 'closeTab'
   | 'save'
   | 'saveAs'
   | 'find'
   | 'replace'
   | 'toggleSource'
-  | 'settings';
+  | 'toggleOutline'
+  | 'toggleFileTree'
+  | 'toggleToolbar'
+  | 'toggleAlwaysOnTop'
+  | 'settings'
+  | 'exit';
 
 /**
  * 一个组合键。mod = Ctrl(Win/Linux) / Cmd(Mac)。
@@ -36,13 +42,19 @@ export const SHORTCUT_ACTIONS: readonly ShortcutAction[] = [
   'newBlankDoc',
   'openFile',
   'openFolder',
+  'revealInFolder',
   'closeTab',
   'save',
   'saveAs',
   'find',
   'replace',
   'toggleSource',
+  'toggleOutline',
+  'toggleFileTree',
+  'toggleToolbar',
+  'toggleAlwaysOnTop',
   'settings',
+  'exit',
 ];
 
 export interface ShortcutActionMeta {
@@ -56,6 +68,10 @@ export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = 
   newBlankDoc: { action: 'newBlankDoc', labelKey: 'shortcut.newBlankDoc' },
   openFile: { action: 'openFile', labelKey: 'shortcut.openFile' },
   openFolder: { action: 'openFolder', labelKey: 'shortcut.openFolder' },
+  revealInFolder: {
+    action: 'revealInFolder',
+    labelKey: 'shortcut.revealInFolder',
+  },
   closeTab: { action: 'closeTab', labelKey: 'shortcut.closeTab' },
   save: { action: 'save', labelKey: 'shortcut.save' },
   saveAs: { action: 'saveAs', labelKey: 'shortcut.saveAs' },
@@ -65,7 +81,24 @@ export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = 
     action: 'toggleSource',
     labelKey: 'shortcut.toggleSource',
   },
+  toggleOutline: {
+    action: 'toggleOutline',
+    labelKey: 'shortcut.toggleOutline',
+  },
+  toggleFileTree: {
+    action: 'toggleFileTree',
+    labelKey: 'shortcut.toggleFileTree',
+  },
+  toggleToolbar: {
+    action: 'toggleToolbar',
+    labelKey: 'shortcut.toggleToolbar',
+  },
+  toggleAlwaysOnTop: {
+    action: 'toggleAlwaysOnTop',
+    labelKey: 'shortcut.toggleAlwaysOnTop',
+  },
   settings: { action: 'settings', labelKey: 'shortcut.settings' },
+  exit: { action: 'exit', labelKey: 'shortcut.exit' },
 };
 
 /** 允许作为快捷键主键的字符（小写）。纯修饰键与不可打印键不在内。 */
@@ -150,13 +183,19 @@ export const DEFAULT_SHORTCUT_MAP: Readonly<ShortcutMap> = {
   newBlankDoc: { mod: true, alt: false, shift: false, key: 'n' },
   openFile: { mod: true, alt: false, shift: false, key: 'o' },
   openFolder: { mod: true, alt: false, shift: true, key: 'o' },
+  revealInFolder: { mod: true, alt: false, shift: true, key: 'r' },
   closeTab: { mod: true, alt: false, shift: false, key: 'w' },
   save: { mod: true, alt: false, shift: false, key: 's' },
   saveAs: { mod: true, alt: false, shift: true, key: 's' },
   find: { mod: true, alt: false, shift: false, key: 'f' },
   replace: { mod: true, alt: false, shift: false, key: 'h' },
   toggleSource: { mod: true, alt: false, shift: false, key: 'e' },
+  toggleOutline: { mod: true, alt: false, shift: true, key: 'l' },
+  toggleFileTree: { mod: true, alt: false, shift: true, key: 'e' },
+  toggleToolbar: { mod: true, alt: false, shift: true, key: 't' },
+  toggleAlwaysOnTop: { mod: true, alt: true, shift: false, key: 't' },
   settings: { mod: true, alt: false, shift: false, key: ',' },
+  exit: { mod: true, alt: false, shift: false, key: 'q' },
 };
 
 /** 返回一份与默认映射互不引用的拷贝，避免外部 mutate 污染常量。 */

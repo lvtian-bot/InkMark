@@ -56,6 +56,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const viewMode = useStore((s) => s.viewMode);
   const isSourceMode = viewMode === 'source';
   const toggleSourceShortcut = useStore((s) => s.shortcuts.toggleSource);
+  const toggleOutlineShortcut = useStore((s) => s.shortcuts.toggleOutline);
+  const toggleFileTreeShortcut = useStore((s) => s.shortcuts.toggleFileTree);
   const settingsShortcut = useStore((s) => s.shortcuts.settings);
   const displayPlatform = toDisplayPlatform(navigator.platform);
 
@@ -65,6 +67,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const settingsTitle = t('statusBar.settings', {
     shortcut: formatComboForDisplay(settingsShortcut, displayPlatform),
   });
+  const outlineShortcutStr = formatComboForDisplay(toggleOutlineShortcut, displayPlatform);
+  const fileTreeShortcutStr = formatComboForDisplay(toggleFileTreeShortcut, displayPlatform);
 
   const outlineSide = panelLayout === 'outline-left' ? 'left' : 'right';
   const fileTreeSide = panelLayout === 'outline-left' ? 'right' : 'left';
@@ -75,8 +79,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
       side={outlineSide}
       icon={<TableOfContents size={14} />}
       onToggle={() => setOutlineVisible(!outlineVisible)}
-      showLabel={t('statusBar.showOutline')}
-      hideLabel={t('statusBar.hideOutline')}
+      showLabel={t('statusBar.showOutline', { shortcut: outlineShortcutStr })}
+      hideLabel={t('statusBar.hideOutline', { shortcut: outlineShortcutStr })}
     />
   );
   const fileTreeToggle = (
@@ -85,8 +89,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
       side={fileTreeSide}
       icon={<FolderTree size={14} />}
       onToggle={() => setFileTreeVisible(!fileTreeVisible)}
-      showLabel={t('statusBar.showFileTree')}
-      hideLabel={t('statusBar.hideFileTree')}
+      showLabel={t('statusBar.showFileTree', { shortcut: fileTreeShortcutStr })}
+      hideLabel={t('statusBar.hideFileTree', { shortcut: fileTreeShortcutStr })}
     />
   );
 

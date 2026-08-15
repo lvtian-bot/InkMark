@@ -62,6 +62,15 @@ describe('i18n 翻译', () => {
     expect(translateByLocale('zh-CN', 'tabBar.newTab', { shortcut: 'Ctrl+T' })).toBe(
       '新标签页 (Ctrl+T)',
     );
+    expect(translateByLocale('zh-CN', 'statusBar.showOutline', { shortcut: 'Ctrl+Shift+L' })).toBe(
+      '显示大纲 (Ctrl+Shift+L)',
+    );
+    expect(translateByLocale('zh-CN', 'statusBar.showFileTree', { shortcut: 'Ctrl+Shift+E' })).toBe(
+      '显示文件树 (Ctrl+Shift+E)',
+    );
+    expect(translateByLocale('en', 'statusBar.showOutline', { shortcut: 'Cmd+Shift+L' })).toBe(
+      'Show Outline (Cmd+Shift+L)',
+    );
     expect(translateByLocale('en', 'statusBar.sourceMode', { shortcut: 'Cmd+E' })).toBe(
       'Source Mode (Cmd+E)',
     );

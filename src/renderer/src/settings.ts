@@ -40,6 +40,7 @@ export interface AppSettings {
   themeId: ThemeId;
   outlineWidth: number;
   outlineVisible: boolean;
+  toolbarVisible: boolean;
   toolbarWidth: ToolbarWidth;
   recentListWidth: RecentListWidth;
   fontPreset: FontPresetId;
@@ -65,6 +66,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   themeId: 'inkmark-light',
   outlineWidth: 240,
   outlineVisible: true,
+  toolbarVisible: true,
   toolbarWidth: 'wide',
   recentListWidth: 'medium',
   fontPreset: 'system',
@@ -86,6 +88,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     themeId: settings.themeId,
     outlineWidth: settings.outlineWidth,
     outlineVisible: settings.outlineVisible,
+    toolbarVisible: settings.toolbarVisible,
     toolbarWidth: settings.toolbarWidth,
     recentListWidth: settings.recentListWidth,
     fontPreset: settings.fontPreset,
@@ -165,6 +168,10 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.outlineVisible === 'boolean'
         ? candidate.outlineVisible
         : DEFAULT_SETTINGS.outlineVisible,
+    toolbarVisible:
+      typeof candidate.toolbarVisible === 'boolean'
+        ? candidate.toolbarVisible
+        : DEFAULT_SETTINGS.toolbarVisible,
     toolbarWidth: isToolbarWidth(candidate.toolbarWidth)
       ? candidate.toolbarWidth
       : DEFAULT_SETTINGS.toolbarWidth,

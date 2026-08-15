@@ -96,3 +96,16 @@ describe('useStore toggleViewMode', () => {
     expect(useStore.getState().viewMode).toBe('source');
   });
 });
+
+describe('useStore toolbarVisible', () => {
+  it('默认 toolbarVisible 为 true，并可通过 setToolbarVisible 切换', () => {
+    const { setToolbarVisible } = useStore.getState();
+    expect(useStore.getState().toolbarVisible).toBe(true);
+
+    setToolbarVisible(false);
+    expect(useStore.getState().toolbarVisible).toBe(false);
+
+    setToolbarVisible(true);
+    expect(useStore.getState().toolbarVisible).toBe(true);
+  });
+});

@@ -91,6 +91,10 @@ const api = {
     ipcRenderer.removeAllListeners('menu:toggleFileTree');
     ipcRenderer.on('menu:toggleFileTree', () => cb());
   },
+  onMenuToggleToolbar: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:toggleToolbar');
+    ipcRenderer.on('menu:toggleToolbar', () => cb());
+  },
   onMenuCloseTab: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:closeTab');
     ipcRenderer.on('menu:closeTab', () => cb());
@@ -107,12 +111,25 @@ const api = {
     ipcRenderer.removeAllListeners('menu:replace');
     ipcRenderer.on('menu:replace', () => cb());
   },
+  onMenuRevealInFolder: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:revealInFolder');
+    ipcRenderer.on('menu:revealInFolder', () => cb());
+  },
+  onMenuCopyAsMarkdown: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:copyAsMarkdown');
+    ipcRenderer.on('menu:copyAsMarkdown', () => cb());
+  },
+  onOpenFolderPath: (cb: (path: string) => void) => {
+    ipcRenderer.removeAllListeners('folder:open-path');
+    ipcRenderer.on('folder:open-path', (_event, path: string) => cb(path));
+  },
   onMenuClose: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:close');
     ipcRenderer.on('menu:close', () => cb());
   },
   setWindowTitle: (title: string) => ipcRenderer.invoke('window:setTitle', title),
   closeWindow: () => ipcRenderer.invoke('window:close'),
+  toggleAlwaysOnTop: () => ipcRenderer.invoke('window:toggleAlwaysOnTop'),
   syncThemeId: (themeId: string) => {
     ipcRenderer.send('theme:syncThemeId', themeId);
   },
@@ -124,6 +141,9 @@ const api = {
   },
   syncFileTreeVisible: (visible: boolean) => {
     ipcRenderer.send('menu:syncFileTree', visible);
+  },
+  syncToolbarVisible: (visible: boolean) => {
+    ipcRenderer.send('menu:syncToolbar', visible);
   },
   syncShortcuts: (shortcuts: ShortcutMap) => {
     ipcRenderer.send('shortcuts:sync', shortcuts);

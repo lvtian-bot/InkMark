@@ -99,6 +99,48 @@ describe('DEFAULT_SHORTCUT_MAP', () => {
       key: 'e',
     });
   });
+
+  it('切换大纲与切换文件树默认快捷键分别为 Ctrl+Shift+L 与 Ctrl+Shift+E', () => {
+    expect(DEFAULT_SHORTCUT_MAP.toggleOutline).toEqual({
+      mod: true,
+      alt: false,
+      shift: true,
+      key: 'l',
+    });
+    expect(DEFAULT_SHORTCUT_MAP.toggleFileTree).toEqual({
+      mod: true,
+      alt: false,
+      shift: true,
+      key: 'e',
+    });
+  });
+
+  it('打开文件位置、切换工具栏、保持窗口在最前端与退出应用默认快捷键分别为 Ctrl+Shift+R、Ctrl+Shift+T、Ctrl+Alt+T 与 Ctrl+Q', () => {
+    expect(DEFAULT_SHORTCUT_MAP.revealInFolder).toEqual({
+      mod: true,
+      alt: false,
+      shift: true,
+      key: 'r',
+    });
+    expect(DEFAULT_SHORTCUT_MAP.toggleToolbar).toEqual({
+      mod: true,
+      alt: false,
+      shift: true,
+      key: 't',
+    });
+    expect(DEFAULT_SHORTCUT_MAP.toggleAlwaysOnTop).toEqual({
+      mod: true,
+      alt: true,
+      shift: false,
+      key: 't',
+    });
+    expect(DEFAULT_SHORTCUT_MAP.exit).toEqual({
+      mod: true,
+      alt: false,
+      shift: false,
+      key: 'q',
+    });
+  });
 });
 
 describe('normalizeShortcutMap', () => {

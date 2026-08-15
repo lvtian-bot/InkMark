@@ -56,6 +56,7 @@ function AppContent() {
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.isStartPage ?? false,
   );
   const outlineWidth = useStore((s) => s.outlineWidth);
+  const toolbarVisible = useStore((s) => s.toolbarVisible);
   const toolbarWidth = useStore((s) => s.toolbarWidth);
   const outlineVisible = useStore((s) => s.outlineVisible);
   const fileTreeVisible = useStore((s) => s.fileTreeVisible);
@@ -342,6 +343,12 @@ function AppContent() {
   }, [fileTreeVisible]);
 
   useEffect(() => {
+    if (window.inkmark.syncToolbarVisible) {
+      window.inkmark.syncToolbarVisible(toolbarVisible);
+    }
+  }, [toolbarVisible]);
+
+  useEffect(() => {
     window.inkmark.onMenuNew(() => {
       void fileOps.newFile();
     });
@@ -406,6 +413,12 @@ function AppContent() {
         s.setFileTreeVisible(!s.fileTreeVisible);
       });
     }
+    if (window.inkmark.onMenuToggleToolbar) {
+      window.inkmark.onMenuToggleToolbar(() => {
+        const s = useStore.getState();
+        s.setToolbarVisible(!s.toolbarVisible);
+      });
+    }
     if (window.inkmark.onMenuCloseTab) {
       window.inkmark.onMenuCloseTab(() => {
         void fileOps.closeTab();
@@ -419,6 +432,36 @@ function AppContent() {
       setIsSettingsOpen(false);
       setIsUpdateOpen(true);
     });
+    if (window.inkmark.onMenuRevealInFolder) {
+      window.inkmark.onMenuRevealInFolder(() => {
+        const s = useStore.getState();
+        const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
+        if (activeTab?.filePath) {
+          void window.inkmark.revealInFolder(activeTab.filePath);
+        }
+      });
+    }
+    if (window.inkmark.onMenuCopyAsMarkdown) {
+      window.inkmark.onMenuCopyAsMarkdown(() => {
+        const s = useStore.getState();
+        const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
+        if (!activeTab || activeTab.isStartPage) return;
+        const text =
+          viewModeRef.current === 'source'
+            ? (sourceEditorHandle.current?.getSelectedText() ?? '')
+            : (editorHandle.current?.getSelectedMarkdown() ?? '');
+        if (text) {
+          void navigator.clipboard.writeText(text);
+        }
+      });
+    }
+    if (window.inkmark.onOpenFolderPath) {
+      window.inkmark.onOpenFolderPath((path: string) => {
+        void fileTree.openRoot(path).then(() => {
+          setFileTreeVisible(true);
+        });
+      });
+    }
     window.inkmark.onOpenFilePath((path: string) => {
       void fileOps.openFilePath(path);
     });
@@ -534,6 +577,98 @@ function AppContent() {
         event.preventDefault();
         event.stopPropagation();
         openFindReplace(true);
+        return;
+      }
+
+      // 11. 切换大纲
+      if (comboMatchesEvent(event, shortcuts.toggleOutline, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const s = useStore.getState();
+        s.setOutlineVisible(!s.outlineVisible);
+        return;
+      }
+
+      // 12. 切换文件树
+      if (comboMatchesEvent(event, shortcuts.toggleFileTree, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const s = useStore.getState();
+        s.setFileTreeVisible(!s.fileTreeVisible);
+        return;
+      }
+
+      // 13. 切换工具栏
+      if (comboMatchesEvent(event, shortcuts.toggleToolbar, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const s = useStore.getState();
+        s.setToolbarVisible(!s.toolbarVisible);
+        return;
+      }
+
+      // 14. 打开文件位置
+      if (comboMatchesEvent(event, shortcuts.revealInFolder, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const s = useStore.getState();
+        const activeTab = s.tabs.find((t) => t.id === s.activeTabId);
+        if (activeTab?.filePath) {
+          void window.inkmark.revealInFolder(activeTab.filePath);
+        }
+        return;
+      }
+
+      // 15. 保持窗口在最前端 (置顶)
+      if (comboMatchesEvent(event, shortcuts.toggleAlwaysOnTop, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void window.inkmark.toggleAlwaysOnTop?.();
+        return;
+      }
+
+      // 16. 退出应用
+      if (comboMatchesEvent(event, shortcuts.exit, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileOps.closeWindow();
+        return;
+      }
+
+      // 17. 多标签页循环切换 (Ctrl+Tab / Ctrl+Shift+Tab)
+      const isMod = platform === 'darwin' ? event.metaKey : event.ctrlKey;
+      if (isMod && !event.altKey && event.key === 'Tab') {
+        event.preventDefault();
+        event.stopPropagation();
+        const s = useStore.getState();
+        if (s.tabs.length > 1) {
+          const currentIndex = s.tabs.findIndex((t) => t.id === s.activeTabId);
+          if (currentIndex !== -1) {
+            const delta = event.shiftKey ? -1 : 1;
+            const nextIndex = (currentIndex + delta + s.tabs.length) % s.tabs.length;
+            s.setActiveTab(s.tabs[nextIndex].id);
+          }
+        }
+        return;
+      }
+
+      // 14. 复制为 Markdown (CmdOrCtrl+Shift+C)
+      if (
+        !isStartPage &&
+        isMod &&
+        event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === 'c'
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        const text =
+          viewModeRef.current === 'source'
+            ? (sourceEditorHandle.current?.getSelectedText() ?? '')
+            : (editorHandle.current?.getSelectedMarkdown() ?? '');
+        if (text) {
+          void navigator.clipboard.writeText(text);
+        }
         return;
       }
 
@@ -728,7 +863,7 @@ function AppContent() {
               onOpenPath={(path) => void fileOps.openFilePath(path)}
             />
           )}
-          {!isStartPage && <Toolbar onSave={() => void fileOps.save()} />}
+          {!isStartPage && toolbarVisible && <Toolbar onSave={() => void fileOps.save()} />}
           {!isStartPage && externalUpdatePending && (
             <ExternalUpdateBanner onReload={() => void fileOps.reloadActiveTab()} />
           )}

@@ -9,7 +9,7 @@ import {
   net,
   shell,
 } from 'electron';
-import { join, dirname, isAbsolute } from 'path';
+import { join, dirname, isAbsolute, basename } from 'path';
 import {
   readFileSync,
   writeFileSync,
@@ -62,6 +62,8 @@ let currentThemeId = 'inkmark-light';
 let currentSourceMode = false;
 let currentOutlineVisible = true;
 let currentFileTreeVisible = false;
+let currentToolbarVisible = true;
+let currentAlwaysOnTop = false;
 // 快捷键映射：启动时用默认值，渲染进程加载完用户设置后通过 shortcuts:sync 覆盖。
 let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
 // 语言：启动时跟随系统；渲染进程加载完用户设置后通过 language:sync 覆盖。
@@ -279,12 +281,14 @@ function addRecent(filePath: string, kind: RecentKind): void {
   const next = addOrUpdateRecent(getRecentFiles(), filePath, kind, MAX_RECENT_FILES);
   if (next === getRecentFiles()) return;
   writeRecentFiles(next);
+  createMenu();
 }
 
 function removeRecentItem(filePath: string): void {
   const next = removeRecent(getRecentFiles(), filePath);
   if (next.length === recentFilesCache!.length) return;
   writeRecentFiles(next);
+  createMenu();
 }
 
 // 上次在文件对话框中确认的路径(文件或文件夹),用作下次对话框的起始位置。
@@ -499,6 +503,38 @@ function shortcutAccelerator(action: ShortcutAction): string {
   return comboToAccelerator(currentShortcuts[action]) ?? '';
 }
 
+function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
+  const items = getRecentFiles();
+  if (items.length === 0) {
+    return [{ label: t('menu.noRecentFiles'), enabled: false }];
+  }
+  const list: Electron.MenuItemConstructorOptions[] = items.map((item) => {
+    const isFolder = item.kind === 'folder';
+    const baseName = basename(item.path) || item.path;
+    const label = isFolder ? `${baseName}/` : baseName;
+    return {
+      label,
+      sublabel: item.path,
+      click: () => {
+        if (isFolder) {
+          mainWindow?.webContents.send('folder:open-path', item.path);
+        } else {
+          mainWindow?.webContents.send('file:open-path', item.path);
+        }
+      },
+    };
+  });
+  list.push({ type: 'separator' });
+  list.push({
+    label: t('menu.clearRecent'),
+    click: () => {
+      writeRecentFiles([]);
+      createMenu();
+    },
+  });
+  return list;
+}
+
 function createMenu(): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -525,9 +561,8 @@ function createMenu(): void {
           click: () => mainWindow?.webContents.send('menu:openFolder'),
         },
         {
-          label: t('menu.closeTab'),
-          accelerator: shortcutAccelerator('closeTab'),
-          click: () => mainWindow?.webContents.send('menu:closeTab'),
+          label: t('menu.openRecent'),
+          submenu: buildRecentMenu(),
         },
         { type: 'separator' },
         {
@@ -540,11 +575,27 @@ function createMenu(): void {
           accelerator: shortcutAccelerator('saveAs'),
           click: () => mainWindow?.webContents.send('menu:saveAs'),
         },
+        {
+          label: t('menu.revealInFolder'),
+          accelerator: shortcutAccelerator('revealInFolder'),
+          click: () => mainWindow?.webContents.send('menu:revealInFolder'),
+        },
         { type: 'separator' },
+        {
+          label: t('menu.closeTab'),
+          accelerator: shortcutAccelerator('closeTab'),
+          click: () => mainWindow?.webContents.send('menu:closeTab'),
+        },
         {
           label: t('menu.settings'),
           accelerator: shortcutAccelerator('settings'),
           click: () => mainWindow?.webContents.send('menu:settings'),
+        },
+        { type: 'separator' },
+        {
+          label: t('menu.exit'),
+          accelerator: shortcutAccelerator('exit'),
+          click: () => mainWindow?.close(),
         },
       ],
     },
@@ -556,7 +607,17 @@ function createMenu(): void {
         { type: 'separator' },
         { label: t('menu.cut'), role: 'cut' },
         { label: t('menu.copy'), role: 'copy' },
+        {
+          label: t('menu.copyAsMarkdown'),
+          accelerator: 'CmdOrCtrl+Shift+C',
+          click: () => mainWindow?.webContents.send('menu:copyAsMarkdown'),
+        },
         { label: t('menu.paste'), role: 'paste' },
+        {
+          label: t('menu.pasteAsPlainText'),
+          role: 'pasteAndMatchStyle',
+          accelerator: 'CmdOrCtrl+Shift+V',
+        },
         { label: t('menu.selectAll'), role: 'selectAll' },
         { type: 'separator' },
         {
@@ -576,12 +637,14 @@ function createMenu(): void {
       submenu: [
         {
           label: t('menu.outline'),
+          accelerator: shortcutAccelerator('toggleOutline'),
           type: 'checkbox',
           checked: currentOutlineVisible,
           click: () => mainWindow?.webContents.send('menu:toggleOutline'),
         },
         {
           label: t('menu.fileTree'),
+          accelerator: shortcutAccelerator('toggleFileTree'),
           type: 'checkbox',
           checked: currentFileTreeVisible,
           click: () => mainWindow?.webContents.send('menu:toggleFileTree'),
@@ -592,6 +655,30 @@ function createMenu(): void {
           type: 'checkbox',
           checked: currentSourceMode,
           click: () => mainWindow?.webContents.send('menu:toggleSource'),
+        },
+        {
+          label: t('menu.toolbar'),
+          accelerator: shortcutAccelerator('toggleToolbar'),
+          type: 'checkbox',
+          checked: currentToolbarVisible,
+          click: () => mainWindow?.webContents.send('menu:toggleToolbar'),
+        },
+        { type: 'separator' },
+        {
+          label: t('menu.toggleFullScreen'),
+          role: 'togglefullscreen',
+        },
+        {
+          label: t('menu.alwaysOnTop'),
+          accelerator: shortcutAccelerator('toggleAlwaysOnTop'),
+          type: 'checkbox',
+          checked: currentAlwaysOnTop,
+          click: () => {
+            if (!mainWindow) return;
+            currentAlwaysOnTop = !mainWindow.isAlwaysOnTop();
+            mainWindow.setAlwaysOnTop(currentAlwaysOnTop);
+            createMenu();
+          },
         },
         { type: 'separator' },
         { label: t('menu.zoomIn'), role: 'zoomIn' },
@@ -731,6 +818,12 @@ ipcMain.on('menu:syncOutline', (event, visible: unknown) => {
 ipcMain.on('menu:syncFileTree', (event, visible: unknown) => {
   if (!isTrustedRenderer(event) || typeof visible !== 'boolean') return;
   currentFileTreeVisible = visible;
+  createMenu();
+});
+
+ipcMain.on('menu:syncToolbar', (event, visible: unknown) => {
+  if (!isTrustedRenderer(event) || typeof visible !== 'boolean') return;
+  currentToolbarVisible = visible;
   createMenu();
 });
 
@@ -889,6 +982,14 @@ ipcMain.handle('window:close', (event) => {
   mainWindow?.close();
 });
 
+ipcMain.handle('window:toggleAlwaysOnTop', (event) => {
+  if (!isTrustedRenderer(event) || !mainWindow) return false;
+  currentAlwaysOnTop = !mainWindow.isAlwaysOnTop();
+  mainWindow.setAlwaysOnTop(currentAlwaysOnTop);
+  createMenu();
+  return currentAlwaysOnTop;
+});
+
 ipcMain.handle('recent:get', async (event) => {
   if (!isTrustedRenderer(event)) return [];
   return getRecentFiles();
@@ -902,6 +1003,7 @@ ipcMain.handle('recent:remove', async (event, filePath: unknown) => {
 ipcMain.handle('recent:clear', async (event) => {
   if (!isTrustedRenderer(event)) return;
   writeRecentFiles([]);
+  createMenu();
 });
 
 ipcMain.handle('app:getInfo', (event) =>

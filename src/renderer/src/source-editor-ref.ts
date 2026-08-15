@@ -23,6 +23,8 @@ export interface SourceEditorHandle {
   focus: () => void;
   /// Current selection as character offsets.
   getSelection: () => SourceSelection;
+  /// Get current selected text as a string.
+  getSelectedText: () => string;
   /// Set selection (caret when from === to) and focus.
   setSelection: (from: number, to: number) => void;
   /// Current CodeMirror scroll position.

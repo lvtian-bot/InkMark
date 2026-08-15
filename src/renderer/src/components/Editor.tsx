@@ -187,6 +187,21 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
           return '';
         }
       },
+      getSelectedMarkdown: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const selection = view.state.selection;
+          if (selection.empty) return '';
+          const slice = selection.content();
+          const docNode = view.state.schema.nodes.doc.create(null, slice.content);
+          const serializer = ed.ctx.get(serializerCtx);
+          const md = serializer(docNode) ?? '';
+          return md.replace(/\n+$/, '');
+        } catch (e) {
+          console.error('getSelectedMarkdown error:', e);
+          return '';
+        }
+      },
       setMarkdown: (md: string) => {
         try {
           ed.action(replaceAllAction(md, true));

@@ -97,12 +97,18 @@ export interface InkMarkAPI {
   onMenuToggleOutline: (cb: () => void) => void;
   onMenuOpenFolder: (cb: () => void) => void;
   onMenuToggleFileTree: (cb: () => void) => void;
+  onMenuToggleToolbar: (cb: () => void) => void;
+  onMenuRevealInFolder: (cb: () => void) => void;
+  onMenuCopyAsMarkdown: (cb: () => void) => void;
+  onOpenFolderPath: (cb: (path: string) => void) => void;
   setWindowTitle: (title: string) => Promise<void>;
   closeWindow: () => Promise<void>;
+  toggleAlwaysOnTop: () => Promise<boolean>;
   syncThemeId: (themeId: string) => void;
   syncSourceMode: (checked: boolean) => void;
   syncOutlineVisible: (visible: boolean) => void;
   syncFileTreeVisible: (visible: boolean) => void;
+  syncToolbarVisible: (visible: boolean) => void;
   syncShortcuts: (shortcuts: ShortcutMap) => void;
   syncLanguage: (language: string, systemLanguage: string) => void;
   openFolderDialog: () => Promise<{ path: string } | null>;

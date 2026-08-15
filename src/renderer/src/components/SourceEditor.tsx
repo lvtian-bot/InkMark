@@ -112,6 +112,11 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
         from: view.state.selection.main.from,
         to: view.state.selection.main.to,
       }),
+      getSelectedText: () => {
+        const { from, to } = view.state.selection.main;
+        if (from === to) return '';
+        return view.state.sliceDoc(from, to);
+      },
       setSelection: (from, to) => {
         view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
         view.focus();

@@ -251,6 +251,27 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </select>
                   </label>
 
+                  <label className="settings-field settings-field-checkbox">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.appearance.toolbarVisibleLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.appearance.toolbarVisibleHint')}
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={draft.toolbarVisible}
+                      onChange={(event) =>
+                        setDraft((settings) => ({
+                          ...settings,
+                          toolbarVisible: event.target.checked,
+                        }))
+                      }
+                    />
+                  </label>
+
                   <label className="settings-field">
                     <span className="settings-field-copy">
                       <span className="settings-field-label">
