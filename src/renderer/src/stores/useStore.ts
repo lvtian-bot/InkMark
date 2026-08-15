@@ -82,6 +82,10 @@ export const selectAppTheme = (s: AppSettings): AppTheme => parseThemeId(s.theme
 export const selectContentTheme = (s: AppSettings): ContentTheme =>
   parseThemeId(s.themeId).contentTheme;
 
+let lastToggleViewModeTime = 0;
+export function resetToggleViewModeThrottleForTesting(): void {
+  lastToggleViewModeTime = 0;
+}
 let tabIdCounter = 0;
 function nextTabId(): string {
   return `tab-${Date.now()}-${tabIdCounter++}`;
@@ -268,5 +272,10 @@ export const useStore = create<InkMarkState>((set, get) => ({
   },
 
   setViewMode: (mode) => set({ viewMode: mode }),
-  toggleViewMode: () => set((s) => ({ viewMode: s.viewMode === 'wysiwyg' ? 'source' : 'wysiwyg' })),
+  toggleViewMode: () => {
+    const now = Date.now();
+    if (now - lastToggleViewModeTime < 250) return;
+    lastToggleViewModeTime = now;
+    set((s) => ({ viewMode: s.viewMode === 'wysiwyg' ? 'source' : 'wysiwyg' }));
+  },
 }));

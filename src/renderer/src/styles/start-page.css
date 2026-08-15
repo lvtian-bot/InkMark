@@ -39,8 +39,22 @@
 }
 
 .start-col--recent {
-  width: clamp(320px, 38vw, 560px);
+  width: clamp(320px, 34vw, 500px);
   min-width: 0;
+}
+
+/* 三档最近列表宽度由 .start-page 上的 recent-width-* 档位类下发。
+   选择器必须带 .start-page 容器前缀,避免裸档位类误伤别处(参考 toolbar-width-* 的历史坑)。 */
+.start-page.recent-width-wide .start-col--recent {
+  width: clamp(320px, 38vw, 560px);
+}
+
+.start-page.recent-width-medium .start-col--recent {
+  width: clamp(320px, 34vw, 500px);
+}
+
+.start-page.recent-width-narrow .start-col--recent {
+  width: clamp(320px, 30vw, 440px);
 }
 
 .start-col-head {

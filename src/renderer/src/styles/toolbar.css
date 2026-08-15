@@ -16,16 +16,18 @@
 }
 
 /* 三档只调整工具栏外框，正文宽度仍由 --editor-max-width 决定。
-   窄档与正文实际文字区对齐（编辑区宽度减去左右内边距）。 */
-.toolbar-width-wide {
+   窄档与正文实际文字区对齐（编辑区宽度减去左右内边距）。
+   选择器必须限定 .toolbar：该档位类同时挂在 .editor-main 上供查找面板联动，
+   裸类选择器会把整个主内容区限宽成 850px，首页右侧出现大块空白。 */
+.toolbar.toolbar-width-wide {
   max-width: var(--editor-max-width);
 }
 
-.toolbar-width-medium {
+.toolbar.toolbar-width-medium {
   max-width: calc(var(--editor-max-width) - var(--editor-side-padding));
 }
 
-.toolbar-width-narrow {
+.toolbar.toolbar-width-narrow {
   max-width: calc(
     var(--editor-max-width) - var(--editor-side-padding) - var(--editor-side-padding)
   );

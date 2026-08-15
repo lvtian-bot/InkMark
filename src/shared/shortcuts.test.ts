@@ -35,8 +35,12 @@ describe('comboToAccelerator', () => {
     );
   });
 
-  it('无 mod 返回 null', () => {
+  it('无 mod 且无 alt 返回 null', () => {
     expect(comboToAccelerator({ mod: false, alt: false, shift: false, key: 's' })).toBeNull();
+  });
+
+  it('支持纯 Alt 组合键', () => {
+    expect(comboToAccelerator({ mod: false, alt: true, shift: false, key: 'e' })).toBe('Alt+E');
   });
 });
 
@@ -52,14 +56,21 @@ describe('formatComboForDisplay', () => {
       'Cmd+S',
     );
   });
+
+  it('纯 Alt 组合键格式化', () => {
+    expect(formatComboForDisplay({ mod: false, alt: true, shift: false, key: 'e' }, 'other')).toBe(
+      'Alt+E',
+    );
+  });
 });
 
 describe('isShortcutCombo', () => {
   it('合法组合返回 true', () => {
     expect(isShortcutCombo({ mod: true, alt: false, shift: false, key: 'f' })).toBe(true);
+    expect(isShortcutCombo({ mod: false, alt: true, shift: false, key: 'e' })).toBe(true);
   });
 
-  it('mod 为 false 视为非法', () => {
+  it('无 mod 且无 alt 视为非法', () => {
     expect(isShortcutCombo({ mod: false, alt: false, shift: false, key: 'f' })).toBe(false);
   });
 
@@ -79,6 +90,15 @@ describe('DEFAULT_SHORTCUT_MAP', () => {
     });
     expect(comboEquals(DEFAULT_SHORTCUT_MAP.newFile, DEFAULT_SHORTCUT_MAP.newBlankDoc)).toBe(false);
   });
+
+  it('切换源码模式默认快捷键为 Ctrl+E', () => {
+    expect(DEFAULT_SHORTCUT_MAP.toggleSource).toEqual({
+      mod: true,
+      alt: false,
+      shift: false,
+      key: 'e',
+    });
+  });
 });
 
 describe('normalizeShortcutMap', () => {
@@ -96,6 +116,21 @@ describe('normalizeShortcutMap', () => {
     });
     expect(result.save.key).toBe('q');
     expect(comboEquals(result.find, DEFAULT_SHORTCUT_MAP.find)).toBe(true);
+  });
+
+  it('旧版默认快捷键（如 toggleSource: Ctrl+/）自动升级为新版默认快捷键（Ctrl+E）', () => {
+    const result = normalizeShortcutMap({
+      toggleSource: { mod: true, alt: false, shift: false, key: '/' },
+    });
+    expect(result.toggleSource).toEqual(DEFAULT_SHORTCUT_MAP.toggleSource);
+    expect(result.toggleSource.key).toBe('e');
+  });
+
+  it('用户自定义快捷键（如 toggleSource: Alt+E 或 Ctrl+.）不被覆盖', () => {
+    const result = normalizeShortcutMap({
+      toggleSource: { mod: false, alt: true, shift: false, key: 'e' },
+    });
+    expect(result.toggleSource).toEqual({ mod: false, alt: true, shift: false, key: 'e' });
   });
 
   it('返回的 combo 与默认常量不共享引用', () => {

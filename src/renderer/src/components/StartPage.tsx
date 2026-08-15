@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FilePlus, FileText, Folder, X } from 'lucide-react';
 import { useI18n } from '../i18n';
+import { useStore } from '../stores/useStore';
 import type { RecentItem, RecentKind } from '../types';
 import '../styles/start-page.css';
 
@@ -28,6 +29,7 @@ function splitPath(path: string): { name: string; dir: string } {
 
 export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder }: StartPageProps) {
   const { t } = useI18n();
+  const recentListWidth = useStore((s) => s.recentListWidth);
   const [recent, setRecent] = useState<RecentRow[]>([]);
   const [appName, setAppName] = useState('InkMark');
 
@@ -51,7 +53,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
   };
 
   return (
-    <div className="start-page">
+    <div className={`start-page recent-width-${recentListWidth}`}>
       <div className="start-content">
         <div className="start-cols">
           <section className="start-col">

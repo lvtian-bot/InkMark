@@ -12,6 +12,8 @@
 // 用法：这些字段需与 remarkStringifyOptionsCtx 的默认值（handlers/encode）合并，
 // 不能整体覆盖，否则会丢掉 Milkdown 内置的 handlers。详见 Editor.tsx 中的注入。
 
+import { useStore } from './stores/useStore';
+
 // remark-stringify 支持的标记风格子集，字段名与 mdast-util-to-markdown 一致。
 // 类型也与之一致：bullet 只能是 '*'/'+'/'-'，emphasis/strong 只能是 '*'/'_'。
 // 只声明我们要覆盖的字段，其余交给默认值。
@@ -50,4 +52,19 @@ interface HtmlMdastNode {
 export function dropBrPlaceholderHandler(node: HtmlMdastNode | undefined): string {
   const value = typeof node?.value === 'string' ? node.value : '';
   return /^<br\s*\/?>$/i.test(value) ? '' : value;
+}
+
+/// 序列化硬换行（break）时的处理函数。
+///
+/// 在宽松换行模式（strictLineBreaks: false，Obsidian 默认）下，段内换行直接输出单字符 '\n'，
+/// 保持 Markdown 文本干净，不注入多余的反斜杠或行尾空格。
+/// 在严格换行模式（strictLineBreaks: true）下，遵循 mdast-util-to-markdown 的标准行为输出 '\\\n'。
+export function breakHandler(
+  _node: unknown,
+  _parent: unknown,
+  _state: unknown,
+  _info: unknown,
+): string {
+  const strict = useStore.getState().strictLineBreaks;
+  return strict ? '\\\n' : '\n';
 }

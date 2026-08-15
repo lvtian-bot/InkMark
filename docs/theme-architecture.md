@@ -27,7 +27,8 @@ InkMark 的样式分外壳与内容两层管理。本文记录当前结构、历
 
 ## 改颜色时的同步点
 
-- 右上角窗口按钮区（最小化/最大化/关闭）由系统 `titleBarOverlay` 原生绘制，颜色硬编码在主进程两处：`createWindow` 初始值与 `theme:syncThemeId` 处理器。改标签栏颜色必须同步改这两处，否则右上角色差。
+- 右上角窗口按钮区（最小化/最大化/关闭）由系统 `titleBarOverlay` 原生绘制，颜色与窗口启动底色（`backgroundColor`）统一由主进程 `chromeColorsFor(themeId)` 提供，`createWindow` 初始值与 `theme:syncThemeId` 处理器两处都从这里取值。改标签栏或启动底色只改这一个函数，否则右上角色差或启动闪错色。启动底色取主题内容区底色（浅色纯白、深色 `#1e1e2e`），不是标签栏淡蓝——整窗闪标签栏色对白色主体是显眼的异物色块。
+- 上次使用的主题由 `theme:syncThemeId` 落盘到 userData 的 `theme.json`，`app.whenReady` 里恢复：首帧前窗口底色、`nativeTheme` 与主题菜单勾选与上次一致；渲染进程设置加载后的 `theme:syncThemeId` 仍是最终真值。
 - GitHub 主题亮/暗对应 `github-markdown-light.css` / `github-markdown-dark.css` 两个 `?url` 资源，由 effect 随 `theme` 切换。
 
 ## 后续改动约定

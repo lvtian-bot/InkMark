@@ -24,6 +24,12 @@ export function isToolbarWidth(value: unknown): value is ToolbarWidth {
   return value === 'wide' || value === 'medium' || value === 'narrow';
 }
 
+export type RecentListWidth = 'wide' | 'medium' | 'narrow';
+
+export function isRecentListWidth(value: unknown): value is RecentListWidth {
+  return value === 'wide' || value === 'medium' || value === 'narrow';
+}
+
 export type PanelLayout = 'outline-left' | 'outline-right';
 
 export function isPanelLayout(value: unknown): value is PanelLayout {
@@ -35,6 +41,7 @@ export interface AppSettings {
   outlineWidth: number;
   outlineVisible: boolean;
   toolbarWidth: ToolbarWidth;
+  recentListWidth: RecentListWidth;
   fontPreset: FontPresetId;
   fontSizePreset: FontSizePresetId;
   lineHeightPreset: LineHeightPresetId;
@@ -44,6 +51,7 @@ export interface AppSettings {
   panelLayout: PanelLayout;
   fileTreeWidth: number;
   blockMarkerReveal: boolean;
+  strictLineBreaks: boolean;
   language: LanguageSetting;
   shortcuts: ShortcutMap;
 }
@@ -58,6 +66,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   outlineWidth: 240,
   outlineVisible: true,
   toolbarWidth: 'wide',
+  recentListWidth: 'medium',
   fontPreset: 'system',
   fontSizePreset: 'medium',
   lineHeightPreset: 'medium',
@@ -67,6 +76,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   panelLayout: 'outline-left',
   fileTreeWidth: 240,
   blockMarkerReveal: false,
+  strictLineBreaks: false,
   language: 'system',
   shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
 };
@@ -77,6 +87,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     outlineWidth: settings.outlineWidth,
     outlineVisible: settings.outlineVisible,
     toolbarWidth: settings.toolbarWidth,
+    recentListWidth: settings.recentListWidth,
     fontPreset: settings.fontPreset,
     fontSizePreset: settings.fontSizePreset,
     lineHeightPreset: settings.lineHeightPreset,
@@ -86,6 +97,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     panelLayout: settings.panelLayout,
     fileTreeWidth: settings.fileTreeWidth,
     blockMarkerReveal: settings.blockMarkerReveal,
+    strictLineBreaks: settings.strictLineBreaks,
     language: settings.language,
     shortcuts: settings.shortcuts,
   };
@@ -156,6 +168,9 @@ function normalizeSettings(value: unknown): AppSettings {
     toolbarWidth: isToolbarWidth(candidate.toolbarWidth)
       ? candidate.toolbarWidth
       : DEFAULT_SETTINGS.toolbarWidth,
+    recentListWidth: isRecentListWidth(candidate.recentListWidth)
+      ? candidate.recentListWidth
+      : DEFAULT_SETTINGS.recentListWidth,
     fontPreset: isFontPresetId(candidate.fontPreset)
       ? candidate.fontPreset
       : DEFAULT_SETTINGS.fontPreset,
@@ -184,6 +199,10 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.blockMarkerReveal === 'boolean'
         ? candidate.blockMarkerReveal
         : DEFAULT_SETTINGS.blockMarkerReveal,
+    strictLineBreaks:
+      typeof candidate.strictLineBreaks === 'boolean'
+        ? candidate.strictLineBreaks
+        : DEFAULT_SETTINGS.strictLineBreaks,
     language: normalizeLanguageSetting(candidate.language),
     shortcuts: normalizeShortcutMap(candidate.shortcuts),
   };

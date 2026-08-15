@@ -92,6 +92,12 @@ export const messages = {
   'settings.appearance.toolbarWide': '宽',
   'settings.appearance.toolbarMedium': '适中',
   'settings.appearance.toolbarNarrow': '窄',
+  'settings.appearance.recentWidthLabel': '最近列表宽度',
+  'settings.appearance.recentWidthHint':
+    '调整首页「最近打开」栏的宽度；路径过长时各档都会显示省略号。',
+  'settings.appearance.recentWidthWide': '宽',
+  'settings.appearance.recentWidthMedium': '适中',
+  'settings.appearance.recentWidthNarrow': '窄',
   'settings.font.fontLabel': '正文字体',
   'settings.font.fontHint':
     '编辑区的中文字体；所选字体需系统已安装，未安装时会自动回落到系统默认。',
@@ -109,6 +115,9 @@ export const messages = {
   'settings.editor.blockMarkerLabel': '标记浮现（实验性）',
   'settings.editor.blockMarkerHint':
     '光标进入标题、引用或列表时，行首浮现 Markdown 标记符号（#、>、- 等）并可编辑。仍在完善中，可能有不稳定的体验，未来可能会被移除。',
+  'settings.editor.strictLineBreaksLabel': '严格换行',
+  'settings.editor.strictLineBreaksHint':
+    '关闭时单次回车即换行（与 Obsidian 默认一致）；开启时遵循标准 Markdown，单次回车合并为空格。',
   'settings.editor.panelLayoutLabel': '面板布局',
   'settings.editor.panelLayoutHint':
     '选择大纲靠左还是靠右，文件树自动放在另一侧。是否显示由上面的开关单独控制。',
@@ -137,7 +146,6 @@ export const messages = {
   'shortcut.find': '查找',
   'shortcut.replace': '替换',
   'shortcut.toggleSource': '切换源码模式',
-  'shortcut.toggleSourceHint': '另保留 Alt+E 作为固定第二入口，不可配置。',
   'shortcut.settings': '打开设置',
 
   'startPage.new': '新建',

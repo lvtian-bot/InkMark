@@ -64,7 +64,6 @@ export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = 
   toggleSource: {
     action: 'toggleSource',
     labelKey: 'shortcut.toggleSource',
-    hintKey: 'shortcut.toggleSourceHint',
   },
   settings: { action: 'settings', labelKey: 'shortcut.settings' },
 };
@@ -107,12 +106,13 @@ function acceleratorKey(key: string): string | null {
   return KEY_TO_ACCELERATOR[key] ?? null;
 }
 
-/** 把组合键转成 Electron accelerator 字符串（如 "CmdOrCtrl+Shift+O"）。无法表示时返回 null。 */
+/** 把组合键转成 Electron accelerator 字符串（如 "CmdOrCtrl+Shift+O" / "Alt+E"）。无法表示时返回 null。 */
 export function comboToAccelerator(combo: ShortcutCombo): string | null {
-  if (!combo.mod) return null;
+  if (!combo.mod && !combo.alt) return null;
   const ak = acceleratorKey(combo.key);
   if (!ak) return null;
-  const parts: string[] = ['CmdOrCtrl'];
+  const parts: string[] = [];
+  if (combo.mod) parts.push('CmdOrCtrl');
   if (combo.alt) parts.push('Alt');
   if (combo.shift) parts.push('Shift');
   parts.push(ak);
@@ -126,12 +126,13 @@ export function toDisplayPlatform(platform: string): DisplayPlatform {
   return platform === 'darwin' ? 'darwin' : 'other';
 }
 
-/** 把组合键格式化成用户可读字符串（如 "Ctrl+Shift+O" / "Cmd+,", "Cmd+S"）。 */
+/** 把组合键格式化成用户可读字符串（如 "Ctrl+Shift+O" / "Cmd+," / "Alt+E"）。 */
 export function formatComboForDisplay(
   combo: ShortcutCombo,
   platform: DisplayPlatform = 'other',
 ): string {
-  const parts: string[] = [platform === 'darwin' ? 'Cmd' : 'Ctrl'];
+  const parts: string[] = [];
+  if (combo.mod) parts.push(platform === 'darwin' ? 'Cmd' : 'Ctrl');
   if (combo.alt) parts.push('Alt');
   if (combo.shift) parts.push('Shift');
   parts.push(combo.key.toUpperCase());
@@ -145,9 +146,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function isShortcutCombo(value: unknown): value is ShortcutCombo {
   if (!isRecord(value)) return false;
   return (
-    value.mod === true &&
+    typeof value.mod === 'boolean' &&
     typeof value.alt === 'boolean' &&
     typeof value.shift === 'boolean' &&
+    (value.mod || value.alt) &&
     typeof value.key === 'string' &&
     ALLOWED_COMBO_KEYS.has(value.key)
   );
@@ -168,7 +170,7 @@ export const DEFAULT_SHORTCUT_MAP: Readonly<ShortcutMap> = {
   saveAs: { mod: true, alt: false, shift: true, key: 's' },
   find: { mod: true, alt: false, shift: false, key: 'f' },
   replace: { mod: true, alt: false, shift: false, key: 'h' },
-  toggleSource: { mod: true, alt: false, shift: false, key: '/' },
+  toggleSource: { mod: true, alt: false, shift: false, key: 'e' },
   settings: { mod: true, alt: false, shift: false, key: ',' },
 };
 
@@ -182,14 +184,22 @@ export function cloneShortcutMap(map: ShortcutMap): ShortcutMap {
   return result;
 }
 
+const LEGACY_DEFAULT_SHORTCUTS: Partial<Record<ShortcutAction, ShortcutCombo>> = {
+  toggleSource: { mod: true, alt: false, shift: false, key: '/' },
+};
+
 /** 归一化整张映射：逐动作校验，非法或缺失回落默认。返回的 combo 与入参互不引用。 */
 export function normalizeShortcutMap(value: unknown): ShortcutMap {
   const base = isRecord(value) ? value : {};
   const result = {} as ShortcutMap;
   for (const action of SHORTCUT_ACTIONS) {
-    const c = isShortcutCombo(base[action])
+    let c = isShortcutCombo(base[action])
       ? (base[action] as ShortcutCombo)
       : DEFAULT_SHORTCUT_MAP[action];
+    const legacy = LEGACY_DEFAULT_SHORTCUTS[action];
+    if (legacy && comboEquals(c, legacy)) {
+      c = DEFAULT_SHORTCUT_MAP[action];
+    }
     result[action] = { mod: c.mod, alt: c.alt, shift: c.shift, key: c.key };
   }
   return result;

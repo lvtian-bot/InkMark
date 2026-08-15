@@ -98,6 +98,12 @@ export const messages: Record<MessageKey, string> = {
   'settings.appearance.toolbarWide': 'Wide',
   'settings.appearance.toolbarMedium': 'Medium',
   'settings.appearance.toolbarNarrow': 'Narrow',
+  'settings.appearance.recentWidthLabel': 'Recent List Width',
+  'settings.appearance.recentWidthHint':
+    'Adjusts the Recent list width on the start page; long paths ellipsize at every level.',
+  'settings.appearance.recentWidthWide': 'Wide',
+  'settings.appearance.recentWidthMedium': 'Medium',
+  'settings.appearance.recentWidthNarrow': 'Narrow',
   'settings.font.fontLabel': 'Content Font',
   'settings.font.fontHint':
     'Body font in the editor; the font must be installed on your system, otherwise it falls back to the default.',
@@ -115,6 +121,9 @@ export const messages: Record<MessageKey, string> = {
   'settings.editor.blockMarkerLabel': 'Markdown Markers (Experimental)',
   'settings.editor.blockMarkerHint':
     'Shows editable Markdown markers (#, >, -, etc.) at line starts when the cursor enters headings, quotes, or lists. Still in progress; may be unstable and could be removed.',
+  'settings.editor.strictLineBreaksLabel': 'Strict Line Breaks',
+  'settings.editor.strictLineBreaksHint':
+    'When off, single line breaks render as new lines (like Obsidian default). When on, follows standard Markdown where single line breaks collapse to spaces.',
   'settings.editor.panelLayoutLabel': 'Panel Layout',
   'settings.editor.panelLayoutHint':
     'Choose whether the outline sits on the left or right; the file tree moves to the other side. Visibility is controlled by the toggles above.',
@@ -144,7 +153,6 @@ export const messages: Record<MessageKey, string> = {
   'shortcut.find': 'Find',
   'shortcut.replace': 'Replace',
   'shortcut.toggleSource': 'Toggle Source Mode',
-  'shortcut.toggleSourceHint': 'Alt+E stays as a fixed secondary shortcut and is not configurable.',
   'shortcut.settings': 'Open Settings',
 
   'startPage.new': 'New',

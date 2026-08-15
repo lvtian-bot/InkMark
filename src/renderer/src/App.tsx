@@ -409,17 +409,106 @@ function AppContent() {
   }, [closeFindReplace, fileOps, fileTree, setFileTreeVisible, setThemeId, toggleViewMode]);
 
   useEffect(() => {
-    const handleFindShortcut = (event: KeyboardEvent): void => {
+    // 全局功能快捷键：用捕获阶段监听，确保在 CodeMirror / ProseMirror 等编辑器 keymap
+    // 之前拦截，避免按键被编辑器消费或与编辑器内置按键冲突。
+    const handleGlobalShortcuts = (event: KeyboardEvent): void => {
+      const platform = window.inkmark.platform;
+
+      // 打开设置快捷键（在设置弹窗未打开时生效）
+      if (!isSettingsOpen && comboMatchesEvent(event, shortcuts.settings, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeFindReplace();
+        setIsSettingsOpen(true);
+        return;
+      }
+
+      // 弹窗处于打开状态时，不触发下层编辑区快捷键
       if (isSettingsOpen) return;
 
-      const platform = window.inkmark.platform;
+      // 1. 新建标签页
+      if (comboMatchesEvent(event, shortcuts.newFile, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileOps.newFile();
+        return;
+      }
+
+      // 2. 新建空白文档
+      if (comboMatchesEvent(event, shortcuts.newBlankDoc, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileOps.newBlankDoc();
+        return;
+      }
+
+      // 3. 打开文件
+      if (comboMatchesEvent(event, shortcuts.openFile, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileOps.openFile();
+        return;
+      }
+
+      // 4. 打开文件夹
+      if (comboMatchesEvent(event, shortcuts.openFolder, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileTree.openFolderDialog().then((ok) => {
+          if (ok) setFileTreeVisible(true);
+        });
+        return;
+      }
+
+      // 5. 关闭标签页
+      if (comboMatchesEvent(event, shortcuts.closeTab, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileOps.closeTab();
+        return;
+      }
+
+      // 6. 保存文档（非欢迎页）
+      if (!isStartPage && comboMatchesEvent(event, shortcuts.save, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileOps.save();
+        return;
+      }
+
+      // 7. 另存为（非欢迎页）
+      if (!isStartPage && comboMatchesEvent(event, shortcuts.saveAs, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        void fileOps.saveAs();
+        return;
+      }
+
+      // 8. 切换源码模式
+      if (comboMatchesEvent(event, shortcuts.toggleSource, platform)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (isStartPage) {
+          void fileOps.newBlankDoc();
+          useStore.getState().setViewMode('source');
+        } else {
+          toggleViewMode();
+        }
+        return;
+      }
+
+      // 9. 查找
       if (!isStartPage && comboMatchesEvent(event, shortcuts.find, platform)) {
         event.preventDefault();
+        event.stopPropagation();
         openFindReplace(false);
         return;
       }
+
+      // 10. 替换
       if (!isStartPage && comboMatchesEvent(event, shortcuts.replace, platform)) {
         event.preventDefault();
+        event.stopPropagation();
         openFindReplace(true);
         return;
       }
@@ -430,34 +519,20 @@ function AppContent() {
       }
     };
 
-    window.addEventListener('keydown', handleFindShortcut);
-    return () => window.removeEventListener('keydown', handleFindShortcut);
+    window.addEventListener('keydown', handleGlobalShortcuts, true);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts, true);
   }, [
     closeFindReplace,
+    fileOps,
+    fileTree,
     isFindReplaceOpen,
     isSettingsOpen,
     isStartPage,
     openFindReplace,
+    setFileTreeVisible,
     shortcuts,
+    toggleViewMode,
   ]);
-
-  useEffect(() => {
-    // 切换源码模式快捷键：用户配置的主快捷键（默认 Ctrl+/，与菜单「视图 → 源码模式」等效）
-    // 与固定第二入口 Alt+E。用捕获阶段监听，确保在 CodeMirror（Mod-/ = 注释）和
-    // ProseMirror（Mod-/ = 选中父节点）等编辑器 keymap 之前拦截，避免按键被编辑器消费。
-    const handleToggleSourceShortcut = (event: KeyboardEvent): void => {
-      const key = event.key.toLowerCase();
-      const matchesMain = comboMatchesEvent(event, shortcuts.toggleSource, window.inkmark.platform);
-      const isAltE =
-        event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && key === 'e';
-      if (!matchesMain && !isAltE) return;
-      event.preventDefault();
-      event.stopPropagation();
-      toggleViewMode();
-    };
-    window.addEventListener('keydown', handleToggleSourceShortcut, true);
-    return () => window.removeEventListener('keydown', handleToggleSourceShortcut, true);
-  }, [shortcuts, toggleViewMode]);
 
   useEffect(() => {
     if (isStartPage && isFindReplaceOpen) closeFindReplace();

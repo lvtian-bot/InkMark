@@ -185,6 +185,33 @@ function getWindowStatePath(): string {
   return join(app.getPath('userData'), 'window-state.json');
 }
 
+function getThemeStatePath(): string {
+  return join(app.getPath('userData'), 'theme.json');
+}
+
+/**
+ * 渲染进程的主题设置存在 localStorage 里,主进程启动前读不到;
+ * 由 theme:syncThemeId 落盘到 userData/theme.json,下次启动在 whenReady 里恢复,
+ * 保证窗口底色、原生主题与主题菜单勾选在首帧前就与上次一致。
+ */
+function loadPersistedThemeId(): string | null {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(getThemeStatePath(), 'utf-8'));
+    if (isRecord(raw) && isThemeId(raw.themeId)) return raw.themeId;
+  } catch {
+    /* ignore read/parse errors */
+  }
+  return null;
+}
+
+function persistThemeId(themeId: string): void {
+  try {
+    writeFileSync(getThemeStatePath(), JSON.stringify({ themeId }));
+  } catch {
+    /* ignore write errors */
+  }
+}
+
 function loadWindowState(): WindowState {
   try {
     const statePath = getWindowStatePath();
@@ -199,7 +226,9 @@ function loadWindowState(): WindowState {
 
 function saveWindowState(win: BrowserWindow): void {
   try {
-    const bounds = win.getBounds();
+    // 最大化时 getBounds() 返回最大化几何，直接保存会让下次「还原」得到一个铺满屏幕的
+    // 普通窗口；getNormalBounds() 恒为还原态边界，非最大化时与 getBounds() 一致。
+    const bounds = win.getNormalBounds();
     const state: WindowState = {
       x: bounds.x,
       y: bounds.y,
@@ -352,6 +381,7 @@ if (!gotLock) {
 
 function createWindow(): void {
   const savedState = loadWindowState();
+  const chrome = chromeColorsFor(currentThemeId);
   mainWindow = new BrowserWindow({
     width: savedState.width,
     height: savedState.height,
@@ -361,14 +391,13 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     show: false,
-    // 与浅色标题栏同色，减轻渲染进程首帧前的白闪；深色主题真值在渲染进程，此处只能兜底。
-    backgroundColor: '#eef4f9',
+    backgroundColor: chrome.background,
     title: PRODUCT_NAME,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
       height: 36,
-      color: '#eef4f9',
-      symbolColor: '#6b6b6b',
+      color: chrome.overlay,
+      symbolColor: chrome.symbol,
     },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -451,6 +480,18 @@ function createWindow(): void {
 
 function applyNativeTheme(themeId: string): void {
   nativeTheme.themeSource = themeId.endsWith('-dark') ? 'dark' : 'light';
+}
+
+/**
+ * 窗口启动底色与标题栏按钮区颜色,theme-architecture.md 记录的两个同步点
+ * (createWindow 初始值与 theme:syncThemeId)统一从这里取值,改色只改这里。
+ * 启动底色取主题内容区底色(浅色纯白、深色 #1e1e2e),首帧前不出现外来色块;
+ * 按钮区颜色与标签栏同色(浅色 #eef4f9、深色 #181825)。
+ */
+function chromeColorsFor(themeId: string): { overlay: string; symbol: string; background: string } {
+  return themeId.endsWith('-dark')
+    ? { overlay: '#181825', symbol: '#a6adc8', background: '#1e1e2e' }
+    : { overlay: '#eef4f9', symbol: '#6b6b6b', background: '#ffffff' };
 }
 
 function shortcutAccelerator(action: ShortcutAction): string {
@@ -613,6 +654,9 @@ app.whenReady().then(() => {
   // ready 之后系统语言才可靠，先解析再建菜单；渲染进程随后会按设置再次同步。
   systemLanguage = resolveSystemLanguage();
   currentLocale = resolveLocale(currentLanguage, systemLanguage);
+  // 恢复上次主题,让首帧前窗口底色、原生主题与主题菜单勾选不回落浅色默认。
+  const persistedThemeId = loadPersistedThemeId();
+  if (persistedThemeId) currentThemeId = persistedThemeId;
   app.setAboutPanelOptions({
     applicationName: PRODUCT_NAME,
     applicationVersion: t('about.version', { version: app.getVersion() }),
@@ -651,12 +695,13 @@ app.on('before-quit', () => {
 ipcMain.on('theme:syncThemeId', (event, themeId: unknown) => {
   if (!isTrustedRenderer(event) || !isThemeId(themeId)) return;
   currentThemeId = themeId;
+  persistThemeId(themeId);
   applyNativeTheme(themeId);
   createMenu();
-  const isDark = themeId.endsWith('-dark');
+  const chrome = chromeColorsFor(themeId);
   mainWindow?.setTitleBarOverlay({
-    color: isDark ? '#181825' : '#eef4f9',
-    symbolColor: isDark ? '#a6adc8' : '#6b6b6b',
+    color: chrome.overlay,
+    symbolColor: chrome.symbol,
   });
 });
 

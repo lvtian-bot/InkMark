@@ -44,6 +44,7 @@ import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
+import { breaks } from '../plugins/breaks';
 import { blockMarkerReveal, setBlockMarkerReveal } from '../plugins/block-marker-reveal';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import '../styles/editor.css';
@@ -54,6 +55,7 @@ import githubDarkUrl from 'github-markdown-css/github-markdown-dark.css?url';
 import {
   markdownStringifyOverrides,
   dropBrPlaceholderHandler,
+  breakHandler,
 } from '../markdown-stringify-options';
 
 const GITHUB_LINK_ID = 'inkmark-github-theme';
@@ -74,6 +76,8 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const blockMarkerEnabled = useStore((s) => s.blockMarkerReveal);
+  const strictLineBreaks = useStore((s) => s.strictLineBreaks);
+  const initialStrictRef = useRef(strictLineBreaks);
 
   useEditor((root) => {
     return MilkdownEditor.make()
@@ -87,10 +91,12 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
           // 注入自定义 list 处理器：按节点保留的 bullet 字符输出（见 plugins/list-marker）。
           // 注入 html 处理器：丢弃 preserveEmptyLine 特性注入的 <br /> 空行占位，
           // 避免空列表项等空段落保存成 `* <br />` 污染 Markdown 文本（见 markdown-stringify-options）。
+          // 注入 break 处理器：宽松换行模式下输出干净的 '\n'，严格换行模式下输出 '\\\n'。
           handlers: {
             ...options.handlers,
             list: listMarkerHandler,
             html: dropBrPlaceholderHandler,
+            break: breakHandler,
           },
         }));
       })
@@ -112,6 +118,7 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(frontmatter)
       .use(taskList)
       .use(listMarker)
+      .use(breaks)
       .use(blockMarkerReveal)
       .use(history)
       .use(listener)
@@ -473,6 +480,20 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       /* 编辑器尚未就绪，忽略 */
     }
   }, [loading, get, blockMarkerEnabled]);
+
+  // 严格换行开关：设置变化时重新解析当前文档（跳过初始挂载）。
+  useEffect(() => {
+    if (loading || !armedRef.current) return;
+    if (initialStrictRef.current === strictLineBreaks) return;
+    initialStrictRef.current = strictLineBreaks;
+    const ed = get();
+    if (!ed) return;
+    const state = useStore.getState();
+    const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+    if (activeTab && activeTab.sourceContent) {
+      editorHandle.current?.setMarkdown(activeTab.sourceContent);
+    }
+  }, [loading, get, strictLineBreaks]);
 
   return (
     <div className={`editor-container theme-${contentTheme}`}>

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { useStore } from './stores/useStore';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resetToggleViewModeThrottleForTesting, useStore } from './stores/useStore';
 
 describe('useStore addTab', () => {
   // store 是模块级单例，测试间共享状态；记录初始状态，每个用例结束后恢复，
@@ -72,5 +72,27 @@ describe('useStore closeTab', () => {
     const state = useStore.getState();
     expect(state.tabs.find((t) => t.id === aId)).toBeUndefined();
     expect(state.activeTabId).toBe(bId);
+  });
+});
+
+describe('useStore toggleViewMode', () => {
+  beforeEach(() => {
+    resetToggleViewModeThrottleForTesting();
+  });
+
+  it('正常切换 viewMode', () => {
+    useStore.setState({ viewMode: 'wysiwyg' });
+    const { toggleViewMode } = useStore.getState();
+    toggleViewMode();
+    expect(useStore.getState().viewMode).toBe('source');
+  });
+
+  it('短时间内重复触发（如 DOM keydown 与原生菜单 accelerator 双重派发）只执行一次', () => {
+    useStore.setState({ viewMode: 'wysiwyg' });
+    const { toggleViewMode } = useStore.getState();
+    toggleViewMode();
+    // 毫秒内紧接着的第二次调用被防抖过滤
+    toggleViewMode();
+    expect(useStore.getState().viewMode).toBe('source');
   });
 });

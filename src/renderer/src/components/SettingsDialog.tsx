@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { isPanelLayout, isToolbarWidth, selectSettings, type AppSettings } from '../settings';
+import {
+  isPanelLayout,
+  isRecentListWidth,
+  isToolbarWidth,
+  selectSettings,
+  type AppSettings,
+} from '../settings';
 import {
   FONT_PRESETS,
   FONT_SIZE_PRESETS,
@@ -121,7 +127,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         return;
       }
       const combo = comboFromKeyboardEvent(event, window.inkmark.platform);
-      if (!combo || !combo.mod) return;
+      if (!combo || (!combo.mod && !combo.alt)) return;
       setDraft((settings) => ({
         ...settings,
         shortcuts: { ...settings.shortcuts, [recordingAction]: combo },
@@ -266,6 +272,30 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       <option value="wide">{t('settings.appearance.toolbarWide')}</option>
                       <option value="medium">{t('settings.appearance.toolbarMedium')}</option>
                       <option value="narrow">{t('settings.appearance.toolbarNarrow')}</option>
+                    </select>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.appearance.recentWidthLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.appearance.recentWidthHint')}
+                      </span>
+                    </span>
+                    <select
+                      value={draft.recentListWidth}
+                      onChange={(event) => {
+                        const recentListWidth = event.target.value;
+                        if (isRecentListWidth(recentListWidth)) {
+                          setDraft((settings) => ({ ...settings, recentListWidth }));
+                        }
+                      }}
+                    >
+                      <option value="wide">{t('settings.appearance.recentWidthWide')}</option>
+                      <option value="medium">{t('settings.appearance.recentWidthMedium')}</option>
+                      <option value="narrow">{t('settings.appearance.recentWidthNarrow')}</option>
                     </select>
                   </label>
                 </fieldset>
@@ -437,6 +467,29 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         setDraft((settings) => ({
                           ...settings,
                           blockMarkerReveal: event.target.checked,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <div className="settings-group-divider" role="separator" />
+
+                  <label className="settings-field settings-field-checkbox">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.editor.strictLineBreaksLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.editor.strictLineBreaksHint')}
+                      </span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={draft.strictLineBreaks}
+                      onChange={(event) =>
+                        setDraft((settings) => ({
+                          ...settings,
+                          strictLineBreaks: event.target.checked,
                         }))
                       }
                     />
