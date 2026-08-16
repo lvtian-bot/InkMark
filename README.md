@@ -1,5 +1,9 @@
 # InkMark
 
+[![Quality](https://github.com/lvtian-bot/InkMark/actions/workflows/quality.yml/badge.svg)](https://github.com/lvtian-bot/InkMark/actions/workflows/quality.yml)
+[![Release](https://github.com/lvtian-bot/InkMark/actions/workflows/release.yml/badge.svg)](https://github.com/lvtian-bot/InkMark/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](./LICENSE)
+
 InkMark 是一个面向本地 `.md` 文件的所见即所得 Markdown 桌面编辑器，用于查看、编辑和管理日常 Markdown 文档，也适合与 AI 工具协同处理同一批本地文件。
 
 ## 核心功能

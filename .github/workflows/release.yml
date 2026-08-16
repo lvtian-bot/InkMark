@@ -14,6 +14,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # git-cliff 需要完整提交历史与标签来生成发布说明
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -30,6 +33,17 @@ jobs:
       - name: Build Windows installer
         run: npx electron-builder --win --publish never
 
+      - name: Install git-cliff
+        run: |
+          curl -sSL -o cliff.zip https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1.x86_64-pc-windows-msvc.zip
+          tar -xf cliff.zip
+          Move-Item git-cliff-2.13.1/git-cliff.exe git-cliff.exe
+
+      - name: Generate release notes and changelog
+        run: |
+          git-cliff.exe --latest --strip all -o release-notes.md
+          git-cliff.exe -o CHANGELOG.md
+
       - name: Upload to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
@@ -37,4 +51,14 @@ jobs:
             dist/*.exe
             dist/*.exe.blockmap
             dist/latest.yml
-          generate_release_notes: true
+          body_path: release-notes.md
+
+      - name: Commit updated CHANGELOG
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if (-Not (git diff --cached --quiet)) {
+            git commit -m "chore: 发布后更新 CHANGELOG 至 ${{ github.ref_name }}"
+            git push origin HEAD:master
+          }
