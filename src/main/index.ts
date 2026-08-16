@@ -23,6 +23,7 @@ import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
+import { resolveAutoUpdater } from './resolve-auto-updater';
 import { createUpdateService, type UpdateService } from './update-service';
 import type {
   DiscardStoredImageRequest,
@@ -109,21 +110,39 @@ const imageStorage = createImageStorage({ t });
 let updateServicePromise: Promise<UpdateService> | null = null;
 function getUpdateService(): Promise<UpdateService> {
   if (!updateServicePromise) {
-    updateServicePromise = import('electron-updater').then(({ autoUpdater }) =>
-      createUpdateService({
-        adapter: autoUpdater,
-        currentVersion: app.getVersion(),
-        supported: process.platform === 'win32' && app.isPackaged,
-        t,
-        onStateChange: (state) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('app:update-state', state);
-          }
-        },
-      }),
-    );
+    updateServicePromise = import('electron-updater')
+      .then((module) =>
+        createUpdateService({
+          adapter: resolveAutoUpdater(module),
+          currentVersion: app.getVersion(),
+          supported: process.platform === 'win32' && app.isPackaged,
+          t,
+          onStateChange: (state) => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('app:update-state', state);
+            }
+          },
+        }),
+      )
+      // 初始化失败时不缓存 rejected promise，让用户重试时能真正重新初始化。
+      .catch((error: unknown) => {
+        updateServicePromise = null;
+        throw error;
+      });
   }
   return updateServicePromise;
+}
+
+// 更新服务初始化失败时以错误状态返回而不是让 IPC reject，
+// 渲染层的更新对话框没有对 invoke 失败的兜底，reject 会让界面永远停在“正在检查更新”。
+async function withUpdateService(
+  operation: (service: UpdateService) => UpdateState | Promise<UpdateState>,
+): Promise<UpdateState> {
+  try {
+    return await operation(await getUpdateService());
+  } catch {
+    return { status: 'error', currentVersion: app.getVersion(), message: t('update.errorGeneric') };
+  }
 }
 
 app.enableSandbox();
@@ -1038,7 +1057,7 @@ ipcMain.handle('app:getUpdateState', async (event): Promise<UpdateState> => {
       message: t('update.requestInvalid'),
     };
   }
-  return (await getUpdateService()).getState();
+  return withUpdateService((service) => service.getState());
 });
 
 ipcMain.handle('app:checkForUpdates', async (event): Promise<UpdateState> => {
@@ -1049,7 +1068,7 @@ ipcMain.handle('app:checkForUpdates', async (event): Promise<UpdateState> => {
       message: t('update.requestInvalid'),
     };
   }
-  return (await getUpdateService()).check();
+  return withUpdateService((service) => service.check());
 });
 
 ipcMain.handle('app:downloadUpdate', async (event): Promise<UpdateState> => {
@@ -1060,13 +1079,18 @@ ipcMain.handle('app:downloadUpdate', async (event): Promise<UpdateState> => {
       message: t('update.requestInvalid'),
     };
   }
-  return (await getUpdateService()).download();
+  return withUpdateService((service) => service.download());
 });
 
 ipcMain.handle('app:installUpdate', async (event): Promise<boolean> => {
   if (!isTrustedRenderer(event)) return false;
   forceClose = true;
-  const started = (await getUpdateService()).install();
+  let started: boolean;
+  try {
+    started = (await getUpdateService()).install();
+  } catch {
+    started = false;
+  }
   if (!started) forceClose = false;
   return started;
 });

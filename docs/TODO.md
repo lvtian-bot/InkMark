@@ -232,6 +232,11 @@
 - [x] 发布流程取消本地安装包留存，以应用内更新为准 ✅ 2026-08-14
   - 已实现：release.md 移除「下载安装包到本地 / 本地构建留存」步骤及对应完成标准，新增发布后核对 latest.yml 与资产名一致的检查项（命名不一致缺陷根治前每次发布需核对）；本地已下载的 0.1.2 安装包同步清理。
 
+- [x] 应用内更新自 v0.1.2 起永远卡在“正在检查更新” ✅ 2026-08-16
+  - 根因：启动优化（46e4da4）把 electron-updater 改为运行时原生 `import()` 动态加载，主进程产物是 CommonJS，Node 的 cjs-module-lexer 识别不出其 getter 导出的 `autoUpdater`，解构得到 undefined，更新服务初始化抛 TypeError 且失败 Promise 被缓存，IPC reject 后渲染层无兜底，界面无限转圈；类型声明里有该导出，`npm run check` 与 vitest 的 ESM 互操作均覆盖不到此场景。
+  - 已修复：新增 `resolveAutoUpdater` 以 `module.autoUpdater ?? module.default?.autoUpdater` 兜底取值；初始化失败不再缓存 rejected promise；四个更新 IPC 失败统一返回错误状态而非 reject。已在真实 Electron 主进程探针中验证：旧写法解析为 undefined、新写法得到可用 updater。
+  - 回归：`resolve-auto-updater.test.ts` 覆盖命名空间/default/getter 三种形态，并以子进程跑真实 CommonJS Node 语义验证可达性。v0.1.2–v0.1.4 已安装版本无法自愈，修复版发布后老用户需手动安装一次。
+
 ## 暂不需要
 
 - [ ] 导出 HTML / PDF / 富文本
