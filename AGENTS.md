@@ -72,6 +72,7 @@ InkMark 是一个面向本地 `.md` 文件的所见即所得 Markdown 桌面编�
 
 ## 提交与 Pull Request 规范
 
-- 遵循现有的 Conventional Commits 风格：`feat:`、`fix:`、`chore:`、`docs:`（如 `feat: resizable/toggleable outline`）。
-- 标题使用祈使句，长度不超过 72 个字符。
+- 遵循 Conventional Commits：类型前缀 + 中文主题（如 `fix: 修复应用内更新卡死`）；常用类型 `feat`（新增）、`fix`（修复）、`perf`（性能）、`refactor`（重构）、`docs`（文档）、`test`（测试）、`chore`（工程维护）、`build`/`ci`（构建与集成）。
+- 标题尽量简短，总长不超过 100 字符（commitlint 上限，CI 已启用校验）；正文可选，换行后说明动机与机制。
+- 版本发布提交固定为 `chore: release vX.Y.Z`；发布说明与 `CHANGELOG.md` 由 Release 工作流依据 `cliff.toml` 自动生成，不要手工编辑 `CHANGELOG.md`。
 - PR 目标分支为 `master`，包含简要说明、自动检查结果，以及已完成或留待实际体验的界面验证项。
