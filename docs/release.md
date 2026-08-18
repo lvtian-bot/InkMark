@@ -4,7 +4,9 @@
 
 ## 发布步骤
 
-1. 确认本次版本范围，更新 `package.json` 和 `package-lock.json` 中的版本号。
+1. 确认本次版本范围：
+   - 将 `docs/TODO.md` 中本次已打勾的 `[x]` 待办项，剪切归档至 `docs/TODO-ARCHIVE.md` 顶部的 `## vX.Y.Z（YYYY-MM-DD）` 小节。
+   - 更新 `package.json` 和 `package-lock.json` 中的版本号。
 2. 运行 `npm run check`，确认 lint、类型检查、单元测试、格式检查和生产构建全部通过。
 3. 提交版本改动并推送 `master`，等待 Quality workflow 通过。
 4. 创建与包版本一致的标签（例如 `v0.0.7`），并将标签推送到远端。
