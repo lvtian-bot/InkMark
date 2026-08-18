@@ -6,17 +6,32 @@
   scrollbar-gutter: stable;
 }
 .editor-container::-webkit-scrollbar,
+.source-container .cm-scroller::-webkit-scrollbar,
 .source-container::-webkit-scrollbar {
   width: var(--scrollbar-w);
 }
 .editor-container::-webkit-scrollbar-track,
+.source-container .cm-scroller::-webkit-scrollbar-track,
 .source-container::-webkit-scrollbar-track {
   background: transparent;
 }
 .editor-container::-webkit-scrollbar-thumb,
+.source-container .cm-scroller::-webkit-scrollbar-thumb,
 .source-container::-webkit-scrollbar-thumb {
-  border-radius: 5px;
-  background: var(--text-tertiary);
+  border-radius: 9999px;
+  background-color: var(--scrollbar-thumb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.editor-container::-webkit-scrollbar-thumb:hover,
+.source-container .cm-scroller::-webkit-scrollbar-thumb:hover,
+.source-container::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+.editor-container::-webkit-scrollbar-thumb:active,
+.source-container .cm-scroller::-webkit-scrollbar-thumb:active,
+.source-container::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
 }
 .editor-container [data-milkdown-root] {
   max-width: var(--editor-max-width);
