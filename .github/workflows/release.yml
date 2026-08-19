@@ -35,7 +35,7 @@ jobs:
 
       - name: Install git-cliff
         run: |
-          curl -sSL -o cliff.zip https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1.x86_64-pc-windows-msvc.zip
+          curl -sSL -o cliff.zip https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-pc-windows-msvc.zip
           tar -xf cliff.zip
           Move-Item git-cliff-2.13.1/git-cliff.exe git-cliff.exe
 
