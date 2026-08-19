@@ -36,6 +36,7 @@ import {
   addOrUpdateRecent,
   normalizeRecentItems,
   removeRecent,
+  toggleRecentStar,
   type RecentItem,
   type RecentKind,
 } from '../shared/recent-items';
@@ -314,6 +315,13 @@ function removeRecentItem(filePath: string): void {
   createMenu();
 }
 
+function toggleRecentStarItem(filePath: string): void {
+  const next = toggleRecentStar(getRecentFiles(), filePath);
+  if (next === getRecentFiles()) return;
+  writeRecentFiles(next);
+  createMenu();
+}
+
 // 上次在文件对话框中确认的路径(文件或文件夹),用作下次对话框的起始位置。
 // 与 recent-files 解耦:recent 受 10 条上限约束、服务于开始页展示;lastDialogPath
 // 单独持久化、不受条数影响,保证对话框始终能回到上次位置,不会被频繁打开的文件挤掉。
@@ -533,11 +541,13 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
   }
   const folderItems = items.filter((item) => item.kind === 'folder');
   const fileItems = items.filter((item) => item.kind === 'file');
+  const starredFileItems = fileItems.filter((item) => item.starred === true);
+  const normalFileItems = fileItems.filter((item) => item.starred !== true);
 
   const toMenuItem = (item: RecentItem): Electron.MenuItemConstructorOptions => {
     const isFolder = item.kind === 'folder';
     const baseName = basename(item.path) || item.path;
-    const label = isFolder ? `${baseName}/` : baseName;
+    const label = isFolder ? `${baseName}/` : item.starred ? `★ ${baseName}` : baseName;
     return {
       label,
       sublabel: item.path,
@@ -558,8 +568,14 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
   if (folderItems.length > 0 && fileItems.length > 0) {
     list.push({ type: 'separator' });
   }
-  if (fileItems.length > 0) {
-    list.push(...fileItems.map(toMenuItem));
+  if (starredFileItems.length > 0) {
+    list.push(...starredFileItems.map(toMenuItem));
+  }
+  if (starredFileItems.length > 0 && normalFileItems.length > 0) {
+    list.push({ type: 'separator' });
+  }
+  if (normalFileItems.length > 0) {
+    list.push(...normalFileItems.map(toMenuItem));
   }
   list.push({ type: 'separator' });
   list.push({
@@ -1035,6 +1051,11 @@ ipcMain.handle('recent:get', async (event) => {
 ipcMain.handle('recent:remove', async (event, filePath: unknown) => {
   if (!isTrustedRenderer(event) || !isAbsolutePath(filePath)) return;
   removeRecentItem(filePath);
+});
+
+ipcMain.handle('recent:toggleStar', async (event, filePath: unknown) => {
+  if (!isTrustedRenderer(event) || !isAbsolutePath(filePath)) return;
+  toggleRecentStarItem(filePath);
 });
 
 ipcMain.handle('recent:clear', async (event) => {

@@ -185,6 +185,8 @@ export const messages: Record<MessageKey, string> = {
   'startPage.recent': 'Recent',
   'startPage.clearAll': 'Clear All',
   'startPage.removeRecent': 'Remove from recents',
+  'startPage.starRecent': 'Star',
+  'startPage.unstarRecent': 'Unstar',
   'startPage.recentEmpty': 'No recently opened files or folders',
 
   'toolbar.insertLinkTitle': 'Insert Link',

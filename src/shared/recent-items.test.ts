@@ -3,6 +3,7 @@ import {
   addOrUpdateRecent,
   normalizeRecentItems,
   removeRecent,
+  toggleRecentStar,
   type RecentItem,
 } from './recent-items';
 
@@ -37,6 +38,28 @@ describe('recent-items normalizeRecentItems', () => {
   it('drops malformed entries and defaults invalid kind to file', () => {
     const data = [{ path: '/ok.md', kind: 'weird' }, { noPath: true }, null, 42, { path: 123 }];
     expect(normalizeRecentItems(data)).toEqual([{ path: '/ok.md', kind: 'file' }]);
+  });
+
+  it('sorts folders, starred files and normal files into fixed sections', () => {
+    const data = [
+      { path: '/normal.md', kind: 'file' },
+      { path: '/starred.md', kind: 'file', starred: true },
+      { path: '/docs', kind: 'folder' },
+    ];
+    expect(normalizeRecentItems(data)).toEqual([
+      { path: '/docs', kind: 'folder' },
+      { path: '/starred.md', kind: 'file', starred: true },
+      { path: '/normal.md', kind: 'file' },
+    ]);
+  });
+
+  it('ignores starred flag on folders and non-boolean starred values', () => {
+    expect(normalizeRecentItems([{ path: '/docs', kind: 'folder', starred: true }])).toEqual([
+      { path: '/docs', kind: 'folder' },
+    ]);
+    expect(normalizeRecentItems([{ path: '/a.md', kind: 'file', starred: 'yes' }])).toEqual([
+      { path: '/a.md', kind: 'file' },
+    ]);
   });
 
   it('returns empty array for non-array input', () => {
@@ -143,9 +166,97 @@ describe('recent-items addOrUpdateRecent', () => {
       { path: '/file1.md', kind: 'file' },
       { path: '/file2.md', kind: 'file' },
     ]);
-    // Folders are at indices 0, 1, 2; files are at 3, 4
+    // Folders are at indices 0, 1, 2; files are at indices 3, 4
     expect(items[0].path).toBe('/folder5');
     expect(items[3].path).toBe('/file1.md');
+  });
+
+  it('keeps starred flag when a starred file is reopened', () => {
+    const items: RecentItem[] = [
+      { path: '/docs', kind: 'folder' },
+      { path: '/star.md', kind: 'file', starred: true },
+      { path: '/new-star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(addOrUpdateRecent(items, '/star.md', 'file', 10)).toEqual([
+      { path: '/docs', kind: 'folder' },
+      { path: '/star.md', kind: 'file', starred: true },
+      { path: '/new-star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+    ]);
+  });
+
+  it('returns same reference when starred file already at head of starred section', () => {
+    const items: RecentItem[] = [{ path: '/star.md', kind: 'file', starred: true }];
+    expect(addOrUpdateRecent(items, '/star.md', 'file', 10)).toBe(items);
+  });
+
+  it('exempts starred files from the normal file quota', () => {
+    let items: RecentItem[] = [{ path: '/star.md', kind: 'file', starred: true }];
+    for (let i = 1; i <= 12; i++) {
+      items = addOrUpdateRecent(items, `/doc${i}.md`, 'file', 10);
+    }
+    expect(items[0]).toEqual({ path: '/star.md', kind: 'file', starred: true });
+    // 普通文件仍按 10 条上限淘汰最旧的 doc1/doc2,加星文件不计入配额
+    expect(items).toHaveLength(11);
+    expect(items.filter((it) => it.starred !== true).map((it) => it.path)).toEqual([
+      '/doc12.md',
+      '/doc11.md',
+      '/doc10.md',
+      '/doc9.md',
+      '/doc8.md',
+      '/doc7.md',
+      '/doc6.md',
+      '/doc5.md',
+      '/doc4.md',
+      '/doc3.md',
+    ]);
+  });
+});
+
+describe('recent-items toggleRecentStar', () => {
+  it('stars a normal file and moves it to the starred section below folders', () => {
+    const items: RecentItem[] = [
+      { path: '/docs', kind: 'folder' },
+      { path: '/other-star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+      { path: '/b.md', kind: 'file' },
+    ];
+    expect(toggleRecentStar(items, '/b.md')).toEqual([
+      { path: '/docs', kind: 'folder' },
+      { path: '/b.md', kind: 'file', starred: true },
+      { path: '/other-star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+    ]);
+  });
+
+  it('unstars a file back to the head of normal files without trimming quota', () => {
+    const items: RecentItem[] = [
+      { path: '/star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(toggleRecentStar(items, '/star.md')).toEqual([
+      { path: '/star.md', kind: 'file', starred: false },
+      { path: '/a.md', kind: 'file' },
+    ]);
+  });
+
+  it('returns the same reference for folders and unknown paths', () => {
+    const items: RecentItem[] = [
+      { path: '/docs', kind: 'folder' },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(toggleRecentStar(items, '/docs')).toBe(items);
+    expect(toggleRecentStar(items, '/missing.md')).toBe(items);
+  });
+
+  it('preserves extra fields carried by caller rows (generic contract)', () => {
+    const rows = [
+      { path: '/docs', kind: 'folder' as const, name: 'docs', dir: '/' },
+      { path: '/a.md', kind: 'file' as const, name: 'a.md', dir: '/' },
+    ];
+    const next = toggleRecentStar(rows, '/a.md');
+    expect(next[1]).toEqual({ path: '/a.md', kind: 'file', starred: true, name: 'a.md', dir: '/' });
   });
 });
 

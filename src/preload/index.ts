@@ -18,6 +18,7 @@ const api = {
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
   getRecentFiles: () => ipcRenderer.invoke('recent:get') as Promise<RecentItem[]>,
   removeRecentFile: (path: string) => ipcRenderer.invoke('recent:remove', path),
+  toggleStarRecentFile: (path: string) => ipcRenderer.invoke('recent:toggleStar', path),
   clearRecentFiles: () => ipcRenderer.invoke('recent:clear'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getUpdateState: () => ipcRenderer.invoke('app:getUpdateState') as Promise<UpdateState>,

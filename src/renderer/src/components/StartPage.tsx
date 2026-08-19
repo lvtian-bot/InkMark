@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
-import { FilePlus, FileText, Folder, X } from 'lucide-react';
+import { Fragment, useEffect, useState } from 'react';
+import { FilePlus, FileText, Folder, Star, X } from 'lucide-react';
+import { toggleRecentStar } from '../../../shared/recent-items';
 import { useI18n } from '../i18n';
 import { useStore } from '../stores/useStore';
-import type { RecentItem, RecentKind } from '../types';
+import type { RecentItem } from '../types';
 import '../styles/start-page.css';
 
 interface StartPageProps {
@@ -13,9 +14,7 @@ interface StartPageProps {
   onOpenFolder?: (path?: string) => void;
 }
 
-interface RecentRow {
-  path: string;
-  kind: RecentKind;
+interface RecentRow extends RecentItem {
   name: string;
   dir: string;
 }
@@ -45,6 +44,12 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
   const handleRemove = async (path: string) => {
     await window.inkmark.removeRecentFile(path);
     setRecent((prev) => prev.filter((item) => item.path !== path));
+  };
+
+  // 与主进程共用 shared 的 toggleRecentStar,本地乐观重排,顺序与写盘结果一致
+  const handleToggleStar = async (path: string) => {
+    await window.inkmark.toggleStarRecentFile(path);
+    setRecent((prev) => toggleRecentStar(prev, path));
   };
 
   const handleClearAll = async () => {
@@ -105,34 +110,64 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
             </div>
             {recent.length > 0 ? (
               <ul className="start-list">
-                {recent.map((item) => {
+                {recent.map((item, index) => {
                   const isFolder = item.kind === 'folder';
+                  const isStarred = item.starred === true;
+                  // 列表固定为 文件夹 -> 加星文件 -> 普通文件,首个普通文件前插入分组分隔线
+                  const showDivider =
+                    index > 0 && !isFolder && !isStarred && recent[index - 1].starred === true;
+                  const starLabel = isStarred
+                    ? t('startPage.unstarRecent')
+                    : t('startPage.starRecent');
                   return (
-                    <li
-                      key={item.path}
-                      className="start-row start-row--recent"
-                      onClick={() => (isFolder ? onOpenFolder?.(item.path) : onOpenPath(item.path))}
-                    >
-                      <span className="start-row-icon" aria-hidden="true">
-                        {isFolder ? <Folder size={18} /> : <FileText size={18} />}
-                      </span>
-                      <span className="start-row-text start-row-text--inline">
-                        <span className="start-row-name">{item.name}</span>
-                        <span className="start-row-dir">{item.dir || '-'}</span>
-                      </span>
-                      <button
-                        type="button"
-                        className="start-row-remove"
-                        title={t('startPage.removeRecent')}
-                        aria-label={t('startPage.removeRecent')}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleRemove(item.path);
-                        }}
+                    <Fragment key={item.path}>
+                      {showDivider && <li className="start-list-divider" aria-hidden="true" />}
+                      <li
+                        className={`start-row start-row--recent${isStarred ? ' start-row--starred' : ''}`}
+                        onClick={() =>
+                          isFolder ? onOpenFolder?.(item.path) : onOpenPath(item.path)
+                        }
                       >
-                        <X size={14} />
-                      </button>
-                    </li>
+                        <span className="start-row-icon" aria-hidden="true">
+                          {isFolder ? <Folder size={18} /> : <FileText size={18} />}
+                        </span>
+                        <span className="start-row-text start-row-text--inline">
+                          <span className="start-row-name">{item.name}</span>
+                          <span className="start-row-dir">{item.dir || '-'}</span>
+                        </span>
+                        {isStarred && (
+                          <span className="start-row-star-badge" aria-hidden="true">
+                            <Star size={12} fill="currentColor" strokeWidth={0} />
+                          </span>
+                        )}
+                        <span className="start-row-actions">
+                          <button
+                            type="button"
+                            className="start-row-action"
+                            title={starLabel}
+                            aria-label={starLabel}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleToggleStar(item.path);
+                            }}
+                          >
+                            <Star size={14} fill={isStarred ? 'currentColor' : 'none'} />
+                          </button>
+                          <button
+                            type="button"
+                            className="start-row-action"
+                            title={t('startPage.removeRecent')}
+                            aria-label={t('startPage.removeRecent')}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleRemove(item.path);
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </span>
+                      </li>
+                    </Fragment>
                   );
                 })}
               </ul>

@@ -170,11 +170,42 @@
   min-width: 28%;
 }
 
-.start-row-remove {
+/* 加星行的路径文字预留右侧空间,避免常驻星标压住省略号文本 */
+.start-row--starred .start-row-text--inline {
+  padding-right: 24px;
+}
+
+.start-row-star-badge {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.start-row:hover .start-row-star-badge {
+  opacity: 0;
+}
+
+.start-row-actions {
   position: absolute;
   right: 4px;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.start-row:hover .start-row-actions {
+  opacity: 1;
+}
+
+.start-row-action {
   width: 24px;
   height: 24px;
   display: flex;
@@ -185,20 +216,21 @@
   color: var(--text-tertiary);
   cursor: pointer;
   border-radius: 6px;
-  opacity: 0;
   transition:
-    opacity 0.15s,
     background 0.15s,
     color 0.15s;
 }
 
-.start-row:hover .start-row-remove {
-  opacity: 1;
-}
-
-.start-row-remove:hover {
+.start-row-action:hover {
   background: var(--bg-tertiary);
   color: var(--text-primary);
+}
+
+.start-list-divider {
+  list-style: none;
+  height: 1px;
+  margin: 6px 10px;
+  background: var(--border-color);
 }
 
 .start-empty-hint {

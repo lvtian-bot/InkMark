@@ -178,6 +178,8 @@ export const messages = {
   'startPage.recent': '最近打开',
   'startPage.clearAll': '清除全部',
   'startPage.removeRecent': '从最近列表中移除',
+  'startPage.starRecent': '加星',
+  'startPage.unstarRecent': '取消加星',
   'startPage.recentEmpty': '暂无最近打开的文件或文件夹',
 
   'toolbar.insertLinkTitle': '插入链接',
