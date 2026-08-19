@@ -2,6 +2,21 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## 0.1.6（2026-08-19）
+### ⚙️ 工程维护
+- 引入自动发布说明与提交规范校验
+### ✨ 新增
+- 统一滚动条胶囊样式并覆盖源码模式
+- 最近打开支持加星置顶
+### 🏗️ 构建与集成
+- 修复 git-cliff 安装包下载地址
+- 将 git-cliff 注入 PATH 供后续步骤调用
+### 📝 文档
+- 明确中文提交规范与发布说明自动化约束
+- 待办清单改为三类并按版本归档历史任务
+- 删除发布流程中的版本号递增规则
+
+**完整对比**: [v0.1.5...v0.1.6](https://github.com/lvtian-bot/InkMark/compare/v0.1.5...v0.1.6)
 ## 0.1.5（2026-08-16）
 ### 🐛 修复
 - Resolve autoUpdater via CJS default interop
@@ -113,18 +128,6 @@
 ## 0.0.4（2026-08-08）
 ### ⏪ 回退
 - Revert "feat: support Obsidian ![[image]] embed syntax"
-### ✨ 新增
-- 多文件打开、工具栏补齐、对话框增强与多项体验改进
-- 添加文件实时监听与设置面板
-- 添加查找替换与 Markdown 回归基线
-- Image local storage with inkmark-local protocol
-- Support Obsidian ![[image]] embed syntax
-- 合并图片本地存储并加强安全边界
-### 🐛 修复
-- 同名标题导致大纲重复渲染与工具栏阴影叠加
-
-**完整对比**: [v0.0.3...v0.0.4](https://github.com/lvtian-bot/InkMark/compare/v0.0.3...v0.0.4)
-## 0.0.3（2026-08-08）
 ### ♻️ 重构
 - 收敛数据模型与文件保存安全，补冷启动竞态
 ### ⚙️ 工程维护
@@ -137,10 +140,17 @@
 - 标签整列点击、淡蓝标签栏、白色工作区，修大纲高亮与表格样式
 - 起始页、任务清单、最近文件与外部修改检测
 - 工具栏图标升级与源码模式视觉统一，发布 v0.0.3
+- 多文件打开、工具栏补齐、对话框增强与多项体验改进
+- 添加文件实时监听与设置面板
+- 添加查找替换与 Markdown 回归基线
+- Image local storage with inkmark-local protocol
+- Support Obsidian ![[image]] embed syntax
+- 合并图片本地存储并加强安全边界
 ### 🐛 修复
 - 默认画布色改为白色，修复打包后背景变灰
+- 同名标题导致大纲重复渲染与工具栏阴影叠加
 
-**完整对比**: [v0.0.1...v0.0.3](https://github.com/lvtian-bot/InkMark/compare/v0.0.1...v0.0.3)
+**完整对比**: [v0.0.1...v0.0.4](https://github.com/lvtian-bot/InkMark/compare/v0.0.1...v0.0.4)
 ## 0.0.1（2026-08-07）
 ### ⚙️ 工程维护
 - Switch from pnpm to npm
