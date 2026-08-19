@@ -539,15 +539,19 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
   if (items.length === 0) {
     return [{ label: t('menu.noRecentFiles'), enabled: false }];
   }
-  const folderItems = items.filter((item) => item.kind === 'folder');
-  const fileItems = items.filter((item) => item.kind === 'file');
-  const starredFileItems = fileItems.filter((item) => item.starred === true);
-  const normalFileItems = fileItems.filter((item) => item.starred !== true);
+  // 与开始页一致的分组顺序:加星(文件夹在前) -> 普通文件夹 -> 普通文件
+  const starredItems = items.filter((item) => item.starred === true);
+  const normalFolderItems = items.filter((item) => item.starred !== true && item.kind === 'folder');
+  const normalFileItems = items.filter((item) => item.starred !== true && item.kind === 'file');
 
   const toMenuItem = (item: RecentItem): Electron.MenuItemConstructorOptions => {
     const isFolder = item.kind === 'folder';
     const baseName = basename(item.path) || item.path;
-    const label = isFolder ? `${baseName}/` : item.starred ? `★ ${baseName}` : baseName;
+    const label = item.starred
+      ? `★ ${baseName}${isFolder ? '/' : ''}`
+      : isFolder
+        ? `${baseName}/`
+        : baseName;
     return {
       label,
       sublabel: item.path,
@@ -562,16 +566,16 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
   };
 
   const list: Electron.MenuItemConstructorOptions[] = [];
-  if (folderItems.length > 0) {
-    list.push(...folderItems.map(toMenuItem));
+  if (starredItems.length > 0) {
+    list.push(...starredItems.map(toMenuItem));
   }
-  if (folderItems.length > 0 && fileItems.length > 0) {
+  if (starredItems.length > 0 && (normalFolderItems.length > 0 || normalFileItems.length > 0)) {
     list.push({ type: 'separator' });
   }
-  if (starredFileItems.length > 0) {
-    list.push(...starredFileItems.map(toMenuItem));
+  if (normalFolderItems.length > 0) {
+    list.push(...normalFolderItems.map(toMenuItem));
   }
-  if (starredFileItems.length > 0 && normalFileItems.length > 0) {
+  if (normalFolderItems.length > 0 && normalFileItems.length > 0) {
     list.push({ type: 'separator' });
   }
   if (normalFileItems.length > 0) {

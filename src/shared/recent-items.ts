@@ -1,16 +1,16 @@
 // 最近打开项的共享类型与纯逻辑。
 //
 // 历史数据是纯字符串数组(只有路径,且基本都是文件);后来升级为带 kind 的对象,
-// 以便开始页混排展示文件与文件夹,并增加了可选的 starred 字段(文件加星)。
-// normalizeRecentItems 负责把这些格式都解析为标准对象数组:旧字符串一律按
-// file 处理(历史数据里没有文件夹)。
+// 以便开始页混排展示文件与文件夹,并增加了可选的 starred 字段(加星置顶,
+// 文件与文件夹均可)。normalizeRecentItems 负责把这些格式都解析为标准对象数组:
+// 旧字符串一律按 file 处理(历史数据里没有文件夹)。
 
 export type RecentKind = 'file' | 'folder';
 
 export interface RecentItem {
   path: string;
   kind: RecentKind;
-  /** 加星文件:常驻置顶分组、不占最近文件配额。只对 file 有意义,文件夹恒不加星。 */
+  /** 加星项:常驻列表最上方、不占所在 kind 的配额。星标是唯一的置顶机制。 */
   starred?: boolean;
 }
 
@@ -42,12 +42,13 @@ function isSameRecentItem(a: RecentItem, b: RecentItem): boolean {
 /**
  * 把磁盘上读取的任意数据归一化为 RecentItem[]。
  * 兼容旧格式(纯 string[])和新格式({path,kind,starred?}[]),排序固定为
- * 文件夹 -> 加星文件 -> 普通文件,各组内部保持输入顺序。
+ * 加星文件夹 -> 加星文件 -> 普通文件夹 -> 普通文件,各组内部保持输入顺序。
  */
 export function normalizeRecentItems(data: unknown): RecentItem[] {
   if (!Array.isArray(data)) return [];
-  const folders: RecentItem[] = [];
+  const starredFolders: RecentItem[] = [];
   const starredFiles: RecentItem[] = [];
+  const folders: RecentItem[] = [];
   const files: RecentItem[] = [];
   for (const entry of data) {
     if (typeof entry === 'string') {
@@ -57,26 +58,28 @@ export function normalizeRecentItems(data: unknown): RecentItem[] {
     }
     if (isObject(entry) && typeof entry.path === 'string') {
       const kind: RecentKind = isRecentKind(entry.kind) ? entry.kind : 'file';
-      if (kind === 'folder') {
-        // 星标是文件的概念,文件夹恒不加星(文件夹本身已有常驻置顶机制)
+      const starred = entry.starred === true;
+      if (kind === 'folder' && starred) {
+        starredFolders.push({ path: entry.path, kind: 'folder', starred: true });
+      } else if (kind === 'folder') {
         folders.push({ path: entry.path, kind: 'folder' });
-      } else if (entry.starred === true) {
+      } else if (starred) {
         starredFiles.push({ path: entry.path, kind: 'file', starred: true });
       } else {
         files.push({ path: entry.path, kind: 'file' });
       }
     }
   }
-  return [...folders, ...starredFiles, ...files];
+  return [...starredFolders, ...starredFiles, ...folders, ...files];
 }
 
 /**
- * 把新项插入或提到最近列表。同路径去重(忽略 kind 差异)。
- * 采用独立配额与文件夹置顶机制：
- * 1. 文件夹最多保留 maxFolders 个（默认 3 个），始终排在列表最上方；
- * 2. 加星文件常驻置顶分组(文件夹之下)、不占文件配额、重新打开保留星标；
- * 3. 文件最多保留 maxFiles 个（默认 10 个），配额只作用于普通文件，
- *    即频繁打开文件只会淘汰最旧的普通文件,文件夹和加星文件永远保留。
+ * 把新项插入或提到最近列表。同路径去重(忽略 kind 差异),星标跟随路径保留。
+ * 排序固定为 加星文件夹 -> 加星文件 -> 普通文件夹 -> 普通文件：
+ * 1. 加星项(文件或文件夹)常驻最上方、不占所在 kind 的配额,重新打开保留
+ *    星标并回到对应加星分组顶部;
+ * 2. 普通文件夹最多 maxFolders 个（默认 3 个）、普通文件最多 maxFiles 个
+ *    （默认 10 个）,配额只在插入普通项时收紧,即频繁打开只会淘汰最旧的普通项。
  * 返回新数组;若结果与原列表等价则返回原数组，便于上层判断是否需要写盘。
  */
 export function addOrUpdateRecent(
@@ -94,9 +97,15 @@ export function addOrUpdateRecent(
         };
 
   const existing = items.find((item) => item.path === path);
-  const isExistingStarredFile = existing?.kind === 'file' && existing.starred === true;
+  // 星标跟随路径:同路径以另一 kind 重新打开时保留加星状态
+  const carryStarred = existing?.starred === true;
 
-  const existingFolders = items.filter((item) => item.path !== path && item.kind === 'folder');
+  const existingStarredFolders = items.filter(
+    (item) => item.path !== path && item.kind === 'folder' && item.starred === true,
+  );
+  const existingNormalFolders = items.filter(
+    (item) => item.path !== path && item.kind === 'folder' && item.starred !== true,
+  );
   const existingStarredFiles = items.filter(
     (item) => item.path !== path && item.kind === 'file' && item.starred === true,
   );
@@ -104,22 +113,29 @@ export function addOrUpdateRecent(
     (item) => item.path !== path && item.kind === 'file' && item.starred !== true,
   );
 
-  const folders =
-    kind === 'folder'
-      ? [{ path, kind: 'folder' as const }, ...existingFolders].slice(0, resolvedLimits.maxFolders)
-      : existingFolders.slice(0, resolvedLimits.maxFolders);
+  // 加星项重新打开时保留星标并回到对应加星分组顶部,不做配额裁剪
+  const starredFolders =
+    kind === 'folder' && carryStarred
+      ? [{ path, kind: 'folder' as const, starred: true }, ...existingStarredFolders]
+      : existingStarredFolders;
+  const starredFiles =
+    kind === 'file' && carryStarred
+      ? [{ path, kind: 'file' as const, starred: true }, ...existingStarredFiles]
+      : existingStarredFiles;
 
-  // 加星文件重新打开时保留星标并回到加星分组顶部,不做配额裁剪
-  const starredFiles = isExistingStarredFile
-    ? [{ ...existing, kind: 'file' as const }, ...existingStarredFiles]
-    : existingStarredFiles;
-
+  const normalFolders =
+    kind === 'folder' && !carryStarred
+      ? [{ path, kind: 'folder' as const }, ...existingNormalFolders].slice(
+          0,
+          resolvedLimits.maxFolders,
+        )
+      : existingNormalFolders;
   const normalFiles =
-    kind === 'file' && !isExistingStarredFile
+    kind === 'file' && !carryStarred
       ? [{ path, kind: 'file' as const }, ...existingNormalFiles].slice(0, resolvedLimits.maxFiles)
       : existingNormalFiles;
 
-  const next: RecentItem[] = [...folders, ...starredFiles, ...normalFiles];
+  const next: RecentItem[] = [...starredFolders, ...starredFiles, ...normalFolders, ...normalFiles];
 
   if (
     items.length === next.length &&
@@ -131,27 +147,59 @@ export function addOrUpdateRecent(
 }
 
 /**
- * 切换某个文件的加星状态。
- * 加星:进入置顶分组顶部(文件夹之下、普通文件之上),不占最近文件配额;
- * 取消加星:回到普通文件分组顶部,且不做配额裁剪,避免刚取消星标的行立即消失,
- * 待下一次打开普通文件时才恢复 maxFiles 上限。
- * 文件夹不支持加星;路径不存在时原样返回原数组。
+ * 切换某一项的加星状态,文件与文件夹均可。星标是唯一的置顶机制:
+ * 加星进入加星分组顶部;取消加星回到同类普通分组顶部,且不做配额裁剪,
+ * 避免刚取消星标的行立即消失,待下一次插入普通项时才恢复上限。
+ * 路径不存在时原样返回原数组。
  * 泛型保证调用方携带的附加字段(如界面拆分出的文件名/目录)在重排后保留。
  */
 export function toggleRecentStar<T extends RecentItem>(items: T[], path: string): T[] {
   const target = items.find((item) => item.path === path);
-  if (!target || target.kind !== 'file') return items;
-  const folders = items.filter((item) => item.kind === 'folder');
+  if (!target) return items;
+  const starredFolders = items.filter(
+    (item) => item.kind === 'folder' && item.starred === true && item.path !== path,
+  );
   const starredFiles = items.filter(
     (item) => item.kind === 'file' && item.starred === true && item.path !== path,
+  );
+  const normalFolders = items.filter(
+    (item) => item.kind === 'folder' && item.starred !== true && item.path !== path,
   );
   const normalFiles = items.filter(
     (item) => item.kind === 'file' && item.starred !== true && item.path !== path,
   );
   if (target.starred === true) {
-    return [...folders, ...starredFiles, { ...target, starred: false }, ...normalFiles];
+    return target.kind === 'folder'
+      ? [
+          ...starredFolders,
+          ...starredFiles,
+          { ...target, starred: false },
+          ...normalFolders,
+          ...normalFiles,
+        ]
+      : [
+          ...starredFolders,
+          ...starredFiles,
+          ...normalFolders,
+          { ...target, starred: false },
+          ...normalFiles,
+        ];
   }
-  return [...folders, { ...target, starred: true }, ...starredFiles, ...normalFiles];
+  return target.kind === 'folder'
+    ? [
+        { ...target, starred: true },
+        ...starredFolders,
+        ...starredFiles,
+        ...normalFolders,
+        ...normalFiles,
+      ]
+    : [
+        ...starredFolders,
+        { ...target, starred: true },
+        ...starredFiles,
+        ...normalFolders,
+        ...normalFiles,
+      ];
 }
 
 /** 删除指定路径的最近项;返回新数组。 */

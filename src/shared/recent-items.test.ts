@@ -40,22 +40,24 @@ describe('recent-items normalizeRecentItems', () => {
     expect(normalizeRecentItems(data)).toEqual([{ path: '/ok.md', kind: 'file' }]);
   });
 
-  it('sorts folders, starred files and normal files into fixed sections', () => {
+  it('sorts starred folders, starred files, folders and files into fixed sections', () => {
     const data = [
       { path: '/normal.md', kind: 'file' },
       { path: '/starred.md', kind: 'file', starred: true },
       { path: '/docs', kind: 'folder' },
+      { path: '/star-dir', kind: 'folder', starred: true },
     ];
     expect(normalizeRecentItems(data)).toEqual([
-      { path: '/docs', kind: 'folder' },
+      { path: '/star-dir', kind: 'folder', starred: true },
       { path: '/starred.md', kind: 'file', starred: true },
+      { path: '/docs', kind: 'folder' },
       { path: '/normal.md', kind: 'file' },
     ]);
   });
 
-  it('ignores starred flag on folders and non-boolean starred values', () => {
+  it('keeps starred flag on folders and ignores non-boolean starred values', () => {
     expect(normalizeRecentItems([{ path: '/docs', kind: 'folder', starred: true }])).toEqual([
-      { path: '/docs', kind: 'folder' },
+      { path: '/docs', kind: 'folder', starred: true },
     ]);
     expect(normalizeRecentItems([{ path: '/a.md', kind: 'file', starred: 'yes' }])).toEqual([
       { path: '/a.md', kind: 'file' },
@@ -179,9 +181,9 @@ describe('recent-items addOrUpdateRecent', () => {
       { path: '/a.md', kind: 'file' },
     ];
     expect(addOrUpdateRecent(items, '/star.md', 'file', 10)).toEqual([
-      { path: '/docs', kind: 'folder' },
       { path: '/star.md', kind: 'file', starred: true },
       { path: '/new-star.md', kind: 'file', starred: true },
+      { path: '/docs', kind: 'folder' },
       { path: '/a.md', kind: 'file' },
     ]);
   });
@@ -212,10 +214,28 @@ describe('recent-items addOrUpdateRecent', () => {
       '/doc3.md',
     ]);
   });
+
+  it('keeps starred flag when a starred folder is reopened and exempts it from folder quota', () => {
+    let items: RecentItem[] = [{ path: '/star-dir', kind: 'folder', starred: true }];
+    for (let i = 1; i <= 5; i++) {
+      items = addOrUpdateRecent(items, `/folder${i}`, 'folder', { maxFiles: 10, maxFolders: 3 });
+    }
+    expect(items[0]).toEqual({ path: '/star-dir', kind: 'folder', starred: true });
+    expect(
+      items.filter((it) => it.kind === 'folder' && it.starred !== true).map((it) => it.path),
+    ).toEqual(['/folder5', '/folder4', '/folder3']);
+  });
+
+  it('carries starred flag when the same path is reopened as the other kind', () => {
+    const items: RecentItem[] = [{ path: '/x', kind: 'file', starred: true }];
+    expect(addOrUpdateRecent(items, '/x', 'folder', 10)).toEqual([
+      { path: '/x', kind: 'folder', starred: true },
+    ]);
+  });
 });
 
 describe('recent-items toggleRecentStar', () => {
-  it('stars a normal file and moves it to the starred section below folders', () => {
+  it('stars a normal file and moves it to the starred section on top', () => {
     const items: RecentItem[] = [
       { path: '/docs', kind: 'folder' },
       { path: '/other-star.md', kind: 'file', starred: true },
@@ -223,30 +243,57 @@ describe('recent-items toggleRecentStar', () => {
       { path: '/b.md', kind: 'file' },
     ];
     expect(toggleRecentStar(items, '/b.md')).toEqual([
-      { path: '/docs', kind: 'folder' },
       { path: '/b.md', kind: 'file', starred: true },
       { path: '/other-star.md', kind: 'file', starred: true },
+      { path: '/docs', kind: 'folder' },
+      { path: '/a.md', kind: 'file' },
+    ]);
+  });
+
+  it('stars a folder and moves it above everything', () => {
+    const items: RecentItem[] = [
+      { path: '/docs', kind: 'folder' },
+      { path: '/star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(toggleRecentStar(items, '/docs')).toEqual([
+      { path: '/docs', kind: 'folder', starred: true },
+      { path: '/star.md', kind: 'file', starred: true },
       { path: '/a.md', kind: 'file' },
     ]);
   });
 
   it('unstars a file back to the head of normal files without trimming quota', () => {
     const items: RecentItem[] = [
+      { path: '/docs', kind: 'folder' },
       { path: '/star.md', kind: 'file', starred: true },
       { path: '/a.md', kind: 'file' },
     ];
     expect(toggleRecentStar(items, '/star.md')).toEqual([
+      { path: '/docs', kind: 'folder' },
       { path: '/star.md', kind: 'file', starred: false },
       { path: '/a.md', kind: 'file' },
     ]);
   });
 
-  it('returns the same reference for folders and unknown paths', () => {
+  it('unstars a folder back to the head of normal folders', () => {
+    const items: RecentItem[] = [
+      { path: '/star-dir', kind: 'folder', starred: true },
+      { path: '/docs', kind: 'folder' },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(toggleRecentStar(items, '/star-dir')).toEqual([
+      { path: '/star-dir', kind: 'folder', starred: false },
+      { path: '/docs', kind: 'folder' },
+      { path: '/a.md', kind: 'file' },
+    ]);
+  });
+
+  it('returns the same reference for unknown paths', () => {
     const items: RecentItem[] = [
       { path: '/docs', kind: 'folder' },
       { path: '/a.md', kind: 'file' },
     ];
-    expect(toggleRecentStar(items, '/docs')).toBe(items);
     expect(toggleRecentStar(items, '/missing.md')).toBe(items);
   });
 
@@ -256,7 +303,13 @@ describe('recent-items toggleRecentStar', () => {
       { path: '/a.md', kind: 'file' as const, name: 'a.md', dir: '/' },
     ];
     const next = toggleRecentStar(rows, '/a.md');
-    expect(next[1]).toEqual({ path: '/a.md', kind: 'file', starred: true, name: 'a.md', dir: '/' });
+    expect(next[0]).toEqual({
+      path: '/a.md',
+      kind: 'file',
+      starred: true,
+      name: 'a.md',
+      dir: '/',
+    });
   });
 });
 

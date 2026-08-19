@@ -226,13 +226,6 @@
   color: var(--text-primary);
 }
 
-.start-list-divider {
-  list-style: none;
-  height: 1px;
-  margin: 6px 10px;
-  background: var(--border-color);
-}
-
 .start-empty-hint {
   font-size: 13px;
   color: var(--text-tertiary);
