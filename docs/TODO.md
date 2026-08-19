@@ -18,9 +18,6 @@
 - [ ] 可选自动保存（默认关闭）
 - [ ] 数学公式与图表（KaTeX / Mermaid）
 - [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
-- [x] 最近打开支持加星置顶：加星文件常驻文件夹块之下、不占 10 条配额，悬停星标/移除按钮与分组分隔线 ✅ 2026-08-19
-  - shared `recent-items.ts` 增加 `starred` 字段、排序（文件夹 → 加星 → 普通）与 `toggleRecentStar`。
-  - 原生菜单“最近打开”同步星标分组与 ★ 前缀；`recent-files.json` 向后兼容。
 
 ## Bug 修复
 
