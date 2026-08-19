@@ -17,9 +17,8 @@
 
 完成标准：GitHub Actions Release 工作流成功执行、GitHub Release 发布成功且产物完整、发布说明与 CHANGELOG 已自动生成、`latest.yml` 与资产名一致（应用内更新可用）。仅创建标签、仅推送远端或工作流中途失败均不视为完成发布。
 
-## 版本号与提交规范
+## 提交规范
 
-- 0.x 阶段：缺陷修复递增补丁号（0.1.4 → 0.1.5），新功能或体验改进递增次版本号（0.1.x → 0.2.0）；1.0 留给功能面与数据格式稳定之后。
 - 版本提交固定写作 `chore: release vX.Y.Z`；工作流生成的 CHANGELOG 提交为 `chore: 发布后更新 CHANGELOG 至 vX.Y.Z`，两者都会被发布说明自动排除。
 - 提交信息遵循 Conventional Commits（`feat:`/`fix:`/`docs:`/`chore:` 等类型前缀 + 中文主题，标题不超过 100 字符）；Quality workflow 已启用 commitlint 校验，不合规的推送会直接变红。
 
