@@ -37,7 +37,8 @@ jobs:
         run: |
           curl -sSL -o cliff.zip https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-pc-windows-msvc.zip
           tar -xf cliff.zip
-          Move-Item git-cliff-2.13.1/git-cliff.exe git-cliff.exe
+          Move-Item git-cliff-2.13.1/git-cliff.exe "$env:RUNNER_TEMP\git-cliff.exe"
+          Add-Content $env:GITHUB_PATH "$env:RUNNER_TEMP"
 
       - name: Generate release notes and changelog
         run: |
