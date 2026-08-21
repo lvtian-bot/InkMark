@@ -2,6 +2,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CodeXml,
+  FileClock,
   FolderTree,
   Settings,
   TableOfContents,
@@ -55,6 +56,8 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const toggleViewMode = useStore((s) => s.toggleViewMode);
   const viewMode = useStore((s) => s.viewMode);
   const isSourceMode = viewMode === 'source';
+  const autoSave = useStore((s) => s.autoSave);
+  const setAutoSave = useStore((s) => s.setAutoSave);
   const toggleSourceShortcut = useStore((s) => s.shortcuts.toggleSource);
   const toggleOutlineShortcut = useStore((s) => s.shortcuts.toggleOutline);
   const toggleFileTreeShortcut = useStore((s) => s.shortcuts.toggleFileTree);
@@ -67,6 +70,7 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const settingsTitle = t('statusBar.settings', {
     shortcut: formatComboForDisplay(settingsShortcut, displayPlatform),
   });
+  const autoSaveTitle = autoSave ? t('statusBar.autoSaveOn') : t('statusBar.autoSaveOff');
   const outlineShortcutStr = formatComboForDisplay(toggleOutlineShortcut, displayPlatform);
   const fileTreeShortcutStr = formatComboForDisplay(toggleFileTreeShortcut, displayPlatform);
 
@@ -108,6 +112,15 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
           aria-pressed={isSourceMode}
         >
           <CodeXml size={14} />
+        </button>
+        <button
+          className={`status-mode-btn${autoSave ? ' active' : ''}`}
+          onClick={() => setAutoSave(!autoSave)}
+          title={autoSaveTitle}
+          aria-label={autoSaveTitle}
+          aria-pressed={autoSave}
+        >
+          <FileClock size={14} />
         </button>
         <button
           className="status-toggle-btn"

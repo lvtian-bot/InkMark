@@ -52,6 +52,7 @@ export interface AppSettings {
   panelLayout: PanelLayout;
   fileTreeWidth: number;
   strictLineBreaks: boolean;
+  autoSave: boolean;
   language: LanguageSetting;
   shortcuts: ShortcutMap;
 }
@@ -77,6 +78,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   panelLayout: 'outline-left',
   fileTreeWidth: 240,
   strictLineBreaks: false,
+  autoSave: false,
   language: 'system',
   shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
 };
@@ -98,6 +100,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     panelLayout: settings.panelLayout,
     fileTreeWidth: settings.fileTreeWidth,
     strictLineBreaks: settings.strictLineBreaks,
+    autoSave: settings.autoSave,
     language: settings.language,
     shortcuts: settings.shortcuts,
   };
@@ -203,6 +206,8 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.strictLineBreaks === 'boolean'
         ? candidate.strictLineBreaks
         : DEFAULT_SETTINGS.strictLineBreaks,
+    autoSave:
+      typeof candidate.autoSave === 'boolean' ? candidate.autoSave : DEFAULT_SETTINGS.autoSave,
     language: normalizeLanguageSetting(candidate.language),
     shortcuts: normalizeShortcutMap(candidate.shortcuts),
   };

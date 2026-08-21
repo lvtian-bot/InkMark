@@ -452,6 +452,33 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                     </label>
                   </div>
 
+                  <div className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.editor.autoSaveLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.editor.autoSaveHint')}
+                      </span>
+                    </span>
+                    <label
+                      className="settings-switch"
+                      aria-label={t('settings.editor.autoSaveLabel')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={draft.autoSave}
+                        onChange={(event) =>
+                          setDraft((settings) => ({
+                            ...settings,
+                            autoSave: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span className="settings-switch-slider" />
+                    </label>
+                  </div>
+
                   <label className="settings-field">
                     <span className="settings-field-copy">
                       <span className="settings-field-label">

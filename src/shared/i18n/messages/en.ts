@@ -137,6 +137,9 @@ export const messages: Record<MessageKey, string> = {
   'settings.editor.strictLineBreaksLabel': 'Strict Line Breaks',
   'settings.editor.strictLineBreaksHint':
     'When off, single line breaks render as new lines (like Obsidian default). When on, follows standard Markdown where single line breaks collapse to spaces.',
+  'settings.editor.autoSaveLabel': 'Auto Save',
+  'settings.editor.autoSaveHint':
+    'Saves opened files about 3 seconds after you stop typing; new documents without a saved path still need manual saving.',
   'settings.editor.panelLayoutLabel': 'Panel Layout',
   'settings.editor.panelLayoutHint':
     'Choose whether the outline sits on the left or right; the file tree moves to the other side. Visibility is controlled by the toggles above.',
@@ -223,6 +226,8 @@ export const messages: Record<MessageKey, string> = {
   'statusBar.showFileTree': 'Show File Tree ({shortcut})',
   'statusBar.hideFileTree': 'Hide File Tree ({shortcut})',
   'statusBar.sourceMode': 'Source Mode ({shortcut})',
+  'statusBar.autoSaveOn': 'Auto-save: on, click to turn off',
+  'statusBar.autoSaveOff': 'Auto-save: off, click to turn on',
   'statusBar.settings': 'Settings ({shortcut})',
   'statusBar.wordCount': '{wordCount} words',
   'statusBar.charCount': '{charCount} chars',

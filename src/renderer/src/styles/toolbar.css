@@ -69,11 +69,6 @@
   color: var(--text-primary);
 }
 
-.toolbar-btn.active {
-  background: var(--accent);
-  color: #fff;
-}
-
 .toolbar-heading {
   font-size: 13px;
   font-weight: 600;

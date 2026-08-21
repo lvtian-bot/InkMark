@@ -70,6 +70,7 @@ interface InkMarkState extends AppSettings {
   setFileTreeWidth: (width: number) => void;
   setToolbarVisible: (visible: boolean) => void;
   setToolbarWidth: (width: ToolbarWidth) => void;
+  setAutoSave: (autoSave: boolean) => void;
   setLanguage: (language: LanguageSetting) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
@@ -270,6 +271,9 @@ export const useStore = create<InkMarkState>((set, get) => ({
   },
   setToolbarWidth: (toolbarWidth) => {
     set(saveSettings({ ...selectSettings(get()), toolbarWidth }));
+  },
+  setAutoSave: (autoSave) => {
+    set(saveSettings({ ...selectSettings(get()), autoSave }));
   },
   setLanguage: (language) => {
     set(saveSettings({ ...selectSettings(get()), language }));

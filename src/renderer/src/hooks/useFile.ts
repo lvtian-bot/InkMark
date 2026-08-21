@@ -7,6 +7,7 @@ import { sourceEditorHandle } from '../source-editor-ref';
 import { buildConflictDiff } from '../conflict-diff';
 import { t } from '../i18n';
 import { tabDisplayName } from '../tab-name';
+import { AUTO_SAVE_DELAY_MS, isAutoSaveEligible } from '../auto-save';
 import {
   decideCloseDirty,
   decideExternalChange,
@@ -26,6 +27,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   const setActiveTab = useStore((s) => s.setActiveTab);
   const updateTab = useStore((s) => s.updateTab);
   const setDirty = useStore((s) => s.setDirty);
+  const autoSave = useStore((s) => s.autoSave);
 
   const suppressDirtyRef = useRef(false);
   const checkingRef = useRef(false);
@@ -33,6 +35,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   const pendingWatchEventsRef = useRef(new Map<string, FileWatchEvent>());
   const watchedPathsRef = useRef(new Map<string, string>());
   const missingNotifiedTabIdsRef = useRef(new Set<string>());
+  const autoSaveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const prevActiveTabIdRef = useRef(activeTabId);
 
   const stateRef = useRef({ tabs, activeTabId, setMarkdown, viewMode });
   useEffect(() => {
@@ -132,6 +136,45 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       return false;
     },
     [getTabMarkdown, updateTab],
+  );
+
+  // —— 自动保存 ——
+  // 停止编辑 3 秒后落盘；切换/关闭标签与退出窗口时立即补存。
+  // 只处理已落盘文件，无路径的新文档仍走手动保存（isAutoSaveEligible）。
+  const flushAutoSave = useCallback(
+    async (tabId: string): Promise<void> => {
+      autoSaveTimersRef.current.delete(tabId);
+      const isEligible = (): boolean => {
+        const state = useStore.getState();
+        const tab = state.tabs.find((t) => t.id === tabId);
+        return isAutoSaveEligible({
+          enabled: state.autoSave,
+          filePath: tab?.filePath ?? null,
+          isDirty: tab?.isDirty ?? false,
+        });
+      };
+      if (!isEligible()) return;
+      // 图片上传完成前不落盘，避免把失效引用写进文件。
+      await waitForImageUploads();
+      // 等待上传期间内容可能已被保存或标签已关闭，保存前再校验一次。
+      if (!isEligible()) return;
+      await saveTab(tabId);
+    },
+    [saveTab],
+  );
+
+  const scheduleAutoSave = useCallback(
+    (tabId: string): void => {
+      const timers = autoSaveTimersRef.current;
+      const existing = timers.get(tabId);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        timers.delete(tabId);
+        void flushAutoSave(tabId);
+      }, AUTO_SAVE_DELAY_MS);
+      timers.set(tabId, timer);
+    },
+    [flushAutoSave],
   );
 
   const newFile = useCallback(() => {
@@ -266,7 +309,14 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       const tab = currentState.tabs.find((t) => t.id === id);
       if (!tab) return false;
 
-      if (tab.isDirty) {
+      let dirty = tab.isDirty;
+      // 自动保存开启时先补存：干净关闭不打扰；保存失败（如冲突被取消）仍走原有询问。
+      if (dirty && useStore.getState().autoSave && tab.filePath) {
+        await flushAutoSave(id);
+        dirty = useStore.getState().tabs.find((t) => t.id === id)?.isDirty ?? false;
+      }
+
+      if (dirty) {
         const choice = await confirmDialog(
           t('confirm.unsavedChanges'),
           t('confirm.unsavedChangesBody', { name: tabDisplayName(tab, t) }),
@@ -287,7 +337,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       closeTabStore(id);
       return true;
     },
-    [saveTab, closeTabStore],
+    [saveTab, closeTabStore, flushAutoSave],
   );
 
   const prepareToClose = useCallback(async (): Promise<boolean> => {
@@ -299,6 +349,12 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     }
     const dirtyTabs = useStore.getState().tabs.filter((t) => t.isDirty);
     for (const tab of dirtyTabs) {
+      let shouldAsk = true;
+      if (useStore.getState().autoSave && tab.filePath) {
+        await flushAutoSave(tab.id);
+        shouldAsk = useStore.getState().tabs.find((t) => t.id === tab.id)?.isDirty ?? false;
+      }
+      if (!shouldAsk) continue;
       const choice = await confirmDialog(
         t('confirm.unsavedChanges'),
         t('confirm.unsavedChangesBody', { name: tabDisplayName(tab, t) }),
@@ -312,7 +368,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       }
     }
     return true;
-  }, [saveTab]);
+  }, [saveTab, flushAutoSave]);
 
   const closeWindow = useCallback(async (): Promise<boolean> => {
     if (!(await prepareToClose())) return false;
@@ -329,7 +385,44 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     // 用户开始编辑后，等待重载的提示条不再有意义——继续显示会诱使用户点击
     // 而丢弃刚输入的未保存内容；之后的外部改动会走脏标签的冲突弹窗。
     updateTab(useStore.getState().activeTabId, { externalUpdatePending: false });
-  }, [setDirty, updateTab]);
+    const state = useStore.getState();
+    const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+    if (state.autoSave && activeTab?.filePath) scheduleAutoSave(state.activeTabId);
+  }, [setDirty, updateTab, scheduleAutoSave]);
+
+  // 切换标签时立即补存上一个标签：自动保存开启时基本见不到未保存状态。
+  useEffect(() => {
+    const prevId = prevActiveTabIdRef.current;
+    prevActiveTabIdRef.current = activeTabId;
+    if (prevId === activeTabId) return;
+    const state = useStore.getState();
+    if (!state.autoSave) return;
+    const prevTab = state.tabs.find((t) => t.id === prevId);
+    if (
+      prevTab &&
+      isAutoSaveEligible({
+        enabled: true,
+        filePath: prevTab.filePath,
+        isDirty: prevTab.isDirty,
+      })
+    ) {
+      void flushAutoSave(prevId);
+    }
+  }, [activeTabId, flushAutoSave]);
+
+  // 开启自动保存时把已积累的未保存内容立即落盘；关闭时清掉未触发的定时器。
+  useEffect(() => {
+    if (autoSave) {
+      for (const tab of useStore.getState().tabs) {
+        if (isAutoSaveEligible({ enabled: true, filePath: tab.filePath, isDirty: tab.isDirty })) {
+          void flushAutoSave(tab.id);
+        }
+      }
+      return;
+    }
+    for (const timer of autoSaveTimersRef.current.values()) clearTimeout(timer);
+    autoSaveTimersRef.current.clear();
+  }, [autoSave, flushAutoSave]);
 
   const reloadTab = useCallback(
     async (tabId: string): Promise<boolean> => {
@@ -519,6 +612,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         window.inkmark.unwatchFile(path);
       }
       watchedPathsRef.current.clear();
+      for (const timer of autoSaveTimersRef.current.values()) clearTimeout(timer);
+      autoSaveTimersRef.current.clear();
     },
     [],
   );

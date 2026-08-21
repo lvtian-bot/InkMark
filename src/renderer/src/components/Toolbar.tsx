@@ -153,7 +153,6 @@ interface ToolbarProps {
 export function Toolbar({ onSave }: ToolbarProps) {
   const viewMode = useStore((s) => s.viewMode);
   const toolbarWidth = useStore((s) => s.toolbarWidth);
-  const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
   const saveShortcut = useStore((s) => s.shortcuts.save);
   const displayPlatform = toDisplayPlatform(window.inkmark.platform);
   const isWysiwyg = viewMode === 'wysiwyg';
@@ -368,7 +367,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
       </div>
       <div className="toolbar-group toolbar-group-end">
         <button
-          className={`toolbar-btn${isDirty ? ' active' : ''}`}
+          className="toolbar-btn"
           onClick={onSave}
           title={t('toolbar.save', {
             shortcut: formatComboForDisplay(saveShortcut, displayPlatform),

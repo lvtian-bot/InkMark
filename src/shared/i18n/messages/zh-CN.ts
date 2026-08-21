@@ -131,6 +131,9 @@ export const messages = {
   'settings.editor.strictLineBreaksLabel': '严格换行',
   'settings.editor.strictLineBreaksHint':
     '关闭时单次回车即换行（与 Obsidian 默认一致）；开启时遵循标准 Markdown，单次回车合并为空格。',
+  'settings.editor.autoSaveLabel': '自动保存',
+  'settings.editor.autoSaveHint':
+    '停止编辑约 3 秒后自动保存已打开的文件；尚未保存过路径的新文档仍需手动保存。',
   'settings.editor.panelLayoutLabel': '面板布局',
   'settings.editor.panelLayoutHint':
     '选择大纲靠左还是靠右，文件树自动放在另一侧。是否显示由上面的开关单独控制。',
@@ -215,6 +218,8 @@ export const messages = {
   'statusBar.showFileTree': '显示文件树 ({shortcut})',
   'statusBar.hideFileTree': '隐藏文件树 ({shortcut})',
   'statusBar.sourceMode': '源码模式 ({shortcut})',
+  'statusBar.autoSaveOn': '自动保存：已开启，点击关闭',
+  'statusBar.autoSaveOff': '自动保存：已关闭，点击开启',
   'statusBar.settings': '设置 ({shortcut})',
   'statusBar.wordCount': '{wordCount} 字',
   'statusBar.charCount': '{charCount} 字符',
