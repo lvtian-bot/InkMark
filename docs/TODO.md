@@ -14,16 +14,21 @@
 ## 新功能
 
 - [ ] 导出 HTML / PDF / 富文本
-- [ ] 简单表格编辑，添加删除行列等
-- [ ] 可选自动保存（默认关闭）
-- [ ] 数学公式与图表（KaTeX / Mermaid）
-- [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
+- [ ] 删除行列的快捷键
+
+* [ ] 点击文件链接跳转
+* [ ] 数学公式与图表（KaTeX / Mermaid）
+* [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
 
 ## Bug 修复
+
+- [ ] 待办框和文字不对齐的bug重新出来
+
+
 
 ## 暂不考虑
 
 - [ ] 所见即所得模式：光标进入段落后，相应的标记浮现，并可编辑（Live Preview）；需求与历史评估见 [live-preview.md](./live-preview.md)
   - 历史记录：2026-08-13 曾基于 ProseMirror 行首装饰（Decoration）实现块级浮现与行首 `#`/Backspace 升降级。
   - 清理原因：2026-08-16 评估确认行首装饰方案无法将光标点入字符字形中间编辑，与期望的自然体验差距较大，易造成“功能不可用”的误解，已完全从代码库清理。
-  - 后续参考：若未来重新立项，需采用聚焦展开源码态的完整 NodeView 机制重构，可查阅 Git 历史与 live-preview.md。
+  - 后续参考：若未来重新立项，需采用聚焦展开源码态的完整 NodeView 机制重构，可查阅 Git 历史与 live-preview\.md。
