@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useEditor, useInstance, Milkdown } from '@milkdown/react';
 import {
   Editor as MilkdownEditor,
@@ -41,11 +41,17 @@ import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import { isValidTextMatch, type TextMatch } from '../find-replace';
 import { findTextMatchesInDocument } from '../find-replace-doc';
 import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
+import {
+  addTableLine as applyAddTableLine,
+  deleteTableAt as applyDeleteTableAt,
+  deleteTableLine as applyDeleteTableLine,
+} from '../plugins/table-edit';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { breaks } from '../plugins/breaks';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
+import { useI18n } from '../i18n';
 import '../styles/editor.css';
 import '../styles/prism.css';
 import '../styles/themes/github.css';
@@ -65,6 +71,7 @@ interface EditorProps {
 }
 
 export function Editor({ onDocChange, onDocInit }: EditorProps) {
+  const { t } = useI18n();
   const onDocChangeRef = useRef(onDocChange);
   const onDocInitRef = useRef(onDocInit);
   useEffect(() => {
@@ -76,6 +83,71 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
   const theme = useStore(selectAppTheme);
   const strictLineBreaks = useStore((s) => s.strictLineBreaks);
   const initialStrictRef = useRef(strictLineBreaks);
+  const [tableContextMenu, setTableContextMenu] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!tableContextMenu) return;
+
+    const closeOnOutsidePointer = (event: PointerEvent): void => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('.table-context-menu')) setTableContextMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setTableContextMenu(null);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [tableContextMenu]);
+
+  const handleTableContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('.table-context-menu')) return;
+
+    const cell = target?.closest('td, th');
+    if (!cell || !cell.closest('.ProseMirror')) return;
+
+    const instance = get();
+    if (!instance) return;
+    const view = instance.ctx.get(editorViewCtx);
+    const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+    if (!coords) return;
+
+    event.preventDefault();
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))),
+    );
+
+    setTableContextMenu({
+      left: Math.max(8, Math.min(event.clientX, window.innerWidth - 196)),
+      top: Math.max(8, Math.min(event.clientY, window.innerHeight - 250)),
+    });
+  };
+
+  const runTableContextMenuOp = (
+    op:
+      | { kind: 'add-row' | 'add-col'; position: 'before' | 'after' }
+      | { kind: 'delete-row' | 'delete-col' | 'delete-table' },
+  ): void => {
+    setTableContextMenu(null);
+    const handle = editorHandle.current;
+    if (!handle) return;
+
+    if (op.kind === 'add-row' || op.kind === 'add-col') {
+      handle.addTableLine(op.kind === 'add-row' ? 'row' : 'col', op.position);
+    } else if (op.kind === 'delete-row' || op.kind === 'delete-col') {
+      handle.deleteTableLine(op.kind === 'delete-row' ? 'row' : 'col');
+    } else {
+      handle.deleteTableAt();
+    }
+  };
 
   useEditor((root) => {
     return MilkdownEditor.make()
@@ -375,6 +447,33 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
           console.error('insertTable error:', e);
         }
       },
+      addTableLine: (kind, position) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const tr = applyAddTableLine(view.state, ed.ctx, kind, position);
+          if (tr) view.dispatch(tr);
+        } catch (e) {
+          console.error('addTableLine error:', e);
+        }
+      },
+      deleteTableLine: (kind) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const tr = applyDeleteTableLine(view.state, kind);
+          if (tr) view.dispatch(tr);
+        } catch (e) {
+          console.error('deleteTableLine error:', e);
+        }
+      },
+      deleteTableAt: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const tr = applyDeleteTableAt(view.state);
+          if (tr) view.dispatch(tr);
+        } catch (e) {
+          console.error('deleteTableAt error:', e);
+        }
+      },
       findTextMatches: (query: string) => {
         try {
           const view = ed.ctx.get(editorViewCtx);
@@ -495,8 +594,70 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
   }, [loading, get, strictLineBreaks]);
 
   return (
-    <div className={`editor-container theme-${contentTheme}`}>
+    <div
+      className={`editor-container theme-${contentTheme}`}
+      onContextMenu={handleTableContextMenu}
+    >
       <Milkdown />
+      {tableContextMenu && (
+        <div
+          className="table-context-menu"
+          role="menu"
+          style={{ left: tableContextMenu.left, top: tableContextMenu.top }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runTableContextMenuOp({ kind: 'add-row', position: 'before' })}
+          >
+            {t('toolbar.tableAddRowAbove')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runTableContextMenuOp({ kind: 'add-row', position: 'after' })}
+          >
+            {t('toolbar.tableAddRowBelow')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runTableContextMenuOp({ kind: 'add-col', position: 'before' })}
+          >
+            {t('toolbar.tableAddColLeft')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runTableContextMenuOp({ kind: 'add-col', position: 'after' })}
+          >
+            {t('toolbar.tableAddColRight')}
+          </button>
+          <div className="table-context-menu-sep" />
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runTableContextMenuOp({ kind: 'delete-row' })}
+          >
+            {t('toolbar.tableDeleteRow')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runTableContextMenuOp({ kind: 'delete-col' })}
+          >
+            {t('toolbar.tableDeleteCol')}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runTableContextMenuOp({ kind: 'delete-table' })}
+          >
+            {t('toolbar.tableDeleteTable')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

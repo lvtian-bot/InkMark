@@ -209,6 +209,13 @@ export const messages: Record<MessageKey, string> = {
   'toolbar.codeBlock': 'Code Block',
   'toolbar.link': 'Link',
   'toolbar.table': 'Table',
+  'toolbar.tableAddRowAbove': 'Insert Row Above',
+  'toolbar.tableAddRowBelow': 'Insert Row Below',
+  'toolbar.tableAddColLeft': 'Insert Column Left',
+  'toolbar.tableAddColRight': 'Insert Column Right',
+  'toolbar.tableDeleteRow': 'Delete Row',
+  'toolbar.tableDeleteCol': 'Delete Column',
+  'toolbar.tableDeleteTable': 'Delete Table',
   'toolbar.save': 'Save ({shortcut})',
 
   'statusBar.showOutline': 'Show Outline ({shortcut})',

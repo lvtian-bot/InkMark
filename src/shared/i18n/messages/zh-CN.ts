@@ -201,6 +201,13 @@ export const messages = {
   'toolbar.codeBlock': '代码块',
   'toolbar.link': '链接',
   'toolbar.table': '表格',
+  'toolbar.tableAddRowAbove': '上方插入行',
+  'toolbar.tableAddRowBelow': '下方插入行',
+  'toolbar.tableAddColLeft': '左侧插入列',
+  'toolbar.tableAddColRight': '右侧插入列',
+  'toolbar.tableDeleteRow': '删除当前行',
+  'toolbar.tableDeleteCol': '删除当前列',
+  'toolbar.tableDeleteTable': '删除表格',
   'toolbar.save': '保存 ({shortcut})',
 
   'statusBar.showOutline': '显示大纲 ({shortcut})',
