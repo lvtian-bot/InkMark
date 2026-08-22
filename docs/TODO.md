@@ -14,10 +14,9 @@
 ## 新功能
 
 - [ ] 导出 HTML / PDF / 富文本
-
-* [ ] 点击文件链接跳转
-* [ ] 数学公式与图表（KaTeX / Mermaid）
-* [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
+- [ ] 点击文件链接跳转
+- [ ] 数学公式与图表（KaTeX / Mermaid）
+- [ ] 外部改动审阅（编辑区内联 diff，逐块接受/拒绝）；需求见 [change-review.md](./change-review.md)
 
 ## Bug 修复
 

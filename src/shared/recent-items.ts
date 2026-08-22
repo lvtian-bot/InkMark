@@ -19,7 +19,7 @@ export interface RecentLimits {
   maxFolders: number;
 }
 
-export const DEFAULT_MAX_RECENT_FILES = 10;
+export const DEFAULT_MAX_RECENT_FILES = 7;
 export const DEFAULT_MAX_RECENT_FOLDERS = 3;
 
 export const DEFAULT_RECENT_LIMITS: RecentLimits = {
@@ -79,7 +79,7 @@ export function normalizeRecentItems(data: unknown): RecentItem[] {
  * 1. 加星项(文件或文件夹)常驻最上方、不占所在 kind 的配额,重新打开保留
  *    星标并回到对应加星分组顶部;
  * 2. 普通文件夹最多 maxFolders 个（默认 3 个）、普通文件最多 maxFiles 个
- *    （默认 10 个）,配额只在插入普通项时收紧,即频繁打开只会淘汰最旧的普通项。
+ *    （默认 7 个）,配额只在插入普通项时收紧,即频繁打开只会淘汰最旧的普通项。
  * 返回新数组;若结果与原列表等价则返回原数组，便于上层判断是否需要写盘。
  */
 export function addOrUpdateRecent(

@@ -48,6 +48,7 @@ import {
   deleteTableLine as applyDeleteTableLine,
 } from '../plugins/table-edit';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
+import { listKeymap } from '../plugins/list-keymap';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { breaks } from '../plugins/breaks';
@@ -188,6 +189,7 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(gfm)
       .use(frontmatter)
       .use(taskList)
+      .use(listKeymap)
       .use(listMarker)
       .use(breaks)
       .use(history)

@@ -156,7 +156,7 @@ describe('recent-items addOrUpdateRecent', () => {
       { path: '/file1.md', kind: 'file' },
       { path: '/file2.md', kind: 'file' },
     ];
-    // Open 5 folders sequentially with default limit (3 folders, 10 files)
+    // Open 5 folders sequentially with default limit (3 folders, 7 files)
     for (let i = 1; i <= 5; i++) {
       items = addOrUpdateRecent(items, `/folder${i}`, 'folder');
     }

@@ -1,6 +1,6 @@
 {
   "name": "inkmark",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "InkMark",
   "repository": "https://github.com/lvtian-bot/InkMark",
   "main": "./out/main/index.js",

@@ -264,7 +264,7 @@ function saveWindowState(win: BrowserWindow): void {
   }
 }
 
-const MAX_RECENT_FILES = 10;
+const MAX_RECENT_FILES = 7;
 const MAX_RECENT_FOLDERS = 3;
 let recentFilesCache: RecentItem[] | null = null;
 
@@ -323,7 +323,7 @@ function toggleRecentStarItem(filePath: string): void {
 }
 
 // 上次在文件对话框中确认的路径(文件或文件夹),用作下次对话框的起始位置。
-// 与 recent-files 解耦:recent 受 10 条上限约束、服务于开始页展示;lastDialogPath
+// 与 recent-files 解耦:recent 受条数上限约束（普通文件 7 条、文件夹 3 条）,服务于开始页展示;lastDialogPath
 // 单独持久化、不受条数影响,保证对话框始终能回到上次位置,不会被频繁打开的文件挤掉。
 interface DialogState {
   lastPath: string | null;
@@ -535,52 +535,19 @@ function shortcutAccelerator(action: ShortcutAction): string {
 }
 
 function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
-  const items = getRecentFiles();
-  if (items.length === 0) {
+  // 菜单栏只承载"最近打开的文件"这一语义,平铺展示:文件夹与星标置顶是
+  // 开始页的组织机制,不进入菜单;加星文件仍因数据分组顺序排在普通文件前。
+  const files = getRecentFiles().filter((item) => item.kind === 'file');
+  if (files.length === 0) {
     return [{ label: t('menu.noRecentFiles'), enabled: false }];
   }
-  // 与开始页一致的分组顺序:加星(文件夹在前) -> 普通文件夹 -> 普通文件
-  const starredItems = items.filter((item) => item.starred === true);
-  const normalFolderItems = items.filter((item) => item.starred !== true && item.kind === 'folder');
-  const normalFileItems = items.filter((item) => item.starred !== true && item.kind === 'file');
-
-  const toMenuItem = (item: RecentItem): Electron.MenuItemConstructorOptions => {
-    const isFolder = item.kind === 'folder';
-    const baseName = basename(item.path) || item.path;
-    const label = item.starred
-      ? `★ ${baseName}${isFolder ? '/' : ''}`
-      : isFolder
-        ? `${baseName}/`
-        : baseName;
-    return {
-      label,
-      sublabel: item.path,
-      click: () => {
-        if (isFolder) {
-          mainWindow?.webContents.send('folder:open-path', item.path);
-        } else {
-          mainWindow?.webContents.send('file:open-path', item.path);
-        }
-      },
-    };
-  };
-
-  const list: Electron.MenuItemConstructorOptions[] = [];
-  if (starredItems.length > 0) {
-    list.push(...starredItems.map(toMenuItem));
-  }
-  if (starredItems.length > 0 && (normalFolderItems.length > 0 || normalFileItems.length > 0)) {
-    list.push({ type: 'separator' });
-  }
-  if (normalFolderItems.length > 0) {
-    list.push(...normalFolderItems.map(toMenuItem));
-  }
-  if (normalFolderItems.length > 0 && normalFileItems.length > 0) {
-    list.push({ type: 'separator' });
-  }
-  if (normalFileItems.length > 0) {
-    list.push(...normalFileItems.map(toMenuItem));
-  }
+  const list: Electron.MenuItemConstructorOptions[] = files.map(({ path }) => ({
+    label: basename(path) || path,
+    sublabel: path,
+    click: () => {
+      mainWindow?.webContents.send('file:open-path', path);
+    },
+  }));
   list.push({ type: 'separator' });
   list.push({
     label: t('menu.clearRecent'),
