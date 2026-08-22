@@ -1,15 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_EDITOR_SHORTCUT_MAP,
   DEFAULT_SHORTCUT_MAP,
+  EDITOR_BUILTIN_COMBOS,
+  EDITOR_SHORTCUT_ACTIONS,
   SHORTCUT_ACTIONS,
+  cloneEditorShortcutMap,
   comboEquals,
   comboToAccelerator,
+  findAppShortcutConflictsWithEditor,
+  findEditorShortcutConflicts,
   findShortcutConflicts,
   formatComboForDisplay,
   hasShortcutConflicts,
+  isEditorShortcutMap,
   isShortcutCombo,
   isShortcutMap,
+  normalizeEditorShortcutMap,
   normalizeShortcutMap,
+  type EditorShortcutMap,
   type ShortcutMap,
 } from './shortcuts';
 
@@ -207,5 +216,144 @@ describe('hasShortcutConflicts', () => {
     const map = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
     map.find = { ...map.save };
     expect(hasShortcutConflicts(map)).toBe(true);
+  });
+});
+
+describe('editor shortcut map', () => {
+  it('默认值对齐 Milkdown 内置键位，无内置键或被占用的动作默认不设', () => {
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.bold).toEqual({
+      mod: true,
+      alt: false,
+      shift: false,
+      key: 'b',
+    });
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.italic).toEqual({
+      mod: true,
+      alt: false,
+      shift: false,
+      key: 'i',
+    });
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.strike).toEqual({
+      mod: true,
+      alt: true,
+      shift: false,
+      key: 'x',
+    });
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.heading2).toEqual({
+      mod: true,
+      alt: true,
+      shift: false,
+      key: '2',
+    });
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.bulletList).toEqual({
+      mod: true,
+      alt: true,
+      shift: false,
+      key: '8',
+    });
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.codeBlock).toEqual({
+      mod: true,
+      alt: true,
+      shift: false,
+      key: 'c',
+    });
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.inlineCode).toBeUndefined();
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.taskList).toBeUndefined();
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.link).toBeUndefined();
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.table).toBeUndefined();
+    expect(DEFAULT_EDITOR_SHORTCUT_MAP.deleteLine).toEqual({
+      mod: true,
+      alt: false,
+      shift: true,
+      key: 'k',
+    });
+  });
+
+  it('默认编辑映射与应用映射互不冲突', () => {
+    const editorConflicts = findEditorShortcutConflicts(
+      DEFAULT_EDITOR_SHORTCUT_MAP,
+      DEFAULT_SHORTCUT_MAP,
+    );
+    for (const action of EDITOR_SHORTCUT_ACTIONS) {
+      expect(editorConflicts.get(action)).toEqual([]);
+    }
+    const appConflicts = findAppShortcutConflictsWithEditor(
+      DEFAULT_SHORTCUT_MAP,
+      DEFAULT_EDITOR_SHORTCUT_MAP,
+    );
+    for (const action of SHORTCUT_ACTIONS) {
+      expect(appConflicts.get(action)).toEqual([]);
+    }
+  });
+
+  it('normalizeEditorShortcutMap 合法值保留、非法与缺失回落默认、未设置保持未设置', () => {
+    const result = normalizeEditorShortcutMap({
+      bold: { mod: true, alt: false, shift: true, key: 'b' },
+      strike: { mod: false, alt: false, shift: false, key: 'x' },
+      taskList: { mod: true, alt: false, shift: false, key: '9' },
+    });
+    expect(result.bold).toEqual({ mod: true, alt: false, shift: true, key: 'b' });
+    // 非法组合（无 mod/alt）回落默认值（strike 有默认 Mod+Alt+X）
+    expect(result.strike).toEqual(DEFAULT_EDITOR_SHORTCUT_MAP.strike);
+    // 合法值保留
+    expect(result.taskList).toEqual({ mod: true, alt: false, shift: false, key: '9' });
+    // 缺失回落默认：有默认的取默认，默认未设的保持 undefined
+    expect(result.italic).toEqual(DEFAULT_EDITOR_SHORTCUT_MAP.italic);
+    expect(result.link).toBeUndefined();
+    expect(isEditorShortcutMap(result)).toBe(true);
+  });
+
+  it('isEditorShortcutMap 拒绝非对象与非法动作值', () => {
+    expect(isEditorShortcutMap(undefined)).toBe(false);
+    expect(isEditorShortcutMap({})).toBe(true);
+    expect(isEditorShortcutMap({ bold: 'Ctrl+B' })).toBe(false);
+    expect(isEditorShortcutMap({ bold: { mod: true, alt: false, shift: false, key: 'b' } })).toBe(
+      true,
+    );
+  });
+
+  it('cloneEditorShortcutMap 拷贝值且未设置保持未设置、与源不共享引用', () => {
+    const source: EditorShortcutMap = {
+      bold: { mod: true, alt: false, shift: false, key: 'b' },
+    };
+    const copy = cloneEditorShortcutMap(source);
+    expect(copy.bold).not.toBe(source.bold);
+    expect(copy.bold).toEqual(source.bold);
+    expect(copy.link).toBeUndefined();
+  });
+
+  it('findEditorShortcutConflicts 检出格式内部冲突与跨集合冲突，未设置动作不参与', () => {
+    const editorMap: EditorShortcutMap = {
+      bold: { mod: true, alt: false, shift: false, key: 'b' },
+      italic: { mod: true, alt: false, shift: false, key: 'b' },
+      taskList: { mod: true, alt: false, shift: false, key: 's' },
+      link: undefined,
+    };
+    const appMap: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP); // save = Ctrl+S
+    const conflicts = findEditorShortcutConflicts(editorMap, appMap);
+    expect(conflicts.get('bold')).toContain('italic');
+    expect(conflicts.get('italic')).toContain('bold');
+    expect(conflicts.get('taskList')).toContain('save');
+    expect(conflicts.get('link')).toEqual([]);
+  });
+
+  it('findAppShortcutConflictsWithEditor 反向检出应用动作撞格式键', () => {
+    const editorMap: EditorShortcutMap = {
+      bold: { mod: true, alt: false, shift: false, key: 'f' },
+    };
+    const appMap: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP); // find = Ctrl+F
+    const conflicts = findAppShortcutConflictsWithEditor(appMap, editorMap);
+    expect(conflicts.get('find')).toContain('bold');
+  });
+
+  it('EDITOR_BUILTIN_COMBOS 覆盖全部有默认值的格式动作', () => {
+    // deleteLine 是应用自身命令（无编辑器内置键位），不进吞键清单
+    const withDefault = EDITOR_SHORTCUT_ACTIONS.filter(
+      (a) => DEFAULT_EDITOR_SHORTCUT_MAP[a] && a !== 'deleteLine',
+    );
+    expect(EDITOR_BUILTIN_COMBOS).toHaveLength(withDefault.length);
+    for (const combo of EDITOR_BUILTIN_COMBOS) {
+      expect(isShortcutCombo(combo)).toBe(true);
+    }
   });
 });

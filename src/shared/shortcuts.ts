@@ -1,10 +1,11 @@
-// 应用功能类快捷键的统一表示与纯函数。
-// 主进程用它生成 Electron 菜单 accelerator，渲染进程用它匹配 DOM 键盘事件与显示。
+// 快捷键的统一表示与纯函数。
+// 应用功能类：主进程用它生成 Electron 菜单 accelerator，渲染进程用它匹配 DOM 键盘事件与显示。
+// 工具栏格式类：仅渲染进程使用，不进主进程菜单。
 // 本文件不得依赖 DOM 或 Node 环境（保持 shared 无副作用的约束）。
 
 import type { MessageKey } from './i18n';
 
-/** 可配置的应用功能快捷键动作。格式类（加粗/斜体/列表等）不在此列，沿用编辑器库默认。 */
+/** 可配置的应用功能快捷键动作。 */
 export type ShortcutAction =
   | 'newFile'
   | 'newBlankDoc'
@@ -302,4 +303,185 @@ export function hasShortcutConflicts(map: ShortcutMap): boolean {
     seen.push(sig);
   }
   return false;
+}
+
+/** 工具栏格式命令的可配置快捷键动作（渲染进程专用，不进原生菜单）。 */
+export type EditorShortcutAction =
+  | 'bold'
+  | 'italic'
+  | 'strike'
+  | 'inlineCode'
+  | 'heading1'
+  | 'heading2'
+  | 'heading3'
+  | 'bulletList'
+  | 'taskList'
+  | 'codeBlock'
+  | 'link'
+  | 'table'
+  | 'deleteLine';
+
+/**
+ * 格式类快捷键映射。与应用功能类不同，值允许为空（未设置）：
+ * 没有编辑器内置键位、或内置键已被应用快捷键占用的动作默认不设。
+ */
+export type EditorShortcutMap = Partial<Record<EditorShortcutAction, ShortcutCombo>>;
+
+export const EDITOR_SHORTCUT_ACTIONS: readonly EditorShortcutAction[] = [
+  'bold',
+  'italic',
+  'strike',
+  'inlineCode',
+  'heading1',
+  'heading2',
+  'heading3',
+  'bulletList',
+  'taskList',
+  'codeBlock',
+  'link',
+  'table',
+  'deleteLine',
+];
+
+export interface EditorShortcutActionMeta {
+  action: EditorShortcutAction;
+  labelKey: MessageKey;
+}
+
+export const EDITOR_SHORTCUT_ACTION_META: Record<EditorShortcutAction, EditorShortcutActionMeta> = {
+  bold: { action: 'bold', labelKey: 'shortcut.bold' },
+  italic: { action: 'italic', labelKey: 'shortcut.italic' },
+  strike: { action: 'strike', labelKey: 'shortcut.strike' },
+  inlineCode: { action: 'inlineCode', labelKey: 'shortcut.inlineCode' },
+  heading1: { action: 'heading1', labelKey: 'shortcut.heading1' },
+  heading2: { action: 'heading2', labelKey: 'shortcut.heading2' },
+  heading3: { action: 'heading3', labelKey: 'shortcut.heading3' },
+  bulletList: { action: 'bulletList', labelKey: 'shortcut.bulletList' },
+  taskList: { action: 'taskList', labelKey: 'shortcut.taskList' },
+  codeBlock: { action: 'codeBlock', labelKey: 'shortcut.codeBlock' },
+  link: { action: 'link', labelKey: 'shortcut.link' },
+  table: { action: 'table', labelKey: 'shortcut.table' },
+  deleteLine: { action: 'deleteLine', labelKey: 'shortcut.deleteLine' },
+};
+
+/**
+ * 默认值对齐 Milkdown 内置 keymap（Mod-B 加粗、Mod-I 斜体、Mod-Alt-X 删除线、
+ * Mod-Alt+1/2/3 标题、Mod-Alt+8 无序列表、Mod-Alt-C 代码块），升级后行为不变。
+ * 行内代码的内置键 Mod-E 已被应用快捷键「切换源码模式」在捕获阶段抢占，
+ * 实际不可用，因此默认不设；任务列表、链接、表格本就无内置键。
+ * 删除整行是应用自身的命令，默认采用业界通用的 Ctrl/Cmd+Shift+K。
+ */
+export const DEFAULT_EDITOR_SHORTCUT_MAP: Readonly<EditorShortcutMap> = {
+  bold: { mod: true, alt: false, shift: false, key: 'b' },
+  italic: { mod: true, alt: false, shift: false, key: 'i' },
+  strike: { mod: true, alt: true, shift: false, key: 'x' },
+  inlineCode: undefined,
+  heading1: { mod: true, alt: true, shift: false, key: '1' },
+  heading2: { mod: true, alt: true, shift: false, key: '2' },
+  heading3: { mod: true, alt: true, shift: false, key: '3' },
+  bulletList: { mod: true, alt: true, shift: false, key: '8' },
+  taskList: undefined,
+  codeBlock: { mod: true, alt: true, shift: false, key: 'c' },
+  link: undefined,
+  table: undefined,
+  deleteLine: { mod: true, alt: false, shift: true, key: 'k' },
+};
+
+/** 返回一份与默认映射互不引用的拷贝（未设置的动作保持 undefined）。 */
+export function cloneEditorShortcutMap(map: EditorShortcutMap): EditorShortcutMap {
+  const result: EditorShortcutMap = {};
+  for (const action of EDITOR_SHORTCUT_ACTIONS) {
+    const c = map[action];
+    result[action] = c ? { mod: c.mod, alt: c.alt, shift: c.shift, key: c.key } : undefined;
+  }
+  return result;
+}
+
+/**
+ * 被接管的 Milkdown 内置格式键。用户改键或清除后，这些键位若不再命中
+ * 任何已设置快捷键，会在渲染进程被拦截吞掉，保证旧键失效、行为可预期。
+ * Mod-E（行内代码内置键）不在内：它已被应用快捷键 toggleSource 先行拦截。
+ * Mod-Alt+4..6（标题 4-6）、Mod-Alt+7（有序列表）等未接管的键保留库默认。
+ */
+export const EDITOR_BUILTIN_COMBOS: readonly ShortcutCombo[] = (
+  [
+    'bold',
+    'italic',
+    'strike',
+    'heading1',
+    'heading2',
+    'heading3',
+    'bulletList',
+    'codeBlock',
+  ] as const
+).map((action) => DEFAULT_EDITOR_SHORTCUT_MAP[action] as ShortcutCombo);
+
+/** 归一化格式快捷键映射：逐动作校验，非法或缺失回落默认（默认可为「未设置」）。 */
+export function normalizeEditorShortcutMap(value: unknown): EditorShortcutMap {
+  const base = isRecord(value) ? value : {};
+  const result: EditorShortcutMap = {};
+  for (const action of EDITOR_SHORTCUT_ACTIONS) {
+    const c = isShortcutCombo(base[action])
+      ? (base[action] as ShortcutCombo)
+      : DEFAULT_EDITOR_SHORTCUT_MAP[action];
+    result[action] = c ? { mod: c.mod, alt: c.alt, shift: c.shift, key: c.key } : undefined;
+  }
+  return result;
+}
+
+export function isEditorShortcutMap(value: unknown): value is EditorShortcutMap {
+  if (!isRecord(value)) return false;
+  for (const action of EDITOR_SHORTCUT_ACTIONS) {
+    const c = value[action];
+    if (c !== undefined && !isShortcutCombo(c)) return false;
+  }
+  return true;
+}
+
+/** 格式快捷键的冲突对象：可能是另一个格式动作，也可能是应用功能动作。 */
+export type EditorShortcutConflictWith = EditorShortcutAction | ShortcutAction;
+
+/**
+ * 找格式快捷键的冲突：格式 map 内部互撞，或与应用功能 map 撞键。
+ * 未设置的动作不参与。UI 据此标红与禁用提交。
+ */
+export function findEditorShortcutConflicts(
+  editorMap: EditorShortcutMap,
+  appMap: ShortcutMap,
+): Map<EditorShortcutAction, EditorShortcutConflictWith[]> {
+  const result = new Map<EditorShortcutAction, EditorShortcutConflictWith[]>();
+  for (const action of EDITOR_SHORTCUT_ACTIONS) {
+    const combo = editorMap[action];
+    const others: EditorShortcutConflictWith[] = [];
+    if (combo) {
+      for (const other of EDITOR_SHORTCUT_ACTIONS) {
+        if (other !== action && editorMap[other] && comboEquals(editorMap[other]!, combo)) {
+          others.push(other);
+        }
+      }
+      for (const appAction of SHORTCUT_ACTIONS) {
+        if (comboEquals(appMap[appAction], combo)) others.push(appAction);
+      }
+    }
+    result.set(action, others);
+  }
+  return result;
+}
+
+/** 反向检测：应用功能动作撞上格式快捷键。用于应用侧行的冲突标红。 */
+export function findAppShortcutConflictsWithEditor(
+  appMap: ShortcutMap,
+  editorMap: EditorShortcutMap,
+): Map<ShortcutAction, EditorShortcutAction[]> {
+  const result = new Map<ShortcutAction, EditorShortcutAction[]>();
+  for (const action of SHORTCUT_ACTIONS) {
+    const combo = appMap[action];
+    const others: EditorShortcutAction[] = [];
+    for (const editorAction of EDITOR_SHORTCUT_ACTIONS) {
+      const editorCombo = editorMap[editorAction];
+      if (editorCombo && comboEquals(editorCombo, combo)) others.push(editorAction);
+    }
+    result.set(action, others);
+  }
+  return result;
 }

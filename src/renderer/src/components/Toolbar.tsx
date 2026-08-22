@@ -14,137 +14,16 @@ import {
 } from 'lucide-react';
 import { useStore } from '../stores/useStore';
 import { editorHandle } from '../editor-ref';
-import { sourceEditorHandle, type SourceSelection } from '../source-editor-ref';
-import { promptDialog } from '../confirm-dialog';
+import { sourceEditorHandle } from '../source-editor-ref';
+import { runEditorCommand } from '../editor-commands';
+import {
+  DEFAULT_EDITOR_SHORTCUT_MAP,
+  formatComboForDisplay,
+  toDisplayPlatform,
+  type ShortcutCombo,
+} from '../../../shared/shortcuts';
 import { useI18n } from '../i18n';
-import { formatComboForDisplay, toDisplayPlatform } from '../../../shared/shortcuts';
 import '../styles/toolbar.css';
-
-/// 源码模式下的编辑结果：新全文 + 新选区。辅助函数只产出这份结果，
-/// 统一由 applySourceEdit 落盘到 CodeMirror，保持「计算-写入」分离。
-interface SourceEdit {
-  text: string;
-  selection: SourceSelection;
-}
-
-/// 把一次源码编辑写入编辑器并定位光标。用 quiet 写入（工具栏操作由
-/// React onChange 链路之外的 dispatch 触发，但仍要让 useFile 感知到改动），
-/// 因此这里用 replaceRange（会触发 updateListener → onChange）。
-function applySourceEdit(edit: SourceEdit): void {
-  const handle = sourceEditorHandle.current;
-  if (!handle) return;
-  const oldLen = handle.getValue().length;
-  handle.replaceRange(0, oldLen, edit.text);
-  handle.setSelection(edit.selection.from, edit.selection.to);
-}
-
-function wrapSelection(before: string, after: string): SourceEdit | null {
-  const handle = sourceEditorHandle.current;
-  if (!handle) return null;
-  const text = handle.getValue();
-  const { from, to } = handle.getSelection();
-  const selected = text.slice(from, to);
-
-  const beforeCtx = text.slice(Math.max(0, from - before.length), from);
-  const afterCtx = text.slice(to, Math.min(text.length, to + after.length));
-
-  if (beforeCtx === before && afterCtx === after) {
-    // 已包裹 → 去掉标记
-    return {
-      text: text.slice(0, from - before.length) + selected + text.slice(to + after.length),
-      selection: { from: from - before.length, to: to - before.length },
-    };
-  }
-  return {
-    text: text.slice(0, from) + before + selected + after + text.slice(to),
-    selection: { from: from + before.length, to: to + before.length },
-  };
-}
-
-function toggleLinePrefix(prefix: string): SourceEdit | null {
-  const handle = sourceEditorHandle.current;
-  if (!handle) return null;
-  const text = handle.getValue();
-  const { from } = handle.getSelection();
-  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-  const lineEnd = text.indexOf('\n', from);
-  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
-  const line = text.slice(lineStart, lineEndPos);
-
-  if (line.startsWith(prefix)) {
-    const newLine = line.slice(prefix.length);
-    return {
-      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-      selection: {
-        from: Math.max(lineStart, from - prefix.length),
-        to: Math.max(lineStart, from - prefix.length),
-      },
-    };
-  }
-  return {
-    text: text.slice(0, lineStart) + prefix + line + text.slice(lineEndPos),
-    selection: { from: from + prefix.length, to: from + prefix.length },
-  };
-}
-
-function setHeadingLevel(level: number): SourceEdit | null {
-  const handle = sourceEditorHandle.current;
-  if (!handle) return null;
-  const text = handle.getValue();
-  const { from } = handle.getSelection();
-  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-  const lineEnd = text.indexOf('\n', from);
-  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
-  const line = text.slice(lineStart, lineEndPos);
-
-  const match = line.match(/^(#{1,6})\s(.*)$/);
-  const currentLevel = match ? match[1].length : 0;
-  const body = match ? match[2] : line;
-
-  const newLine = currentLevel === level ? body : `${'#'.repeat(level)} ${body}`;
-  const delta = newLine.length - line.length;
-  return {
-    text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-    selection: { from: Math.max(lineStart, from + delta), to: Math.max(lineStart, from + delta) },
-  };
-}
-
-function toggleTaskPrefix(): SourceEdit | null {
-  const handle = sourceEditorHandle.current;
-  if (!handle) return null;
-  const text = handle.getValue();
-  const { from } = handle.getSelection();
-  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-  const lineEnd = text.indexOf('\n', from);
-  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
-  const line = text.slice(lineStart, lineEndPos);
-
-  const taskMatch = line.match(/^(\s*)([-*+])\s\[[ xX]\]\s(.*)$/);
-  if (taskMatch) {
-    const newLine = `${taskMatch[1]}${taskMatch[2]} ${taskMatch[3]}`;
-    const delta = lineStart + taskMatch[1].length + 2;
-    const newSel = Math.min(Math.max(from - 4, delta), lineStart + newLine.length);
-    return {
-      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-      selection: { from: newSel, to: newSel },
-    };
-  }
-
-  const listMatch = line.match(/^(\s*)([-*+])\s(.*)$/);
-  if (listMatch) {
-    const newLine = `${listMatch[1]}${listMatch[2]} [ ] ${listMatch[3]}`;
-    return {
-      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-      selection: { from: from + 4, to: from + 4 },
-    };
-  }
-
-  const newLine = `- [ ] ${line}`;
-  return {
-    text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-    selection: { from: from + 6, to: from + 6 },
-  };
-}
 
 interface ToolbarProps {
   onSave: () => void;
@@ -154,9 +33,15 @@ export function Toolbar({ onSave }: ToolbarProps) {
   const viewMode = useStore((s) => s.viewMode);
   const toolbarWidth = useStore((s) => s.toolbarWidth);
   const saveShortcut = useStore((s) => s.shortcuts.save);
+  // HMR 下 store 可能仍是新增字段前的旧状态，缺 editorShortcuts，兜底用默认值
+  const editorShortcuts = useStore((s) => s.editorShortcuts) ?? DEFAULT_EDITOR_SHORTCUT_MAP;
   const displayPlatform = toDisplayPlatform(window.inkmark.platform);
   const isWysiwyg = viewMode === 'wysiwyg';
   const { t } = useI18n();
+
+  // 悬停提示：已设置快捷键时附加键位，未设置时只显示功能名。
+  const titleWithShortcut = (label: string, combo?: ShortcutCombo): string =>
+    combo ? `${label} (${formatComboForDisplay(combo, displayPlatform)})` : label;
 
   const handleUndo = (): void => {
     if (isWysiwyg) {
@@ -176,129 +61,6 @@ export function Toolbar({ onSave }: ToolbarProps) {
     }
   };
 
-  const handleBold = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.toggleBold();
-    } else {
-      const edit = wrapSelection('**', '**');
-      if (edit) applySourceEdit(edit);
-    }
-  };
-
-  const handleItalic = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.toggleItalic();
-    } else {
-      const edit = wrapSelection('*', '*');
-      if (edit) applySourceEdit(edit);
-    }
-  };
-
-  const handleHeading = (level: number): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.wrapHeading(level);
-    } else {
-      const edit = setHeadingLevel(level);
-      if (edit) applySourceEdit(edit);
-    }
-  };
-
-  const handleStrike = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.toggleStrike();
-    } else {
-      const edit = wrapSelection('~~', '~~');
-      if (edit) applySourceEdit(edit);
-    }
-  };
-
-  const handleInlineCode = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.toggleInlineCode();
-    } else {
-      const edit = wrapSelection('`', '`');
-      if (edit) applySourceEdit(edit);
-    }
-  };
-
-  const handleBulletList = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.wrapBulletList();
-    } else {
-      const edit = toggleLinePrefix('- ');
-      if (edit) applySourceEdit(edit);
-    }
-  };
-
-  const handleTaskList = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.wrapTaskList();
-    } else {
-      const edit = toggleTaskPrefix();
-      if (edit) applySourceEdit(edit);
-    }
-  };
-
-  const handleCodeBlock = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.insertCodeBlock();
-    } else {
-      const handle = sourceEditorHandle.current;
-      if (!handle) return;
-      const text = handle.getValue();
-      const { from } = handle.getSelection();
-      const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-      const needsNewline = lineStart > 0 && text[lineStart - 1] !== '\n';
-      const prefix = needsNewline ? '\n' : '';
-      const block = prefix + '```\n\n```\n';
-      applySourceEdit({
-        text: text.slice(0, lineStart) + block + text.slice(lineStart),
-        selection: { from: lineStart + prefix.length + 4, to: lineStart + prefix.length + 4 },
-      });
-    }
-  };
-
-  const handleLink = async (): Promise<void> => {
-    const href = await promptDialog(t('toolbar.insertLinkTitle'), t('toolbar.insertLinkPrompt'), {
-      placeholder: 'https://',
-      confirmLabel: t('toolbar.insertLinkConfirm'),
-    });
-    if (!href) return;
-    if (isWysiwyg) {
-      editorHandle.current?.insertLink(href);
-    } else {
-      const handle = sourceEditorHandle.current;
-      if (!handle) return;
-      const text = handle.getValue();
-      const { from, to } = handle.getSelection();
-      const selected = text.slice(from, to) || t('toolbar.linkText');
-      const insert = `[${selected}](${href})`;
-      applySourceEdit({
-        text: text.slice(0, from) + insert + text.slice(to),
-        selection: { from: from + 1, to: from + 1 + selected.length },
-      });
-    }
-  };
-
-  const handleTable = (): void => {
-    if (isWysiwyg) {
-      editorHandle.current?.insertTable();
-    } else {
-      const handle = sourceEditorHandle.current;
-      if (!handle) return;
-      const text = handle.getValue();
-      const { from } = handle.getSelection();
-      const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-      const needsNewline = lineStart > 0 && text[lineStart - 1] !== '\n';
-      const prefix = needsNewline ? '\n' : '';
-      const table = prefix + t('toolbar.tableTemplate');
-      applySourceEdit({
-        text: text.slice(0, lineStart) + table + text.slice(lineStart),
-        selection: { from: lineStart + table.length, to: lineStart + table.length },
-      });
-    }
-  };
-
   return (
     <div className={`toolbar toolbar-width-${toolbarWidth}`}>
       <div className="toolbar-group">
@@ -310,58 +72,94 @@ export function Toolbar({ onSave }: ToolbarProps) {
         </button>
       </div>
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleBold} title={t('toolbar.bold')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('bold')}
+          title={titleWithShortcut(t('toolbar.bold'), editorShortcuts.bold)}
+        >
           <Bold size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleItalic} title={t('toolbar.italic')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('italic')}
+          title={titleWithShortcut(t('toolbar.italic'), editorShortcuts.italic)}
+        >
           <Italic size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleStrike} title={t('toolbar.strikethrough')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('strike')}
+          title={titleWithShortcut(t('toolbar.strikethrough'), editorShortcuts.strike)}
+        >
           <Strikethrough size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleInlineCode} title={t('toolbar.inlineCode')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('inlineCode')}
+          title={titleWithShortcut(t('toolbar.inlineCode'), editorShortcuts.inlineCode)}
+        >
           <Code size={16} />
         </button>
       </div>
       <div className="toolbar-group">
         <button
           className="toolbar-btn toolbar-heading"
-          onClick={() => handleHeading(1)}
-          title={t('toolbar.heading1')}
+          onClick={() => runEditorCommand('heading1')}
+          title={titleWithShortcut(t('toolbar.heading1'), editorShortcuts.heading1)}
         >
           H1
         </button>
         <button
           className="toolbar-btn toolbar-heading"
-          onClick={() => handleHeading(2)}
-          title={t('toolbar.heading2')}
+          onClick={() => runEditorCommand('heading2')}
+          title={titleWithShortcut(t('toolbar.heading2'), editorShortcuts.heading2)}
         >
           H2
         </button>
         <button
           className="toolbar-btn toolbar-heading"
-          onClick={() => handleHeading(3)}
-          title={t('toolbar.heading3')}
+          onClick={() => runEditorCommand('heading3')}
+          title={titleWithShortcut(t('toolbar.heading3'), editorShortcuts.heading3)}
         >
           H3
         </button>
       </div>
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleBulletList} title={t('toolbar.bulletList')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('bulletList')}
+          title={titleWithShortcut(t('toolbar.bulletList'), editorShortcuts.bulletList)}
+        >
           <List size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleTaskList} title={t('toolbar.taskList')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('taskList')}
+          title={titleWithShortcut(t('toolbar.taskList'), editorShortcuts.taskList)}
+        >
           <CircleCheck size={16} />
         </button>
       </div>
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleCodeBlock} title={t('toolbar.codeBlock')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('codeBlock')}
+          title={titleWithShortcut(t('toolbar.codeBlock'), editorShortcuts.codeBlock)}
+        >
           <Code2 size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleLink} title={t('toolbar.link')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('link')}
+          title={titleWithShortcut(t('toolbar.link'), editorShortcuts.link)}
+        >
           <Link2 size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleTable} title={t('toolbar.table')}>
+        <button
+          className="toolbar-btn"
+          onClick={() => runEditorCommand('table')}
+          title={titleWithShortcut(t('toolbar.table'), editorShortcuts.table)}
+        >
           <Table size={16} />
         </button>
       </div>
@@ -369,9 +167,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
         <button
           className="toolbar-btn"
           onClick={onSave}
-          title={t('toolbar.save', {
-            shortcut: formatComboForDisplay(saveShortcut, displayPlatform),
-          })}
+          title={titleWithShortcut(t('toolbar.save'), saveShortcut)}
         >
           <Save size={16} />
         </button>

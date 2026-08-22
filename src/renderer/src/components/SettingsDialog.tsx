@@ -31,6 +31,17 @@ import {
   toDisplayPlatform,
   type ShortcutAction,
 } from '../../../shared/shortcuts';
+import {
+  DEFAULT_EDITOR_SHORTCUT_MAP,
+  EDITOR_SHORTCUT_ACTION_META,
+  EDITOR_SHORTCUT_ACTIONS,
+  cloneEditorShortcutMap,
+  findAppShortcutConflictsWithEditor,
+  findEditorShortcutConflicts,
+  normalizeEditorShortcutMap,
+  type EditorShortcutAction,
+  type EditorShortcutConflictWith,
+} from '../../../shared/shortcuts';
 import { comboFromKeyboardEvent } from '../shortcut-recorder';
 import '../styles/settings-dialog.css';
 
@@ -45,9 +56,18 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [draft, setDraft] = useState<AppSettings>(() => selectSettings(useStore.getState()));
+  const [draft, setDraft] = useState<AppSettings>(() => {
+    const state = useStore.getState();
+    return {
+      ...selectSettings(state),
+      // HMR 下 store 可能仍是新增字段前的旧状态，缺 editorShortcuts，兜底归一化
+      editorShortcuts: normalizeEditorShortcutMap(state.editorShortcuts),
+    };
+  });
   const [activeSection, setActiveSection] = useState<SettingsSection>('general');
-  const [recordingAction, setRecordingAction] = useState<ShortcutAction | null>(null);
+  const [recordingAction, setRecordingAction] = useState<
+    ShortcutAction | EditorShortcutAction | null
+  >(null);
   const applySettings = useStore((state) => state.applySettings);
   const displayPlatform = toDisplayPlatform(window.inkmark.platform);
 
@@ -111,9 +131,22 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
   };
 
   const shortcutConflicts = findShortcutConflicts(draft.shortcuts);
-  const hasShortcutConflict = SHORTCUT_ACTIONS.some(
-    (action) => (shortcutConflicts.get(action)?.length ?? 0) > 0,
+  // 应用动作的冲突有两个来源：应用 map 内部互撞、撞上格式快捷键。
+  const appConflictsWithEditor = findAppShortcutConflictsWithEditor(
+    draft.shortcuts,
+    draft.editorShortcuts,
   );
+  const editorConflicts = findEditorShortcutConflicts(draft.editorShortcuts, draft.shortcuts);
+  const hasShortcutConflict =
+    SHORTCUT_ACTIONS.some((action) => (shortcutConflicts.get(action)?.length ?? 0) > 0) ||
+    SHORTCUT_ACTIONS.some((action) => (appConflictsWithEditor.get(action)?.length ?? 0) > 0) ||
+    EDITOR_SHORTCUT_ACTIONS.some((action) => (editorConflicts.get(action)?.length ?? 0) > 0);
+
+  // 冲突对象可能来自应用动作或格式动作，统一解析成显示名。
+  const conflictLabel = (action: EditorShortcutConflictWith): string =>
+    EDITOR_SHORTCUT_ACTIONS.includes(action as EditorShortcutAction)
+      ? t(EDITOR_SHORTCUT_ACTION_META[action as EditorShortcutAction].labelKey)
+      : t(SHORTCUT_ACTION_META[action as ShortcutAction].labelKey);
 
   // 录制：捕获阶段挂到 window，抢在编辑器/对话框自身处理之前消费按键。
   // Esc 取消录制（不关闭对话框）；纯修饰键或不支持的键继续等待；必须含 Ctrl/Cmd 才接受。
@@ -128,10 +161,23 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
       }
       const combo = comboFromKeyboardEvent(event, window.inkmark.platform);
       if (!combo || (!combo.mod && !combo.alt)) return;
-      setDraft((settings) => ({
-        ...settings,
-        shortcuts: { ...settings.shortcuts, [recordingAction]: combo },
-      }));
+      const isEditorAction = EDITOR_SHORTCUT_ACTIONS.includes(
+        recordingAction as EditorShortcutAction,
+      );
+      setDraft((settings) =>
+        isEditorAction
+          ? {
+              ...settings,
+              editorShortcuts: {
+                ...settings.editorShortcuts,
+                [recordingAction as EditorShortcutAction]: combo,
+              },
+            }
+          : {
+              ...settings,
+              shortcuts: { ...settings.shortcuts, [recordingAction]: combo },
+            },
+      );
       setRecordingAction(null);
     };
     window.addEventListener('keydown', handleRecording, true);
@@ -145,10 +191,32 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
     }));
   };
 
+  const resetEditorShortcut = (action: EditorShortcutAction): void => {
+    setDraft((settings) => ({
+      ...settings,
+      editorShortcuts: {
+        ...settings.editorShortcuts,
+        [action]: DEFAULT_EDITOR_SHORTCUT_MAP[action]
+          ? { ...DEFAULT_EDITOR_SHORTCUT_MAP[action] }
+          : undefined,
+      },
+    }));
+  };
+
+  const clearEditorShortcut = (action: EditorShortcutAction): void => {
+    setDraft((settings) => ({
+      ...settings,
+      editorShortcuts: { ...settings.editorShortcuts, [action]: undefined },
+    }));
+  };
+
   const resetAllShortcuts = (): void => {
     setDraft((settings) => ({
       ...settings,
       shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
+      editorShortcuts: normalizeEditorShortcutMap(
+        cloneEditorShortcutMap(DEFAULT_EDITOR_SHORTCUT_MAP),
+      ),
     }));
     setRecordingAction(null);
   };
@@ -528,7 +596,10 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         {group.actions.map((action) => {
                           const meta = SHORTCUT_ACTION_META[action];
                           const combo = draft.shortcuts[action];
-                          const conflictWith = shortcutConflicts.get(action) ?? [];
+                          const conflictWith: EditorShortcutConflictWith[] = [
+                            ...(shortcutConflicts.get(action) ?? []),
+                            ...(appConflictsWithEditor.get(action) ?? []),
+                          ];
                           const isRecording = recordingAction === action;
                           const unchanged = comboEquals(combo, DEFAULT_SHORTCUT_MAP[action]);
                           return (
@@ -573,9 +644,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                               {conflictWith.length > 0 && (
                                 <span className="settings-shortcut-conflict">
                                   {t('settings.shortcuts.conflict', {
-                                    names: conflictWith
-                                      .map((a) => t(SHORTCUT_ACTION_META[a].labelKey))
-                                      .join(listSeparator),
+                                    names: conflictWith.map(conflictLabel).join(listSeparator),
                                   })}
                                 </span>
                               )}
@@ -585,6 +654,77 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       </ul>
                     </div>
                   ))}
+
+                  <div className="settings-shortcut-group">
+                    <h3 className="settings-shortcut-group-title">
+                      {t('settings.shortcuts.groupFormatting')}
+                    </h3>
+                    <ul className="settings-shortcut-list">
+                      {EDITOR_SHORTCUT_ACTIONS.map((action) => {
+                        const meta = EDITOR_SHORTCUT_ACTION_META[action];
+                        const combo = draft.editorShortcuts[action];
+                        const defaultCombo = DEFAULT_EDITOR_SHORTCUT_MAP[action];
+                        const conflictWith = editorConflicts.get(action) ?? [];
+                        const isRecording = recordingAction === action;
+                        const unchanged = defaultCombo
+                          ? !!combo && comboEquals(combo, defaultCombo)
+                          : !combo;
+                        return (
+                          <li
+                            key={action}
+                            className={`settings-shortcut-row${conflictWith.length > 0 ? ' is-conflict' : ''}${isRecording ? ' is-recording' : ''}`}
+                          >
+                            <div className="settings-shortcut-info">
+                              <span className="settings-shortcut-label">{t(meta.labelKey)}</span>
+                            </div>
+                            <div className="settings-shortcut-control">
+                              {isRecording ? (
+                                <span className="settings-shortcut-recording">
+                                  {t('settings.shortcuts.recording')}
+                                </span>
+                              ) : (
+                                <kbd className="settings-shortcut-keys">
+                                  {combo
+                                    ? formatComboForDisplay(combo, displayPlatform)
+                                    : t('settings.shortcuts.unset')}
+                                </kbd>
+                              )}
+                              <button
+                                type="button"
+                                className="settings-shortcut-btn"
+                                onClick={() => setRecordingAction(isRecording ? null : action)}
+                              >
+                                {isRecording ? t('common.cancel') : t('settings.shortcuts.record')}
+                              </button>
+                              <button
+                                type="button"
+                                className="settings-shortcut-btn"
+                                onClick={() => resetEditorShortcut(action)}
+                                disabled={unchanged}
+                              >
+                                {t('settings.shortcuts.reset')}
+                              </button>
+                              <button
+                                type="button"
+                                className="settings-shortcut-btn"
+                                onClick={() => clearEditorShortcut(action)}
+                                disabled={!combo}
+                              >
+                                {t('settings.shortcuts.clear')}
+                              </button>
+                            </div>
+                            {conflictWith.length > 0 && (
+                              <span className="settings-shortcut-conflict">
+                                {t('settings.shortcuts.conflict', {
+                                  names: conflictWith.map(conflictLabel).join(listSeparator),
+                                })}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
                 </fieldset>
               )}
             </div>

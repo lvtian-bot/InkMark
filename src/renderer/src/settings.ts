@@ -10,8 +10,11 @@ import {
   type LineHeightPresetId,
 } from './font-presets';
 import {
+  DEFAULT_EDITOR_SHORTCUT_MAP,
   DEFAULT_SHORTCUT_MAP,
+  normalizeEditorShortcutMap,
   normalizeShortcutMap,
+  type EditorShortcutMap,
   type ShortcutMap,
 } from '../../shared/shortcuts';
 import { normalizeLanguageSetting, type LanguageSetting } from '../../shared/i18n';
@@ -55,6 +58,7 @@ export interface AppSettings {
   autoSave: boolean;
   language: LanguageSetting;
   shortcuts: ShortcutMap;
+  editorShortcuts: EditorShortcutMap;
 }
 
 export const OUTLINE_WIDTH_MIN = 150;
@@ -81,6 +85,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   autoSave: false,
   language: 'system',
   shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
+  editorShortcuts: normalizeEditorShortcutMap(DEFAULT_EDITOR_SHORTCUT_MAP),
 };
 
 export function selectSettings(settings: AppSettings): AppSettings {
@@ -103,6 +108,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     autoSave: settings.autoSave,
     language: settings.language,
     shortcuts: settings.shortcuts,
+    editorShortcuts: settings.editorShortcuts,
   };
 }
 
@@ -210,6 +216,7 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.autoSave === 'boolean' ? candidate.autoSave : DEFAULT_SETTINGS.autoSave,
     language: normalizeLanguageSetting(candidate.language),
     shortcuts: normalizeShortcutMap(candidate.shortcuts),
+    editorShortcuts: normalizeEditorShortcutMap(candidate.editorShortcuts),
   };
 }
 

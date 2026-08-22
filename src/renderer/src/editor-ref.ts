@@ -26,6 +26,8 @@ export interface EditorHandle {
   insertCodeBlock: () => void;
   insertLink: (href: string, title?: string) => void;
   insertTable: () => void;
+  /// 删除光标所在的整行（文本块；列表项内容时删除整个列表项）。表格内不执行。
+  deleteLine: () => void;
   /// 在光标所在表格指定方向加行/列。
   addTableLine: (kind: 'row' | 'col', position: 'before' | 'after') => void;
   /// 删除光标所在行/列。

@@ -41,6 +41,8 @@ export interface SourceEditorHandle {
   /// Undo / redo (history is managed by CodeMirror).
   undo: () => void;
   redo: () => void;
+  /// Delete all lines covered by the selection.
+  deleteLine: () => void;
 }
 
 export const sourceEditorHandle: { current: SourceEditorHandle | null } = { current: null };

@@ -30,6 +30,8 @@ import { editorStateCache } from './editor-state-cache';
 import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { comboMatchesEvent } from './shortcut-recorder';
+import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
+import { runEditorCommand } from './editor-commands';
 
 // 源码模式与低频对话框拆成独立 chunk，避免它们的代码（CodeMirror 全家桶等）
 // 拖慢启动首帧；首次使用时按需加载。查找替换等高频路径不懒加载。
@@ -63,6 +65,7 @@ function AppContent() {
   const panelLayout = useStore((s) => s.panelLayout);
   const fileTreeWidth = useStore((s) => s.fileTreeWidth);
   const shortcuts = useStore((s) => s.shortcuts);
+  const editorShortcuts = useStore((s) => s.editorShortcuts);
   const setFileTreeVisible = useStore((s) => s.setFileTreeVisible);
   const setFileTreeWidth = useStore((s) => s.setFileTreeWidth);
   // 单一布局字段派生两侧位置:outline-left → 大纲左/文件树右;outline-right 反之。
@@ -635,7 +638,29 @@ function AppContent() {
         return;
       }
 
-      // 17. 多标签页循环切换 (Ctrl+Tab / Ctrl+Shift+Tab)
+      // 17. 工具栏格式快捷键（与工具栏按钮同一实现，双模式生效）
+      if (!isStartPage) {
+        for (const action of EDITOR_SHORTCUT_ACTIONS) {
+          // HMR 下 store 可能仍是新增字段前的旧状态，缺 editorShortcuts，兜底跳过
+          const combo = editorShortcuts?.[action];
+          if (combo && comboMatchesEvent(event, combo, platform)) {
+            event.preventDefault();
+            event.stopPropagation();
+            runEditorCommand(action);
+            return;
+          }
+        }
+        // 被接管的编辑器内置格式键（如默认的加粗 Mod-B）：用户改键或清除后，
+        // 旧键位不再命中任何已设置快捷键，这里拦截吞掉，避免落回编辑器内置 keymap
+        // 造成「改了键但旧键仍生效」的残留。
+        if (EDITOR_BUILTIN_COMBOS.some((combo) => comboMatchesEvent(event, combo, platform))) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+
+      // 18. 多标签页循环切换 (Ctrl+Tab / Ctrl+Shift+Tab)
       const isMod = platform === 'darwin' ? event.metaKey : event.ctrlKey;
       if (isMod && !event.altKey && event.key === 'Tab') {
         event.preventDefault();
@@ -682,6 +707,7 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleGlobalShortcuts, true);
   }, [
     closeFindReplace,
+    editorShortcuts,
     fileOps,
     fileTree,
     isFindReplaceOpen,

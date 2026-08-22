@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
-import { defaultKeymap, history, historyKeymap, undo, redo } from '@codemirror/commands';
+import {
+  defaultKeymap,
+  deleteLine as deleteLineCommand,
+  history,
+  historyKeymap,
+  redo,
+  undo,
+} from '@codemirror/commands';
 import { HighlightStyle, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
@@ -148,6 +155,10 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
       notifyChange: () => onChangeRef.current(view.state),
       undo: () => undo(view),
       redo: () => redo(view),
+      deleteLine: () => {
+        deleteLineCommand(view);
+        view.focus();
+      },
     };
 
     return () => {

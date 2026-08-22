@@ -36,6 +36,7 @@ import {
   callCommand,
 } from '@milkdown/kit/utils';
 import { TextSelection } from '@milkdown/kit/prose/state';
+import type { ResolvedPos } from '@milkdown/kit/prose/model';
 import { editorHandle } from '../editor-ref';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import { isValidTextMatch, type TextMatch } from '../find-replace';
@@ -445,6 +446,39 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
           view.focus();
         } catch (e) {
           console.error('insertTable error:', e);
+        }
+      },
+      deleteLine: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const { $from, $to } = view.state.selection;
+
+          // 删除单元 = 光标所在文本块（源码里的一「行」）；位于列表项内时升级为
+          // 整个列表项。表格单元格内的段落不删，避免破坏表格结构。
+          const unitAt = (pos: ResolvedPos): { start: number; end: number } | null => {
+            for (let d = 1; d <= pos.depth; d++) {
+              const name = pos.node(d).type.name;
+              if (name === 'table' || name === 'table_row' || name === 'table_cell') {
+                return null;
+              }
+            }
+            const parentDepth =
+              pos.depth >= 2 && pos.node(pos.depth - 1).type.name === 'list_item'
+                ? pos.depth - 1
+                : pos.depth;
+            return { start: pos.before(parentDepth), end: pos.after(parentDepth) };
+          };
+
+          // 选区两端各自计算删除单元，统一删掉覆盖的区间（跨选多块时一起删）。
+          const fromUnit = unitAt($from);
+          const toUnit = unitAt($to);
+          if (!fromUnit || !toUnit) return;
+          const start = Math.min(fromUnit.start, toUnit.start);
+          const end = Math.max(fromUnit.end, toUnit.end);
+          if (start >= end) return;
+          view.dispatch(view.state.tr.delete(start, end).scrollIntoView());
+        } catch (e) {
+          console.error('deleteLine error:', e);
         }
       },
       addTableLine: (kind, position) => {
