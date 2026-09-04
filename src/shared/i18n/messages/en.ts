@@ -248,6 +248,43 @@ export const messages: Record<MessageKey, string> = {
   'statusBar.wordCount': '{wordCount} words',
   'statusBar.charCount': '{charCount} chars',
 
+  'review.replaceNow': 'Replace now',
+  'review.enterReview': 'Review changes',
+  'review.toolbarTitle': 'External changes · {count} pending',
+  'review.toolbarHint':
+    'Editing is locked while reviewing; changes are saved once all are resolved',
+  'review.exit': 'Exit review',
+  'review.acceptAllConfirmTitle': 'Accept all and save',
+  'review.acceptAllConfirmBody':
+    'Accept all {count} external changes? The document will be saved immediately and review will end.',
+  'review.rejectAllConfirmTitle': 'Reject all and save',
+  'review.rejectAllConfirmBody':
+    'Reject all {count} external changes? Your current content will overwrite the external changes on disk and review will end.',
+  'review.acceptAllAndSave': 'Accept and save',
+  'review.rejectAllAndSave': 'Reject and save',
+  'review.exitTitle': 'Exit review',
+  'review.exitBody':
+    '{count} external changes are still pending. "Reject all & save" overwrites them with your current content; accepted changes will be written to disk.',
+  'review.exitAcceptAll': 'Accept all & save',
+  'review.exitRejectAll': 'Reject all & save',
+  'review.exitContinue': 'Continue reviewing',
+  'review.acceptAll': 'Accept all',
+  'review.rejectAll': 'Reject all',
+  'review.acceptInsert': 'Accept addition',
+  'review.rejectInsert': 'Reject addition',
+  'review.acceptDelete': 'Accept deletion',
+  'review.acceptReplace': 'Accept change',
+  'review.keepOriginal': 'Keep original',
+  'review.foldCollapsed': '⋯ {count} unchanged lines, click to expand',
+  'review.saveBlockedTitle': 'Review unfinished',
+  'review.saveBlockedBody':
+    'This document still has {count} pending external changes. Accept or reject them before saving.',
+  'review.closeTitle': 'Review unfinished',
+  'review.closeBody':
+    '"{name}" still has {count} pending changes. Closing discards them and any accepted-but-unsaved edits; reopening shows the external version on disk.',
+  'review.closeAnyway': 'Close anyway',
+  'review.tabBadge': '{count} external changes pending review',
+
   'tabBar.menu': 'Menu',
   'tabBar.closeTab': 'Close Tab',
   'tabBar.newTab': 'New Tab ({shortcut})',
@@ -320,8 +357,6 @@ export const messages: Record<MessageKey, string> = {
   'confirm.diffCurrent': '+ Current Edit',
 
   'externalUpdate.banner': 'File changed externally',
-  'externalUpdate.clickToReload': 'Click to reload',
-  'externalUpdate.aria': 'The file changed externally. Click to load the latest version.',
 
   'image.alt': 'image',
   'image.readFailed': 'Failed to read the image, please choose it again.',

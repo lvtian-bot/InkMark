@@ -23,6 +23,7 @@ import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
+import { readStableTextFile } from './stable-file-read';
 import { resolveAutoUpdater } from './resolve-auto-updater';
 import { createUpdateService, type UpdateService } from './update-service';
 import type {
@@ -903,8 +904,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
   const files: { path: string; content: string; mtime: number }[] = [];
   for (const filePath of result.filePaths) {
     try {
-      const content = readFileSync(filePath, 'utf-8');
-      const mtime = statSync(filePath).mtimeMs;
+      const { content, mtime } = readStableTextFile(filePath);
       addRecent(filePath, 'file');
       files.push({ path: filePath, content, mtime });
     } catch {
@@ -972,8 +972,7 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
   }
   const { path } = request;
   try {
-    const content = readFileSync(path, 'utf-8');
-    const mtime = statSync(path).mtimeMs;
+    const { content, mtime } = readStableTextFile(path);
     addRecent(path, 'file');
     return { path, content, mtime };
   } catch {

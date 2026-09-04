@@ -19,6 +19,7 @@ export interface DocumentEditorState<States extends EditorStates> {
     mode: Mode,
     markdown: string,
   ) => States[Mode] | undefined;
+  disposeMode: (tabId: string, mode: DocumentEditorMode) => void;
   dispose: (tabId: string) => void;
 }
 
@@ -44,6 +45,13 @@ export function createDocumentEditorState<
       delete tabSnapshots?.[mode];
       if (tabSnapshots && !tabSnapshots.source && !tabSnapshots.wysiwyg) snapshots.delete(tabId);
       return undefined;
+    },
+
+    disposeMode(tabId, mode) {
+      const tabSnapshots = snapshots.get(tabId);
+      if (!tabSnapshots) return;
+      delete tabSnapshots[mode];
+      if (!tabSnapshots.source && !tabSnapshots.wysiwyg) snapshots.delete(tabId);
     },
 
     dispose(tabId) {

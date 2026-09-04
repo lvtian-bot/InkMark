@@ -115,6 +115,14 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
               <span className="tab-title">
                 {tab.isDirty ? '\u2022 ' : ''}
                 {tabDisplayName(tab, t)}
+                {tab.pendingReviewCount > 0 && (
+                  <span
+                    className="tab-review-badge"
+                    title={t('review.tabBadge', { count: tab.pendingReviewCount })}
+                  >
+                    {tab.pendingReviewCount}
+                  </span>
+                )}
               </span>
               <button
                 className="tab-close"

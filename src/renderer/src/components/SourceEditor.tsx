@@ -16,10 +16,20 @@ import { tags } from '@lezer/highlight';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
+import {
+  acceptAllReviewChunks,
+  createReviewExtension,
+  getReviewChunks,
+  rejectAllReviewChunks,
+  setReviewChunks,
+} from '../review/review-extension';
+import { drainQueuedReviewChunks } from '../review/review-store';
 import '../styles/source-editor.css';
 
 interface SourceEditorProps {
   onChange: (state: EditorState) => void;
+  /** 未决审阅块数量变化时上报（React 侧据此驱动工具条与角标）。 */
+  onReviewCountChange?: (count: number, content: string) => void;
 }
 
 // iA Writer 风格：语法符号淡化成装饰色，正文按语义加粗/强调，结构清晰、内容突出。
@@ -57,7 +67,7 @@ const fadedMarksHighlight = HighlightStyle.define([
   // 列表项文字（tags.list）保持正文色，不加样式
 ]);
 
-export function SourceEditor({ onChange }: SourceEditorProps) {
+export function SourceEditor({ onChange, onReviewCountChange }: SourceEditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -65,10 +75,18 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
   const onChangeRef = useRef(onChange);
   // 抑制标记：setValue / replaceRangeQuiet 等程序化写入不应触发 onChange。
   const suppressRef = useRef(false);
+  // 审阅扩展的回调容器：扩展只创建一次，回调通过同一对象热替换。
+  const reviewCallbacksRef = useRef<{
+    onCountChange?: (count: number, content: string) => void;
+  }>({});
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    reviewCallbacksRef.current.onCountChange = onReviewCountChange;
+  }, [onReviewCountChange]);
 
   // 创建 CodeMirror 实例（只创建一次）。
   useEffect(() => {
@@ -91,6 +109,7 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           EditorView.lineWrapping,
           updateListener,
+          ...createReviewExtension(reviewCallbacksRef.current),
         ],
       });
 
@@ -159,7 +178,21 @@ export function SourceEditor({ onChange }: SourceEditorProps) {
         deleteLineCommand(view);
         view.focus();
       },
+      applyReviewChunks: (chunks) => {
+        view.dispatch({ effects: setReviewChunks.of(chunks) });
+      },
+      getReviewChunks: () => getReviewChunks(view.state),
+      acceptAllReviewChunks: () => {
+        acceptAllReviewChunks(view);
+      },
+      rejectAllReviewChunks: () => {
+        rejectAllReviewChunks(view);
+      },
     };
+
+    // 懒加载挂载完成：此时 App 的标签/模式切换 effect 可能已经跑过而句柄未就绪，
+    // 补一次待注入审阅块的排空。
+    drainQueuedReviewChunks(useStore.getState().activeTabId);
 
     return () => {
       view.destroy();

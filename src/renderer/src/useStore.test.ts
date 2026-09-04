@@ -95,6 +95,41 @@ describe('useStore toggleViewMode', () => {
     toggleViewMode();
     expect(useStore.getState().viewMode).toBe('source');
   });
+
+  it('活动标签存在待审改动时锁定源码模式，切回所见即所得被拒绝', () => {
+    const { addTab, updateTab } = useStore.getState();
+    const tabId = addTab({ startPage: false });
+    updateTab(tabId, { pendingReviewCount: 3 });
+    useStore.setState({ viewMode: 'source' });
+
+    useStore.getState().toggleViewMode();
+    expect(useStore.getState().viewMode).toBe('source');
+
+    // 待决清零后恢复切换
+    updateTab(tabId, { pendingReviewCount: 0 });
+    useStore.getState().toggleViewMode();
+    expect(useStore.getState().viewMode).toBe('wysiwyg');
+  });
+
+  it('非活动标签有待审改动不影响当前活动标签的模式切换', () => {
+    const { addTab, setActiveTab, updateTab } = useStore.getState();
+    const reviewTabId = addTab({ startPage: false });
+    const otherTabId = addTab({ startPage: false });
+    updateTab(reviewTabId, { pendingReviewCount: 2 });
+    setActiveTab(otherTabId);
+    useStore.setState({ viewMode: 'source' });
+
+    useStore.getState().toggleViewMode();
+    expect(useStore.getState().viewMode).toBe('wysiwyg');
+  });
+});
+
+describe('useStore pendingReviewCount', () => {
+  it('新建标签的 pendingReviewCount 默认为 0', () => {
+    const { addTab } = useStore.getState();
+    const tabId = addTab({ startPage: false });
+    expect(useStore.getState().tabs.find((t) => t.id === tabId)!.pendingReviewCount).toBe(0);
+  });
 });
 
 describe('useStore toolbarVisible', () => {

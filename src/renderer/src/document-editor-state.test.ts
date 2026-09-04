@@ -37,4 +37,16 @@ describe('document editor state', () => {
     expect(states.restore('a', 'source', 'A')).toBeUndefined();
     expect(states.restore('a', 'wysiwyg', 'A')).toBeUndefined();
   });
+
+  it('can discard only the source state while preserving wysiwyg history', () => {
+    const states = createDocumentEditorState<{ source: object; wysiwyg: object }>();
+    const wysiwyg = { name: 'wysiwyg' };
+
+    states.capture('a', 'source', 'A', { name: 'source-review' });
+    states.capture('a', 'wysiwyg', 'A', wysiwyg);
+    states.disposeMode('a', 'source');
+
+    expect(states.restore('a', 'source', 'A')).toBeUndefined();
+    expect(states.restore('a', 'wysiwyg', 'A')).toBe(wysiwyg);
+  });
 });

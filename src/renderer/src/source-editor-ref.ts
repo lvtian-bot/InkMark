@@ -1,4 +1,5 @@
 import type { EditorState } from '@codemirror/state';
+import type { ReviewChunk } from './review/review-extension';
 
 export interface SourceSelection {
   from: number;
@@ -43,6 +44,14 @@ export interface SourceEditorHandle {
   redo: () => void;
   /// Delete all lines covered by the selection.
   deleteLine: () => void;
+  /// 外部改动审阅：整体替换未决块（set 语义，位置已锚定到当前文档）。
+  applyReviewChunks: (chunks: ReviewChunk[]) => void;
+  /// 当前源码编辑器中的未决外部改动块。
+  getReviewChunks: () => ReviewChunk[];
+  /// 一次性接受全部未决外部改动。
+  acceptAllReviewChunks: () => void;
+  /// 一次性拒绝全部未决外部改动（文档保持现状）。
+  rejectAllReviewChunks: () => void;
 }
 
 export const sourceEditorHandle: { current: SourceEditorHandle | null } = { current: null };

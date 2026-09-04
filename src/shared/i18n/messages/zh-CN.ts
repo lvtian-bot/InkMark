@@ -240,6 +240,41 @@ export const messages = {
   'statusBar.wordCount': '{wordCount} 字',
   'statusBar.charCount': '{charCount} 字符',
 
+  'review.replaceNow': '直接替换',
+  'review.enterReview': '逐项审阅',
+  'review.toolbarTitle': '外部改动审阅 · {count} 处待决',
+  'review.toolbarHint': '审阅期间锁定编辑，全部处理后自动保存',
+  'review.exit': '退出审阅',
+  'review.acceptAllConfirmTitle': '全部接受并保存',
+  'review.acceptAllConfirmBody':
+    '确定接受全部 {count} 处外部改动？将立即写入并保存文档，审阅结束。',
+  'review.rejectAllConfirmTitle': '全部拒绝并保存',
+  'review.rejectAllConfirmBody':
+    '确定拒绝全部 {count} 处外部改动？当前内容将覆盖磁盘上的外部修改，审阅结束。',
+  'review.acceptAllAndSave': '接受并保存',
+  'review.rejectAllAndSave': '拒绝并保存',
+  'review.exitTitle': '退出审阅',
+  'review.exitBody':
+    '还有 {count} 处外部改动未处理。全部拒绝并保存会用当前内容覆盖磁盘上的外部修改；已接受的改动将随保存写入磁盘。',
+  'review.exitAcceptAll': '全部接受并保存',
+  'review.exitRejectAll': '全部拒绝并保存',
+  'review.exitContinue': '继续审阅',
+  'review.acceptAll': '全部接受',
+  'review.rejectAll': '全部拒绝',
+  'review.acceptInsert': '接受新增',
+  'review.rejectInsert': '拒绝新增',
+  'review.acceptDelete': '接受删除',
+  'review.acceptReplace': '接受修改',
+  'review.keepOriginal': '保留原文',
+  'review.foldCollapsed': '⋯ {count} 行未改动，点击展开',
+  'review.saveBlockedTitle': '审阅未完成',
+  'review.saveBlockedBody': '该文档还有 {count} 处外部改动待审阅，请先逐块接受或拒绝后再保存。',
+  'review.closeTitle': '审阅未完成',
+  'review.closeBody':
+    '「{name}」还有 {count} 处未决改动。关闭将丢弃这些改动和已接受但尚未写回磁盘的修改；重新打开时看到的是磁盘上的外部版本。',
+  'review.closeAnyway': '仍要关闭',
+  'review.tabBadge': '{count} 处外部改动待审阅',
+
   'tabBar.menu': '菜单',
   'tabBar.closeTab': '关闭标签页',
   'tabBar.newTab': '新标签页 ({shortcut})',
@@ -305,8 +340,6 @@ export const messages = {
   'confirm.diffCurrent': '+ 当前编辑版本',
 
   'externalUpdate.banner': '文件已被外部更新',
-  'externalUpdate.clickToReload': '点击重新加载',
-  'externalUpdate.aria': '文件已被外部更新，点击重新加载最新版本',
 
   'image.alt': '图片',
   'image.readFailed': '读取图片失败，请重新选择图片。',

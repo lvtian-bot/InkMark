@@ -9,6 +9,13 @@ import { t } from '../i18n';
 import { tabDisplayName } from '../tab-name';
 import { AUTO_SAVE_DELAY_MS, isAutoSaveEligible } from '../auto-save';
 import {
+  clearReviewForTab,
+  completeReview,
+  getDiskSnapshot,
+  ingestReviewChunks,
+  setDiskSnapshot,
+} from '../review/review-store';
+import {
   decideCloseDirty,
   decideExternalChange,
   resolveConflictChoice,
@@ -36,6 +43,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   const watchedPathsRef = useRef(new Map<string, string>());
   const missingNotifiedTabIdsRef = useRef(new Set<string>());
   const autoSaveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const reviewRequestsRef = useRef(new Set<string>());
   const prevActiveTabIdRef = useRef(activeTabId);
 
   const stateRef = useRef({ tabs, activeTabId, setMarkdown, viewMode });
@@ -52,6 +60,17 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     async (tabId: string): Promise<boolean> => {
       const tab = useStore.getState().tabs.find((t) => t.id === tabId);
       if (!tab) return false;
+
+      // 审阅期间禁止保存（change-review.md）：未决块的语义还没定下来，
+      // 此时写入磁盘等于隐式「全部接受」，先让用户逐块处理。
+      if (tab.pendingReviewCount > 0) {
+        await confirmDialog(
+          t('review.saveBlockedTitle'),
+          t('review.saveBlockedBody', { count: tab.pendingReviewCount }),
+          [t('common.ok')],
+        );
+        return false;
+      }
 
       const content = getTabMarkdown(tabId);
 
@@ -94,20 +113,22 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           if (forceResult.status === 'ok') {
             missingNotifiedTabIdsRef.current.delete(tabId);
             updateTab(tabId, {
-              isDirty: false,
+              isDirty: getTabMarkdown(tabId) !== content,
               fileMtime: forceResult.mtime,
               externalUpdatePending: false,
             });
+            setDiskSnapshot(tabId, content, forceResult.mtime);
             return true;
           }
           return false;
         }
         missingNotifiedTabIdsRef.current.delete(tabId);
         updateTab(tabId, {
-          isDirty: false,
+          isDirty: getTabMarkdown(tabId) !== content,
           fileMtime: result.mtime,
           externalUpdatePending: false,
         });
+        setDiskSnapshot(tabId, content, result.mtime);
         return true;
       }
 
@@ -127,10 +148,11 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         updateTab(tabId, {
           filePath: saveAsResult.path,
           fileName: saveAsResult.path.split(/[/\\]/).pop()!,
-          isDirty: false,
+          isDirty: getTabMarkdown(tabId) !== content,
           fileMtime: saveAsResult.mtime,
           externalUpdatePending: false,
         });
+        setDiskSnapshot(tabId, content, saveAsResult.mtime);
         return true;
       }
       return false;
@@ -151,6 +173,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           enabled: state.autoSave,
           filePath: tab?.filePath ?? null,
           isDirty: tab?.isDirty ?? false,
+          hasPendingReview: (tab?.pendingReviewCount ?? 0) > 0,
         });
       };
       if (!isEligible()) return;
@@ -218,10 +241,16 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           fileMtime: result.mtime,
           isStartPage: false,
         });
+        setDiskSnapshot(activeTab.id, result.content, result.mtime);
         return;
       }
 
-      addTab({ filePath: result.path, content: result.content, fileMtime: result.mtime });
+      const newTabId = addTab({
+        filePath: result.path,
+        content: result.content,
+        fileMtime: result.mtime,
+      });
+      setDiskSnapshot(newTabId, result.content, result.mtime);
     },
     [addTab, setActiveTab, updateTab],
   );
@@ -274,6 +303,17 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       return;
     }
     const currentState = useStore.getState();
+    // 审阅期间禁止另存为（change-review.md：保存、另存为与自动保存一律拦下）。
+    const guardTab = currentState.tabs.find((tab) => tab.id === currentState.activeTabId);
+    const guardCount = guardTab?.pendingReviewCount ?? 0;
+    if (guardCount > 0) {
+      await confirmDialog(
+        t('review.saveBlockedTitle'),
+        t('review.saveBlockedBody', { count: guardCount }),
+        [t('common.ok')],
+      );
+      return;
+    }
     const content = getTabMarkdown(currentState.activeTabId);
     let result;
     try {
@@ -290,9 +330,10 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       updateTab(currentState.activeTabId, {
         filePath: result.path,
         fileName: result.path.split(/[/\\]/).pop()!,
-        isDirty: false,
+        isDirty: getTabMarkdown(currentState.activeTabId) !== content,
         fileMtime: result.mtime,
       });
+      setDiskSnapshot(currentState.activeTabId, content, result.mtime);
     }
   }, [getTabMarkdown, updateTab]);
 
@@ -308,6 +349,22 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       }
       const tab = currentState.tabs.find((t) => t.id === id);
       if (!tab) return false;
+
+      // 审阅未完成时关闭标签：保存被禁用，未决块与已接受未保存的修改
+      // 都随标签一起丢弃，需用户明确确认。
+      if (tab.pendingReviewCount > 0) {
+        const choice = await confirmDialog(
+          t('review.closeTitle'),
+          t('review.closeBody', { name: tabDisplayName(tab, t), count: tab.pendingReviewCount }),
+          [t('common.cancel'), t('review.closeAnyway')],
+          { defaultId: 0, cancelId: 0 },
+        );
+        if (choice !== 1) return false;
+        clearReviewForTab(id);
+        editorStateCache.dispose(id);
+        closeTabStore(id);
+        return true;
+      }
 
       let dirty = tab.isDirty;
       // 自动保存开启时先补存：干净关闭不打扰；保存失败（如冲突被取消）仍走原有询问。
@@ -331,6 +388,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       }
 
       editorStateCache.dispose(id);
+      clearReviewForTab(id);
 
       // 关闭最后一个标签页时回到欢迎页，而非关闭整个窗口；
       // store 的 closeTab 会在标签页清空后自动新建一个欢迎页标签页。
@@ -347,8 +405,32 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       ]);
       return false;
     }
-    const dirtyTabs = useStore.getState().tabs.filter((t) => t.isDirty);
-    for (const tab of dirtyTabs) {
+    // 审阅块只存在于装饰层；刚进入审阅的标签仍可能是“干净”的，不能只遍历
+    // isDirty，否则关闭窗口会绕过审阅丢弃确认。
+    const tabsToClose = useStore.getState().tabs;
+    for (const tab of tabsToClose) {
+      const liveTab = useStore.getState().tabs.find((t) => t.id === tab.id);
+      if (!liveTab) continue;
+
+      // 审阅未完成的标签：保存被禁用，直接确认丢弃后关闭。
+      if (liveTab.pendingReviewCount > 0) {
+        const reviewChoice = await confirmDialog(
+          t('review.closeTitle'),
+          t('review.closeBody', {
+            name: tabDisplayName(liveTab, t),
+            count: liveTab.pendingReviewCount,
+          }),
+          [t('common.cancel'), t('review.closeAnyway')],
+          { defaultId: 0, cancelId: 0 },
+        );
+        if (reviewChoice !== 1) return false;
+        clearReviewForTab(liveTab.id);
+        editorStateCache.dispose(liveTab.id);
+        continue;
+      }
+
+      if (!liveTab.isDirty) continue;
+
       let shouldAsk = true;
       if (useStore.getState().autoSave && tab.filePath) {
         await flushAutoSave(tab.id);
@@ -404,6 +486,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         enabled: true,
         filePath: prevTab.filePath,
         isDirty: prevTab.isDirty,
+        hasPendingReview: prevTab.pendingReviewCount > 0,
       })
     ) {
       void flushAutoSave(prevId);
@@ -414,7 +497,14 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   useEffect(() => {
     if (autoSave) {
       for (const tab of useStore.getState().tabs) {
-        if (isAutoSaveEligible({ enabled: true, filePath: tab.filePath, isDirty: tab.isDirty })) {
+        if (
+          isAutoSaveEligible({
+            enabled: true,
+            filePath: tab.filePath,
+            isDirty: tab.isDirty,
+            hasPendingReview: tab.pendingReviewCount > 0,
+          })
+        ) {
           void flushAutoSave(tab.id);
         }
       }
@@ -423,6 +513,26 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     for (const timer of autoSaveTimersRef.current.values()) clearTimeout(timer);
     autoSaveTimersRef.current.clear();
   }, [autoSave, flushAutoSave]);
+
+  // 审阅结束（待决数归零）自动写回磁盘一次（change-review.md 2026-09-04）：
+  // 这是执行用户逐块决策的收尾，不依赖自动保存开关，也不留给用户一次手动
+  // 保存。保存失败由 saveTab 内部提示，文档保持有未保存改动，下次保存重试。
+  const prevPendingCountsRef = useRef(new Map<string, number>());
+  useEffect(() => {
+    const prev = prevPendingCountsRef.current;
+    const next = new Map<string, number>();
+    for (const tab of tabs) next.set(tab.id, tab.pendingReviewCount);
+    prevPendingCountsRef.current = next;
+    for (const [tabId, count] of next) {
+      if ((prev.get(tabId) ?? 0) === 0 || count !== 0) continue;
+      const tab = useStore.getState().tabs.find((t) => t.id === tabId);
+      if (!tab?.filePath) continue;
+      completeReview(tabId);
+      void saveTab(tabId).then((saved) => {
+        if (!saved) updateTab(tabId, { isDirty: true });
+      });
+    }
+  }, [tabs, saveTab, updateTab]);
 
   const reloadTab = useCallback(
     async (tabId: string): Promise<boolean> => {
@@ -439,6 +549,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       const current = stateRef.current;
       if (!current.tabs.some((currentTab) => currentTab.id === tabId)) return false;
       editorStateCache.dispose(tabId);
+      clearReviewForTab(tabId);
       suppressDirtyRef.current = true;
       if (tabId === current.activeTabId) {
         if (!current.setMarkdown(result.content)) {
@@ -455,7 +566,10 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         fileMtime: result.mtime,
         isDirty: false,
         externalUpdatePending: false,
+        pendingReviewCount: 0,
+        reviewSession: false,
       });
+      setDiskSnapshot(tabId, result.content, result.mtime);
       missingNotifiedTabIdsRef.current.delete(tabId);
       return true;
     },
@@ -520,8 +634,21 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
               fileMtime: currentTab.fileMtime,
               diskMtime: res.mtime,
               isDirty: currentTab.isDirty,
+              inReview: !!currentTab.reviewSession,
             });
             if (changeDecision === 'noop') continue;
+
+            if (changeDecision === 'review') {
+              // 审阅是持续状态：有待决块时新的外部增量继续静默入库
+              //（快照在首次入库时已建立）。
+              const diskVersion = await window.inkmark.openFilePath(currentTab.filePath);
+              if (!diskVersion) {
+                await notifyMissingFile(currentTab.id, currentTab.fileName);
+                continue;
+              }
+              ingestReviewChunks(currentTab.id, diskVersion.content, diskVersion.mtime);
+              continue;
+            }
 
             if (changeDecision === 'conflict') {
               const diskVersion = await window.inkmark.openFilePath(currentTab.filePath);
@@ -532,10 +659,15 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
               const choice = await confirmDialog(
                 t('confirm.externalModified'),
                 t('confirm.externalModifiedChooseHint'),
-                [t('confirm.useDisk'), t('confirm.keepAndOverride'), t('common.cancel')],
+                [
+                  t('confirm.useDisk'),
+                  t('review.enterReview'),
+                  t('confirm.keepAndOverride'),
+                  t('common.cancel'),
+                ],
                 {
-                  defaultId: 2,
-                  cancelId: 2,
+                  defaultId: 3,
+                  cancelId: 3,
                   diff: buildConflictDiff(diskVersion.content, getTabMarkdown(currentTab.id)),
                 },
               );
@@ -546,12 +678,24 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                   const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
                   if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
                 }
+              } else if (conflictAction === 'review') {
+                // 脏标签没有基线快照时无法可信区分外部与用户改动，按使用磁盘版处理。
+                if (getDiskSnapshot(currentTab.id)) {
+                  ingestReviewChunks(currentTab.id, diskVersion.content, diskVersion.mtime);
+                } else {
+                  const reloaded = await reloadTab(currentTab.id);
+                  if (!reloaded) {
+                    const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
+                    if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
+                  }
+                }
               } else if (conflictAction === 'keep-and-override') {
                 updateTab(currentTab.id, { fileMtime: diskVersion.mtime });
+                setDiskSnapshot(currentTab.id, diskVersion.content, diskVersion.mtime);
               }
             } else {
-              // 干净标签页不静默刷新（change-review.md 默认状态）：仅标记待重载，
-              // 由用户点击编辑区顶部的提示条后再加载磁盘版本。
+              // 干净标签页不静默刷新（change-review.md 默认状态）：仅标记待处理，
+              // 由用户在编辑区顶部提示条上选择「直接替换」或「逐项审阅」。
               updateTab(currentTab.id, { externalUpdatePending: true });
             }
           }
@@ -574,6 +718,30 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       if (latestTab?.filePath) await notifyMissingFile(latestTab.id, latestTab.fileName);
     }
   }, [notifyMissingFile, reloadTab]);
+
+  const reviewActiveTab = useCallback(async (): Promise<void> => {
+    // 提示条「逐项审阅」入口：读磁盘最新版进入审阅（干净标签以当前内容为基线）。
+    const state = useStore.getState();
+    const tab = state.tabs.find((t) => t.id === state.activeTabId);
+    if (!tab?.filePath) return;
+    if (reviewRequestsRef.current.has(tab.id)) return;
+    reviewRequestsRef.current.add(tab.id);
+    try {
+      let diskVersion;
+      try {
+        diskVersion = await window.inkmark.openFilePath(tab.filePath);
+      } catch {
+        diskVersion = null;
+      }
+      if (!diskVersion) {
+        await notifyMissingFile(tab.id, tab.fileName);
+        return;
+      }
+      ingestReviewChunks(tab.id, diskVersion.content, diskVersion.mtime);
+    } finally {
+      reviewRequestsRef.current.delete(tab.id);
+    }
+  }, [notifyMissingFile]);
 
   useEffect(() => {
     return window.inkmark.onFileWatchEvent((event) => {
@@ -632,6 +800,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       markDirty,
       checkExternalChanges,
       reloadActiveTab,
+      reviewActiveTab,
     }),
     [
       newFile,
@@ -646,6 +815,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       markDirty,
       checkExternalChanges,
       reloadActiveTab,
+      reviewActiveTab,
     ],
   );
 }
