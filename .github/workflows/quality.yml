@@ -30,7 +30,14 @@ jobs:
 
       - name: Lint commit messages
         if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
-        run: npx commitlint --from ${{ github.event.before }} --to ${{ github.sha }}
+        run: |
+          git merge-base --is-ancestor ${{ github.event.before }} ${{ github.sha }}
+          if ($LASTEXITCODE -eq 0) {
+            npx commitlint --from ${{ github.event.before }} --to ${{ github.sha }}
+          } else {
+            Write-Host '::warning::推送前的提交不在当前历史中（force-push），仅校验最新提交'
+            npx commitlint --from HEAD~1 --to HEAD
+          }
 
       - name: Quality checks
         run: npm run check
