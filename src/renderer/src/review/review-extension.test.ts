@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -135,6 +136,53 @@ describe('reviewChunksField', () => {
     }
     expect(state.field(reviewChunksField).chunks).toHaveLength(0);
     expect(state.field(reviewChunksField).folds).toHaveLength(0);
+  });
+});
+
+describe('折叠与新增 widget 的渲染', () => {
+  // 回归：CodeMirror 的块替换装饰不渲染落在其区间起点的 point widget。
+  // 折叠若从承载新增 widget 的行开始，绿色新增与操作按钮会整体消失。
+  function renderInsert(
+    base: string,
+    disk: string,
+  ): {
+    view: EditorView;
+    state: EditorState;
+  } {
+    const state = injectChunks(makeState(base), base, disk);
+    const view = new EditorView({ state, parent: document.body });
+    return { view, state };
+  }
+
+  it('替换块后方的折叠避开 widget 行，绿色新增默认可见', () => {
+    const gap = Array.from({ length: 20 }, (_, i) => `第${i}行`).join('\n');
+    const base = `开头\n旧中部行\n${gap}\n结尾`;
+    const { view, state } = renderInsert(base, `开头\n新中部行\n${gap}\n结尾`);
+    try {
+      expect(view.dom.querySelector('.review-insert')).not.toBeNull();
+      const folds = state.field(reviewChunksField).folds;
+      expect(folds).toHaveLength(1);
+      const chunk = state.field(reviewChunksField).chunks[0];
+      const widgetLine = state.doc.lineAt(chunk.anchor + chunk.removedText.length);
+      expect(folds[0].fromLine).toBeGreaterThan(widgetLine.number);
+    } finally {
+      view.destroy();
+    }
+  });
+
+  it('纯新增块后方的折叠同样避开插入点行', () => {
+    const gap = Array.from({ length: 20 }, (_, i) => `第${i}行`).join('\n');
+    const base = `开头\n${gap}\n结尾`;
+    const { view, state } = renderInsert(base, `开头\n新插入行\n${gap}\n结尾`);
+    try {
+      expect(view.dom.querySelector('.review-insert')).not.toBeNull();
+      const folds = state.field(reviewChunksField).folds;
+      expect(folds).toHaveLength(1);
+      const chunk = state.field(reviewChunksField).chunks[0];
+      expect(folds[0].fromLine).toBeGreaterThan(state.doc.lineAt(chunk.anchor).number);
+    } finally {
+      view.destroy();
+    }
   });
 });
 

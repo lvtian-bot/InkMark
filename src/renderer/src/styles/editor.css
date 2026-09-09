@@ -269,14 +269,19 @@
   text-indent: -24px;
 }
 /* 真实 checkbox（task-list-view 的 widget decoration 在段落行首插入的 span），
-   替代此前的 CSS 伪元素 + 点击坐标判定。inline-block 进入行内流，垂直对齐交给
-   浏览器；text-indent 清零对抗 p 的悬挂缩进。 */
+   替代此前的 CSS 伪元素 + 点击坐标判定。inline-block 进入行内流；text-indent 清零
+   对抗 p 的悬挂缩进。
+   垂直对齐：尺寸 0.9em 随字号缩放，vertical-align: -0.1em 让框中心对准文字墨迹中心。
+   此前固定 16px + text-bottom 时框底被钉在字体内容区底部（基线 + 字体 descent），比
+   中文墨迹底低 2-4px，且字号越大（18/20px）下坠越明显，框中心最多偏低 6px。
+   水平占位：width + margin-right 恒等于 24px，与 p 的 text-indent/-24px 抵消，首行
+   文字与换行行、普通列表文字在任何字号下都精确对齐。 */
 .editor-container .task-checkbox {
   display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-right: 8px;
-  vertical-align: text-bottom;
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: calc(24px - 0.9em);
+  vertical-align: -0.1em;
   text-indent: 0;
   border: 1.5px solid var(--text-tertiary);
   border-radius: 3px;
@@ -287,12 +292,13 @@
     background 0.15s,
     border-color 0.15s;
 }
-/* 已完成：实心填充 + 白色 ✓。✓ 通过 ::before 注入（span 自身无文本内容）。 */
+/* 已完成：实心填充 + 白色 ✓。✓ 通过 ::before 注入（span 自身无文本内容），
+   字号按框的比例缩放（框 0.9em，✓ 0.75em）。 */
 .editor-container .task-checkbox[data-checked='true'] {
   color: #fff;
-  font-size: 12px;
+  font-size: 0.75em;
   font-weight: 700;
-  line-height: 13px;
+  line-height: 1.083;
   text-align: center;
   background: var(--accent);
   border-color: var(--accent);

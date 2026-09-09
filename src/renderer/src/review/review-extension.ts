@@ -47,15 +47,28 @@ function computeFolds(
   // 否则退出审阅或全部处理后，整篇文档会被折叠成一个占位条。
   if (chunks.length === 0) return [];
   const sorted = [...chunks].sort((a, b) => a.anchor - b.anchor);
+  // 新增侧 widget 画在块尾（替换块删除文本之后、纯新增块的插入点），恰为
+  // 后方未变化区间首行的行首。CodeMirror 的块替换装饰不渲染落在其区间
+  // 起点的 point widget，折叠若从该行开始，绿色新增与操作按钮会整体
+  // 消失，因此承载 widget 的行必须保持可见。
+  const insertWidgetPositions = new Set(
+    sorted.filter((c) => c.insertedText.length > 0).map((c) => c.anchor + c.removedText.length),
+  );
   const folds: ReviewFold[] = [];
   let prevEnd = 0;
   const consider = (gapStart: number, gapEnd: number): void => {
     if (gapEnd <= gapStart) return;
     const startLine = doc.lineAt(gapStart);
-    const from = startLine.from >= gapStart ? startLine.number : startLine.number + 1;
+    let from = startLine.from >= gapStart ? startLine.number : startLine.number + 1;
     const endLine = doc.lineAt(gapEnd);
     const to = endLine.to <= gapEnd ? endLine.number : endLine.number - 1;
-    if (to < from || to - from + 1 < FOLD_MIN_GAP_LINES) return;
+    if (to < from) return;
+    // 折叠起点行承载上一块的新增 widget 时，该行保持可见，从下一行起折叠。
+    if (insertWidgetPositions.has(doc.line(from).from)) {
+      from += 1;
+      if (to < from) return;
+    }
+    if (to - from + 1 < FOLD_MIN_GAP_LINES) return;
     if (dismissed.includes(from)) return;
     const fromPos = doc.line(from).from;
     const toPos = doc.line(to).to;
