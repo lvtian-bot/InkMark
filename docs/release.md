@@ -9,16 +9,17 @@
 
 ## 发布步骤
 
-1. 确认本次版本范围：
+1. 检查并提交工作区内的所有更改：执行 `git status`，核对全部未提交改动与未跟踪文件，按提交规范分类提交——代码功能与修复用 `feat:`/`fix:`（连同配套测试与文档），纯文档说明用 `docs:`；提交后再次执行 `git status` 确认工作区干净。发布是 GitHub Actions 按标签对应的提交在云端打包的，本地未提交的改动不会进入安装包，发布的就不是本地最新版本；且发布过程中的版本重置、重打标签等操作可能直接丢弃未提交内容且无法找回。
+2. 确认本次版本范围：
    - 将 `docs/TODO.md` 中本次已打勾的 `[x]` 待办项，剪切归档至 `docs/TODO-ARCHIVE.md` 顶部的 `## vX.Y.Z（YYYY-MM-DD）` 小节。
    - 更新 `package.json` 和 `package-lock.json` 中的版本号。
-2. 运行 `npm run check`，确认 lint、类型检查、单元测试、格式检查和生产构建全部通过。
-3. 提交版本改动并推送 `master`，等待 Quality workflow 通过。
-4. 创建与包版本一致的标签（例如 `v0.0.7`），并将标签推送到远端。
-5. **主动跟踪 Release workflow**：推送标签后，执行人必须通过 `gh run list` / `gh run watch` 或 GitHub 页面实时跟踪 Release 工作流执行过程，直至所有步骤全部完成。严禁推完标签不跟踪；若工作流失败，必须立即介入排查处理。
-6. 确认 GitHub Release 页面已成功生成该版本，且包含 `.exe` 安装包、`.exe.blockmap` 和 `latest.yml` 完整发布产物。
-7. 确认 Release 页面正文已由工作流自动生成中文发布说明（依据 `cliff.toml` 从 Conventional Commits 派生），仓库根 `CHANGELOG.md` 已由工作流自动提交更新。
-8. 核对 `latest.yml` 的 `url`/`path` 与实际上传资产名一致。v0.1.3 起 `nsis.artifactName` 已显式指定无空格文件名（`${productName}-Setup-${version}.${ext}`），磁盘名、清单名与上传名三者恒一致，正常无需干预；若发现不一致（应用内更新会下载 404），修正该文件并以 `gh release upload <tag> latest.yml --clobber` 覆盖，再通过 GitHub API（资产 CDN 有缓存）复核生效。
+3. 运行 `npm run check`，确认 lint、类型检查、单元测试、格式检查和生产构建全部通过。
+4. 提交版本改动并推送 `master`，等待 Quality workflow 通过。
+5. 创建与包版本一致的标签（例如 `v0.0.7`），并将标签推送到远端。
+6. **主动跟踪 Release workflow**：推送标签后，执行人必须通过 `gh run list` / `gh run watch` 或 GitHub 页面实时跟踪 Release 工作流执行过程，直至所有步骤全部完成。严禁推完标签不跟踪；若工作流失败，必须立即介入排查处理。
+7. 确认 GitHub Release 页面已成功生成该版本，且包含 `.exe` 安装包、`.exe.blockmap` 和 `latest.yml` 完整发布产物。
+8. 确认 Release 页面正文已由工作流自动生成中文发布说明（依据 `cliff.toml` 从 Conventional Commits 派生），仓库根 `CHANGELOG.md` 已由工作流自动提交更新。
+9. 核对 `latest.yml` 的 `url`/`path` 与实际上传资产名一致。v0.1.3 起 `nsis.artifactName` 已显式指定无空格文件名（`${productName}-Setup-${version}.${ext}`），磁盘名、清单名与上传名三者恒一致，正常无需干预；若发现不一致（应用内更新会下载 404），修正该文件并以 `gh release upload <tag> latest.yml --clobber` 覆盖，再通过 GitHub API（资产 CDN 有缓存）复核生效。
 
 完成标准：GitHub Actions Release 工作流成功执行、GitHub Release 发布成功且产物完整、发布说明与 CHANGELOG 已自动生成、`latest.yml` 与资产名一致（应用内更新可用）。仅创建标签、仅推送远端或工作流中途失败均不视为完成发布。
 
