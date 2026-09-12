@@ -34,7 +34,7 @@ export interface Tab {
   externalUpdatePending: boolean;
   /** 外部改动审阅中未决的改动块数量（0 = 无待审改动）。 */
   pendingReviewCount: number;
-  /** 审阅会话进行中：外部改动继续进入审阅，工具条常驻直至用户退出。 */
+  /** 本轮审阅尚未保存：固定磁盘快照，后续外部修改仅标记为需另存。 */
   reviewSession: boolean;
 }
 
@@ -290,12 +290,11 @@ export const useStore = create<InkMarkState>((set, get) => ({
     const now = Date.now();
     if (now - lastToggleViewModeTime < 250) return;
     const s = get();
-    // 审阅视图只存在于源码模式：活动标签还有待审改动时锁定在源码模式，
-    // 先逐块处理完再切换（change-review.md：审阅期间不允许切换模式）。
+    // 审阅视图只存在于源码模式：处理完后仍要确认保存，会话结束前不切换。
     // 被锁定拒绝的切换不消耗防抖窗口，待审清零后可立即切换。
     if (s.viewMode !== 'wysiwyg') {
       const activeTab = s.tabs.find((tab) => tab.id === s.activeTabId);
-      if ((activeTab?.pendingReviewCount ?? 0) > 0) return;
+      if (activeTab?.reviewSession || (activeTab?.pendingReviewCount ?? 0) > 0) return;
     }
     lastToggleViewModeTime = now;
     set((state) => ({ viewMode: state.viewMode === 'wysiwyg' ? 'source' : 'wysiwyg' }));

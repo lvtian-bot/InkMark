@@ -3,6 +3,8 @@ import type { TextMatch } from './find-replace';
 
 export interface EditorHandle {
   getMarkdown: () => string;
+  /** 仅返回尚未上报的真实正文编辑；无待同步编辑时保留原始 Markdown。 */
+  getPendingMarkdown: () => string | null;
   getSelectedMarkdown: () => string;
   setMarkdown: (md: string) => void;
   skipFrontmatterIfSelected: () => void;

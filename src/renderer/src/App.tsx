@@ -31,7 +31,7 @@ import { editorHandle } from './editor-ref';
 import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
 import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
-import { completeReview, drainQueuedReviewChunks } from './review/review-store';
+import { drainQueuedReviewChunks } from './review/review-store';
 import { resolveAllReviewChunks } from './review/review-resolution';
 import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
@@ -122,10 +122,13 @@ function AppContent() {
   const setMarkdown = useCallback((md: string) => {
     if (!editorHandle.current) return false;
     editorHandle.current.setMarkdown(md);
-    return true;
+    // useFile 以返回值判断加载通知是否已消费 suppressDirty。隐藏模式的
+    // 通知被拦下时返回 false，不能让下一次真实源码输入被误当成加载事件。
+    return useStore.getState().viewMode === 'wysiwyg' && !switchingRef.current;
   }, []);
 
   const fileOps = useFile(setMarkdown, viewMode);
+  const { finishReview } = fileOps;
   const { exportDocument: runExport } = useExport();
   const fileTree = useFileTree(activeFilePath);
 
@@ -160,6 +163,8 @@ function AppContent() {
 
   const handleDocChange = useCallback(
     (doc: unknown) => {
+      // 所见即所得编辑器隐藏后，延迟到达的旧通知不能覆盖源码审阅正文。
+      if (useStore.getState().viewMode !== 'wysiwyg') return;
       notifyFindContentChanged();
       if (switchingRef.current) return;
       setSourceContent(editorHandle.current?.getMarkdown() ?? '');
@@ -307,7 +312,12 @@ function AppContent() {
     updateTab(tabId, scrollPositionUpdate(prev, scrollTop));
     switchingRef.current = true;
     if (viewMode === 'source') {
-      const md = editorHandle.current?.getMarkdown() ?? '';
+      const tab = useStore.getState().tabs.find((item) => item.id === tabId);
+      // 审阅块按 sourceContent 定位。进入审阅不得用所见即所得的重新
+      // 序列化结果替换原文，否则换行/格式变化会使待审块失效。
+      const md = tab?.reviewSession
+        ? tab.sourceContent
+        : (editorHandle.current?.getMarkdown() ?? '');
       const state = editorHandle.current?.getEditorState();
       if (state) editorStateCache.capture(tabId, 'wysiwyg', md, state);
       setSourceContent(md);
@@ -386,15 +396,17 @@ function AppContent() {
   }, [activeTabId, viewMode]);
 
   // 源码编辑器上报的未决块数量写回活动标签（工具条、角标与锁定判定都读它）。
-  const handleReviewCountChange = useCallback((count: number, content: string) => {
+  const handleReviewCountChange = useCallback((count: number) => {
     const state = useStore.getState();
-    state.updateTab(state.activeTabId, {
-      pendingReviewCount: count,
-      // 最后一块处理完成时，把该事务产生的正文与“块清零”原子写入 store。
-      // 自动保存只能看到这份已核验正文，不能抢先读到旧 sourceContent。
-      ...(count === 0 ? { sourceContent: content, isDirty: true } : {}),
-    });
+    state.updateTab(state.activeTabId, { pendingReviewCount: count });
   }, []);
+
+  const handleSingleReviewComplete = useCallback(
+    (content: string) => {
+      void finishReview(useStore.getState().activeTabId, content);
+    },
+    [finishReview],
+  );
 
   const finishAllReviewChunks = useCallback(
     (tabId: string, decision: 'accept' | 'reject'): boolean => {
@@ -412,20 +424,15 @@ function AppContent() {
       );
       if (content == null) return false;
 
-      useStore.getState().updateTab(tabId, {
-        sourceContent: content,
-        pendingReviewCount: 0,
-        isDirty: true,
-      });
-      completeReview(tabId);
+      void finishReview(tabId, content, true);
       return true;
     },
-    [],
+    [finishReview],
   );
 
   // 全部接受 / 全部拒绝（change-review.md 2026-09-04）：这是对整批外部改动的
   // 终局决定，先弹确认，确认后执行并把文档写回磁盘、结束审阅会话——不再有
-  // 单独的「退出审阅」动作（写盘由块清零后的 useFile 归零 effect 完成）。
+  // 单独的「退出审阅」动作（写盘由核验后的 finishReview 显式发起）。
   const handleAcceptAll = useCallback(async () => {
     const tabId = useStore.getState().activeTabId;
     const tab = useStore.getState().tabs.find((t) => t.id === tabId);
@@ -434,7 +441,7 @@ function AppContent() {
       tt('review.acceptAllConfirmTitle'),
       tt('review.acceptAllConfirmBody', { count: tab.pendingReviewCount }),
       [tt('review.acceptAllAndSave'), tt('common.cancel')],
-      { defaultId: 0, cancelId: 1 },
+      { defaultId: 1, cancelId: 1 },
     );
     if (choice !== 0) return;
     if (useStore.getState().activeTabId !== tabId) return;
@@ -449,7 +456,7 @@ function AppContent() {
       tt('review.rejectAllConfirmTitle'),
       tt('review.rejectAllConfirmBody', { count: tab.pendingReviewCount }),
       [tt('review.rejectAllAndSave'), tt('common.cancel')],
-      { defaultId: 0, cancelId: 1 },
+      { defaultId: 1, cancelId: 1 },
     );
     if (choice !== 0) return;
     if (useStore.getState().activeTabId !== tabId) return;
@@ -466,7 +473,7 @@ function AppContent() {
         tt('review.exitTitle'),
         tt('review.exitBody', { count: tab.pendingReviewCount }),
         [tt('review.exitAcceptAll'), tt('review.exitRejectAll'), tt('review.exitContinue')],
-        { defaultId: 0, cancelId: 2 },
+        { defaultId: 2, cancelId: 2 },
       );
       if (choice === 0 || choice === 1) {
         // 弹窗期间活动标签可能已被快捷键切换，只对发起退出时的标签执行。
@@ -475,8 +482,8 @@ function AppContent() {
       }
       return;
     }
-    completeReview(tabId);
-  }, [finishAllReviewChunks]);
+    await fileOps.saveReviewResult(tabId);
+  }, [finishAllReviewChunks, fileOps]);
 
   useEffect(() => {
     if (window.inkmark.syncOutlineVisible) {
@@ -1044,15 +1051,17 @@ function AppContent() {
             />
           )}
           {!isStartPage && toolbarVisible && <Toolbar onSave={() => void fileOps.save()} />}
-          {!isStartPage && externalUpdatePending && (
+          {!isStartPage && externalUpdatePending && !activeReviewSession && (
             <ExternalUpdateBanner
               onReload={fileOps.reloadActiveTab}
               onReview={fileOps.reviewActiveTab}
             />
           )}
-          {!isStartPage && activeReviewSession && pendingReviewCount > 0 && (
+          {!isStartPage && activeReviewSession && (
             <ReviewToolbar
               count={pendingReviewCount}
+              externalChanged={externalUpdatePending}
+              onSave={() => void fileOps.saveReviewResult(activeTabId)}
               onAcceptAll={() => void handleAcceptAll()}
               onRejectAll={() => void handleRejectAll()}
               onExit={() => void handleExitReview()}
@@ -1075,6 +1084,7 @@ function AppContent() {
               <SourceEditor
                 onChange={handleSourceChange}
                 onReviewCountChange={handleReviewCountChange}
+                onSingleReviewComplete={handleSingleReviewComplete}
                 onFollowLink={handleFollowLink}
               />
             </Suspense>

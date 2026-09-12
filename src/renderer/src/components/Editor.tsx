@@ -36,7 +36,7 @@ import {
   callCommand,
 } from '@milkdown/kit/utils';
 import { TextSelection } from '@milkdown/kit/prose/state';
-import type { ResolvedPos } from '@milkdown/kit/prose/model';
+import type { Node as ProseNode, ResolvedPos } from '@milkdown/kit/prose/model';
 import { editorHandle } from '../editor-ref';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import { isValidTextMatch, type TextMatch } from '../find-replace';
@@ -87,6 +87,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
     onFollowLinkRef.current = onFollowLink;
   }, [onDocChange, onDocInit, onFollowLink]);
   const armedRef = useRef(false);
+  const syncedDocRef = useRef<ProseNode | null>(null);
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const strictLineBreaks = useStore((s) => s.strictLineBreaks);
@@ -203,8 +204,13 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       })
       .config((ctx) => {
         const manager = ctx.get(listenerCtx);
-        manager.updated((_ctx, doc) => {
-          if (!armedRef.current) return;
+        manager.updated((ctx, doc) => {
+          if (!armedRef.current || useStore.getState().viewMode !== 'wysiwyg') return;
+          // listener 会延迟 200ms 上报。切换/加载后的旧事务不能反写当前正文，
+          // 已程序加载或上报过的正文也无需再次序列化。
+          const currentDoc = ctx.get(editorViewCtx).state.doc;
+          if (!doc.eq(currentDoc) || syncedDocRef.current?.eq(doc)) return;
+          syncedDocRef.current = doc;
           onDocChangeRef.current(doc);
         });
       })
@@ -289,6 +295,12 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           return '';
         }
       },
+      getPendingMarkdown: () => {
+        const doc = ed.ctx.get(editorViewCtx).state.doc;
+        if (syncedDocRef.current?.eq(doc)) return null;
+        // 查询本身不消费待同步状态；调用方确认同步前仍可再次取得正文。
+        return ed.ctx.get(serializerCtx)(doc);
+      },
       getSelectedMarkdown: () => {
         try {
           const view = ed.ctx.get(editorViewCtx);
@@ -308,6 +320,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         try {
           ed.action(replaceAllAction(md, true));
           const view = ed.ctx.get(editorViewCtx);
+          syncedDocRef.current = view.state.doc;
           onDocChangeRef.current(view.state.doc);
         } catch (e) {
           console.error('setMarkdown error:', e);
@@ -342,6 +355,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         try {
           const view = ed.ctx.get(editorViewCtx);
           view.updateState(state);
+          syncedDocRef.current = view.state.doc;
         } catch (e) {
           console.error('setEditorState error:', e);
         }
@@ -630,6 +644,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       editorHandle.current?.skipFrontmatterIfSelected();
     }
 
+    syncedDocRef.current = ed.ctx.get(editorViewCtx).state.doc;
     armedRef.current = true;
 
     // 打开已有文档不抢焦点(避免光标压在 frontmatter 上、也尊重"打开以阅读为主");
@@ -641,6 +656,8 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
     }
 
     return () => {
+      armedRef.current = false;
+      syncedDocRef.current = null;
       editorHandle.current = null;
     };
   }, [loading, get]);

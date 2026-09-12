@@ -267,15 +267,31 @@ export const messages: Record<MessageKey, string> = {
   'review.replaceNow': 'Replace now',
   'review.enterReview': 'Review changes',
   'review.toolbarTitle': 'External changes · {count} pending',
-  'review.toolbarHint':
-    'Editing is locked while reviewing; changes are saved once all are resolved',
+  'review.toolbarHint': 'Confirm to save; save a new copy if the original changes',
+  'review.concurrentWarning':
+    'Do not edit this document in other software or with AI during review, to avoid conflicts or content loss.',
+  'review.externalChangedHint': 'External changes detected. Save this review result as a new file.',
+  'review.readyTitle': 'Review complete · not saved',
+  'review.saveResultTitle': 'Save review result',
+  'review.saveResultBody':
+    'Replace the original file with the current review result and finish reviewing?',
+  'review.saveAndFinish': 'Save and finish review',
+  'review.externalChangedTitle': 'The original file changed again',
+  'review.externalChangedBody':
+    'The original file changed during review, or could not be verified. Save your review result as a new file and compare the versions yourself. Cancel keeps the result in this tab without writing to the original. Save a copy before closing.',
+  'review.saveCopy': 'Save a new version',
+  'review.saveFailedBody':
+    'Saving did not complete. Your review result remains in this tab. Retry or save it as a new file.',
+  'review.copyExistsTitle': 'File already exists',
+  'review.copyExistsBody':
+    'Save the reviewed result as a new file. Choose a different file name; existing files will not be overwritten.',
   'review.exit': 'Exit review',
   'review.acceptAllConfirmTitle': 'Accept all and save',
   'review.acceptAllConfirmBody':
-    'Accept all {count} external changes? The document will be saved immediately and review will end.',
+    'Accept all {count} external changes and save? The original will be checked first. If it changed again, save the result as a new file.',
   'review.rejectAllConfirmTitle': 'Reject all and save',
   'review.rejectAllConfirmBody':
-    'Reject all {count} external changes? Your current content will overwrite the external changes on disk and review will end.',
+    'Reject all {count} external changes and save your current content? The original will be checked first. If it changed again, save the result as a new file.',
   'review.acceptAllAndSave': 'Accept and save',
   'review.rejectAllAndSave': 'Reject and save',
   'review.exitTitle': 'Exit review',

@@ -2,6 +2,11 @@
 // 只做字符串运算，不依赖编辑器、store 或 IPC，全部逻辑可单元测试。
 import { diffArrays } from 'diff';
 
+/** 与 CodeMirror 的文本坐标一致；只统一换行，不重新序列化 Markdown。 */
+export function normalizeReviewText(text: string): string {
+  return text.replace(/\r\n?/g, '\n');
+}
+
 // 分词粒度（change-review.md「按行」，2026-09-04 修订）：整行（含换行符）
 // 为一个 token，一行内的任何改动整行构成一个决策块，与 Git / VS Code 的
 // 行级 diff 一致。初版按词对比会把 AI 润色的一段话拆成十几个待决块，

@@ -3,11 +3,12 @@
 // 的基线（脏标签的用户编辑不在磁盘上，无法从磁盘重读，只能留存在内存）。
 import { useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
+import { editorHandle } from '../editor-ref';
 import { editorStateCache } from '../editor-state-cache';
-import { getReviewChunks } from './review-extension';
 import {
   anchorReviewChunks,
   computeReviewChunks,
+  normalizeReviewText,
   verifyAnchoredChunks,
   type AnchoredReviewChunk,
 } from './review-diff';
@@ -21,35 +22,6 @@ const diskSnapshots = new Map<string, DiskSnapshot>();
 // 暂无 CodeMirror 状态可注入的标签页（后台标签、源码模式尚未挂载）的待决块，
 // 待该标签成为活动标签且处于源码模式时由 drainQueuedReviewChunks 注入。
 const queuedChunks = new Map<string, AnchoredReviewChunk[]>();
-
-function renumberChunks(chunks: AnchoredReviewChunk[]): AnchoredReviewChunk[] {
-  return chunks
-    .sort((a, b) => a.anchor - b.anchor)
-    .map((chunk, index) => ({ ...chunk, id: index + 1 }));
-}
-
-function chunksOverlap(a: AnchoredReviewChunk, b: AnchoredReviewChunk): boolean {
-  const aEnd = a.anchor + Math.max(a.removedText.length, 1);
-  const bEnd = b.anchor + Math.max(b.removedText.length, 1);
-  return a.anchor < bEnd && b.anchor < aEnd;
-}
-
-function currentReviewChunks(tabId: string, sourceContent: string): AnchoredReviewChunk[] {
-  const state = useStore.getState();
-  const handle = sourceEditorHandle.current;
-  if (
-    state.activeTabId === tabId &&
-    state.viewMode === 'source' &&
-    handle?.getValue() === sourceContent
-  ) {
-    return handle.getReviewChunks();
-  }
-  const queued = queuedChunks.get(tabId);
-  if (queued) return queued;
-  const cachedState = editorStateCache.restore(tabId, 'source', sourceContent);
-  if (cachedState) return getReviewChunks(cachedState);
-  return [];
-}
 
 export function setDiskSnapshot(tabId: string, content: string, mtime: number): void {
   diskSnapshots.set(tabId, { content, mtime });
@@ -67,17 +39,31 @@ export function clearReviewForTab(tabId: string): void {
 
 /**
  * 外部改动入库：diff(磁盘快照, 磁盘最新版) 得到外部增量，锚定到当前
- * buffer 后进入审阅。已决块早已物化进 buffer，天然保留；新的非重叠块
- * 追加到现有未决块，重叠区域则从当前 buffer 到最新磁盘态重新计算。
- * 同时把 fileMtime 前推到磁盘版（保存冲突检测以此为已知版本）。
+ * buffer 后进入审阅。每个会话固定这批改动与磁盘快照；后续外部修改
+ * 只标记冲突，不能重写本轮选择或前推保存基线。
  */
 export function ingestReviewChunks(tabId: string, diskContent: string, diskMtime: number): void {
+  const before = useStore.getState();
+  if (before.tabs.find((tab) => tab.id === tabId)?.reviewSession) {
+    const snapshot = diskSnapshots.get(tabId);
+    if (!snapshot || snapshot.mtime !== diskMtime || snapshot.content !== diskContent) {
+      before.updateTab(tabId, { externalUpdatePending: true });
+    }
+    return;
+  }
+  // Milkdown 的变更通知有延迟；只取尚未上报的真实编辑，避免用格式化
+  // 后的 Markdown 替换一份未编辑过的原文。文件读取期间的新输入也在此补齐。
+  if (before.activeTabId === tabId && before.viewMode === 'wysiwyg') {
+    const pending = editorHandle.current?.getPendingMarkdown();
+    if (pending != null) before.updateTab(tabId, { sourceContent: pending, isDirty: true });
+  }
   const state = useStore.getState();
   const tab = state.tabs.find((t) => t.id === tabId);
   if (!tab) return;
-  const base = diskSnapshots.get(tabId)?.content ?? tab.sourceContent;
-  const deltaChunks = computeReviewChunks(base, diskContent);
-  const existing = currentReviewChunks(tabId, tab.sourceContent);
+  const content = normalizeReviewText(tab.sourceContent);
+  const base = normalizeReviewText(diskSnapshots.get(tabId)?.content ?? tab.sourceContent);
+  const reviewDiskContent = normalizeReviewText(diskContent);
+  const deltaChunks = computeReviewChunks(base, reviewDiskContent);
 
   // 同一磁盘版本可能因双击入口或重复文件事件再次到达。空增量不能清空
   // 已经在审的块，更不能制造 reviewSession=true / pendingReviewCount=0。
@@ -91,22 +77,17 @@ export function ingestReviewChunks(tabId: string, diskContent: string, diskMtime
     return;
   }
 
-  const incremental = anchorReviewChunks(deltaChunks, base, tab.sourceContent);
-  const overlapsExisting = incremental.some((next) =>
-    existing.some((current) => chunksOverlap(current, next)),
-  );
+  const incremental = anchorReviewChunks(deltaChunks, base, content);
   let anchored: AnchoredReviewChunk[];
-  if (incremental.length !== deltaChunks.length || overlapsExisting) {
-    // AI 再次改写了尚未决定的区域。此时上一磁盘版中的旧侧文本已不在
-    // 当前 buffer，不能把块当成“已处理”丢弃；改为直接展示当前正文到
-    // 最新磁盘版的差异，确保没有外部内容被静默吞掉。
+  if (incremental.length !== deltaChunks.length) {
+    // 本地编辑与外部改动重叠时，展示当前正文到固定磁盘版的全部差异。
     anchored = anchorReviewChunks(
-      computeReviewChunks(tab.sourceContent, diskContent),
-      tab.sourceContent,
-      tab.sourceContent,
+      computeReviewChunks(content, reviewDiskContent),
+      content,
+      content,
     );
   } else {
-    anchored = renumberChunks([...existing, ...incremental]);
+    anchored = incremental;
   }
   diskSnapshots.set(tabId, { content: diskContent, mtime: diskMtime });
   if (anchored.length === 0) {
@@ -129,6 +110,7 @@ export function ingestReviewChunks(tabId: string, diskContent: string, diskMtime
     return;
   }
   useStore.getState().updateTab(tabId, {
+    sourceContent: content,
     fileMtime: diskMtime,
     externalUpdatePending: false,
     pendingReviewCount: anchored.length,
@@ -152,10 +134,10 @@ function tryInjectChunks(tabId: string, chunks: AnchoredReviewChunk[]): boolean 
   if (!tab || handle.getValue() !== tab.sourceContent) return false;
   // 注入前再校验一次锚点（模式/标签切换竞态下 buffer 可能已变化）。
   const verified = verifyAnchoredChunks(chunks, handle.getValue());
+  // 定位失败属于同步失败，不能把未显示的外部改动当作已处理。
+  // 保留整批待决块，等待正文同步后再次注入。
+  if (verified.length !== chunks.length) return false;
   handle.applyReviewChunks(verified);
-  if (verified.length !== chunks.length) {
-    useStore.getState().updateTab(tabId, { pendingReviewCount: verified.length });
-  }
   return true;
 }
 
@@ -179,7 +161,7 @@ export function exitReview(tabId: string): void {
   }
 }
 
-/** 最后一块已逐项处理：只结束会话，不再改动编辑器中的审阅决定。 */
+/** 审阅结果已成功保存：结束会话，不再改动编辑器中的审阅决定。 */
 export function completeReview(tabId: string): void {
   queuedChunks.delete(tabId);
   useStore.getState().updateTab(tabId, { reviewSession: false, pendingReviewCount: 0 });
@@ -191,7 +173,7 @@ export function completeReview(tabId: string): void {
 
 /**
  * 排空某标签的待注入块：该标签成为活动标签且源码编辑器就绪后调用。
- * 注入的是已经合并过旧块与最新增量的完整待审集合（set 语义）。
+ * 注入的是本轮固定版本的完整待审集合（set 语义）。
  */
 export function drainQueuedReviewChunks(tabId: string): void {
   const queued = queuedChunks.get(tabId);
@@ -203,6 +185,7 @@ export function drainQueuedReviewChunks(tabId: string): void {
   const tab = state.tabs.find((t) => t.id === tabId);
   if (!tab || handle.getValue() !== tab.sourceContent) return;
   const verified = verifyAnchoredChunks(queued, handle.getValue());
+  if (verified.length !== queued.length) return;
   queuedChunks.delete(tabId);
   handle.applyReviewChunks(verified);
   useStore.getState().updateTab(tabId, { pendingReviewCount: verified.length });

@@ -9,7 +9,7 @@ import {
   net,
   shell,
 } from 'electron';
-import { join, dirname, isAbsolute, basename } from 'path';
+import { join, dirname, isAbsolute, basename, extname } from 'path';
 import {
   readFileSync,
   writeFileSync,
@@ -24,6 +24,11 @@ import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
 import { readStableTextFile } from './stable-file-read';
+import {
+  saveReviewedFileVersion,
+  writeNewReviewCopy,
+  type ReviewedFileSaveRequest,
+} from './review-file-save';
 import { resolveDocumentLink } from './document-link-resolver';
 import { resolveAutoUpdater } from './resolve-auto-updater';
 import { createUpdateService, type UpdateService } from './update-service';
@@ -203,6 +208,17 @@ function isSaveAsRequest(value: unknown): value is SaveAsRequest {
   if (!isRecord(value) || typeof value.content !== 'string') return false;
   return (
     value.sourcePath === undefined || value.sourcePath === null || isDocumentPath(value.sourcePath)
+  );
+}
+
+function isReviewedFileSaveRequest(value: unknown): value is ReviewedFileSaveRequest {
+  return (
+    isRecord(value) &&
+    typeof value.content === 'string' &&
+    isDocumentPath(value.path) &&
+    typeof value.expectedContent === 'string' &&
+    typeof value.expectedMtime === 'number' &&
+    Number.isFinite(value.expectedMtime)
   );
 }
 
@@ -973,6 +989,62 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   );
   addRecent(filePath, 'file');
   return { path: filePath, mtime };
+});
+
+ipcMain.handle('file:saveReviewed', (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isReviewedFileSaveRequest(request)) {
+    throw new Error('Invalid reviewed file save request.');
+  }
+  return saveReviewedFileVersion(request, () => {
+    workspaceWatchManager.recordSelfWrite(request.path);
+    return fileWatchManager.performSelfWrite(request.path, () =>
+      atomicWriteFile(request.path, request.content),
+    );
+  });
+});
+
+ipcMain.handle('dialog:saveReviewCopy', async (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isSaveAsRequest(request) ||
+    !isDocumentPath(request.sourcePath)
+  ) {
+    throw new Error('Invalid review copy request.');
+  }
+  const sourcePath = request.sourcePath;
+  if (!mainWindow) return null;
+  const owner = mainWindow;
+  while (!owner.isDestroyed()) {
+    const result = await dialog.showSaveDialog(owner, {
+      defaultPath: join(
+        dirname(sourcePath),
+        `${basename(sourcePath, extname(sourcePath))}-review.md`,
+      ),
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    });
+    if (result.canceled || !result.filePath) return null;
+    const filePath = result.filePath;
+    try {
+      // 与普通另存为相同：跨目录复制原文件的附件目录，正文相对路径不改写。
+      imageStorage.copyAssetsForSaveAs(sourcePath, filePath);
+      workspaceWatchManager.recordSelfWrite(filePath);
+      const mtime = fileWatchManager.performSelfWrite(filePath, () =>
+        writeNewReviewCopy(filePath, request.content, sourcePath),
+      );
+      addRecent(filePath, 'file');
+      return { path: filePath, mtime };
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
+      if (owner.isDestroyed()) return null;
+      await dialog.showMessageBox(owner, {
+        type: 'info',
+        title: t('review.copyExistsTitle'),
+        message: t('review.copyExistsBody'),
+        buttons: [t('common.ok')],
+      });
+    }
+  }
+  return null;
 });
 
 // 导出文档（HTML / PDF）：对话框选目标路径 → 渲染 → 落盘。

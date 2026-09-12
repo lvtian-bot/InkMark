@@ -32,6 +32,7 @@ interface SourceEditorProps {
   onChange: (state: EditorState) => void;
   /** 未决审阅块数量变化时上报（React 侧据此驱动工具条与角标）。 */
   onReviewCountChange?: (count: number, content: string) => void;
+  onSingleReviewComplete?: (content: string) => void;
   /** Ctrl/Cmd+点击链接时回调（href 为链接的原始地址）。 */
   onFollowLink: (href: string) => void;
 }
@@ -71,7 +72,12 @@ const fadedMarksHighlight = HighlightStyle.define([
   // 列表项文字（tags.list）保持正文色，不加样式
 ]);
 
-export function SourceEditor({ onChange, onReviewCountChange, onFollowLink }: SourceEditorProps) {
+export function SourceEditor({
+  onChange,
+  onReviewCountChange,
+  onSingleReviewComplete,
+  onFollowLink,
+}: SourceEditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -82,6 +88,7 @@ export function SourceEditor({ onChange, onReviewCountChange, onFollowLink }: So
   // 审阅扩展的回调容器：扩展只创建一次，回调通过同一对象热替换。
   const reviewCallbacksRef = useRef<{
     onCountChange?: (count: number, content: string) => void;
+    onSingleDecisionComplete?: (content: string) => void;
   }>({});
   // 链接跳转回调容器：与审阅回调同理，扩展内经它取最新回调。
   const followLinkRef = useRef(onFollowLink);
@@ -96,7 +103,8 @@ export function SourceEditor({ onChange, onReviewCountChange, onFollowLink }: So
 
   useEffect(() => {
     reviewCallbacksRef.current.onCountChange = onReviewCountChange;
-  }, [onReviewCountChange]);
+    reviewCallbacksRef.current.onSingleDecisionComplete = onSingleReviewComplete;
+  }, [onReviewCountChange, onSingleReviewComplete]);
 
   // 创建 CodeMirror 实例（只创建一次）。
   useEffect(() => {

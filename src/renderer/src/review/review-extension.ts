@@ -396,6 +396,8 @@ const reviewChangeFilter = EditorState.changeFilter.of((tr) => {
  */
 export function createReviewExtension(callbacks: {
   onCountChange?: (count: number, content: string) => void;
+  /** 仅逐项接受/拒绝完成最后一块时触发；批量决定由工具条核验后收尾。 */
+  onSingleDecisionComplete?: (content: string) => void;
 }): Extension[] {
   return [
     reviewChunksField,
@@ -404,13 +406,22 @@ export function createReviewExtension(callbacks: {
     reviewReadOnly,
     reviewChangeFilter,
     EditorView.updateListener.of((vu) => {
-      if (!callbacks.onCountChange) return;
       const prev = vu.startState.field(reviewChunksField, false);
       const next = vu.state.field(reviewChunksField, false);
       const prevCount = prev ? prev.chunks.length : 0;
       const nextCount = next ? next.chunks.length : 0;
       if (prevCount !== nextCount) {
-        callbacks.onCountChange(nextCount, vu.state.doc.toString());
+        callbacks.onCountChange?.(nextCount, vu.state.doc.toString());
+      }
+      if (
+        prevCount > 0 &&
+        nextCount === 0 &&
+        vu.transactions.some((tr) => {
+          const event = tr.annotation(Transaction.userEvent);
+          return event === 'review.accept' || event === 'review.reject';
+        })
+      ) {
+        callbacks.onSingleDecisionComplete?.(vu.state.doc.toString());
       }
     }),
   ];

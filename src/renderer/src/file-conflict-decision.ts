@@ -8,7 +8,7 @@ export interface ExternalChangeInput {
   fileMtime: number | null;
   diskMtime: number;
   isDirty: boolean;
-  /** 该标签处于审阅会话中：外部改动继续静默入库进入审阅。 */
+  /** 该标签处于审阅会话中：外部更新只标记冲突，不更换本轮版本。 */
   inReview: boolean;
 }
 
@@ -17,7 +17,7 @@ export interface ExternalChangeInput {
 // 返回值与 useFile 的 checkExternalChanges 中 mtime 比较后的分支一一对应：
 // 无待决块时干净标签走提示条（prompt，用户选直接替换或逐项审阅）、
 // 脏标签走冲突弹窗（conflict，弹窗内含逐项审阅选项）；
-// 审阅会话进行中（inReview）则外部增量直接进入审阅（review）。
+// 审阅会话进行中（inReview）只通知审阅结果需另存（review）。
 export function decideExternalChange(input: ExternalChangeInput): ExternalChangeDecision {
   const { fileMtime, diskMtime, isDirty, inReview } = input;
   if (fileMtime == null || diskMtime === fileMtime) return 'noop';

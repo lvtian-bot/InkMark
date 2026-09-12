@@ -4,7 +4,7 @@ export interface AutoSaveEligibility {
   enabled: boolean;
   filePath: string | null;
   isDirty: boolean;
-  /** 审阅期间禁止保存（change-review.md）：有未决外部改动时不自动落盘。 */
+  /** 审阅会话未提交时禁止自动落盘，包含已处理完但取消最终保存的结果。 */
   hasPendingReview: boolean;
 }
 

@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import {
   buildAcceptChange,
+  acceptReviewChunk,
+  rejectReviewChunk,
+  rejectAllReviewChunks,
   createReviewExtension,
   reviewActionAnchor,
   resolveReviewChunk,
@@ -229,4 +232,41 @@ describe('buildAcceptChange 与块决定', () => {
     expect(state.doc.toString()).toBe('前文\n外部\n后文');
     expect(state.field(reviewChunksField).chunks).toHaveLength(0);
   });
+});
+
+describe('审阅完成通知', () => {
+  it.each(['accept', 'reject', 'sync', 'bulk'] as const)(
+    '%s：仅用户逐项决定最后一块时通知保存正文',
+    (action) => {
+      const onSingleDecisionComplete = vi.fn();
+      const onCountChange = vi.fn();
+      const base = '旧正文\n';
+      const disk = '外部正文\n';
+      const view = new EditorView({
+        state: EditorState.create({
+          doc: base,
+          extensions: createReviewExtension({ onCountChange, onSingleDecisionComplete }),
+        }),
+      });
+      try {
+        const chunks = anchorReviewChunks(computeReviewChunks(base, disk), base, base);
+        view.dispatch({ effects: setReviewChunks.of(chunks) });
+        if (action === 'accept') acceptReviewChunk(view, chunks[0].id);
+        else if (action === 'reject') rejectReviewChunk(view, chunks[0].id);
+        else if (action === 'bulk') rejectAllReviewChunks(view);
+        else view.dispatch({ effects: setReviewChunks.of([]) });
+
+        expect(onCountChange).toHaveBeenLastCalledWith(0, action === 'accept' ? disk : base);
+        if (action === 'accept' || action === 'reject') {
+          expect(onSingleDecisionComplete).toHaveBeenCalledExactlyOnceWith(
+            action === 'accept' ? disk : base,
+          );
+        } else {
+          expect(onSingleDecisionComplete).not.toHaveBeenCalled();
+        }
+      } finally {
+        view.destroy();
+      }
+    },
+  );
 });

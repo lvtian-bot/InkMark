@@ -10,6 +10,7 @@ import {
   exitReview,
   ingestReviewChunks,
   setDiskSnapshot,
+  getDiskSnapshot,
 } from './review-store';
 
 // 端到端数据流测试：重现「打开文件 → 外部修改 → 入库 → 注入源码编辑器」
@@ -114,7 +115,7 @@ describe('外部改动审阅数据流', () => {
     expect(applied[0][0].insertedText).toBe('全新润色的句子在这里。\n');
   });
 
-  it('审阅中 AI 再次修改其他位置：已有未决块与新块一起保留', () => {
+  it('审阅中 AI 再次修改其他位置：保留本轮改动，只标记外部更新', () => {
     const disk0 = 'AAAA\n第一块\nBBBB\n第二块\n结尾';
     const disk1 = 'AAAA\n外部一\nBBBB\n第二块\n结尾';
     const disk2 = 'AAAA\n外部一\nBBBB\n外部二\n结尾';
@@ -134,13 +135,17 @@ describe('外部改动审阅数据流', () => {
     expect(useStore.getState().tabs.find((t) => t.id === tabId)!.pendingReviewCount).toBe(1);
 
     ingestReviewChunks(tabId, disk2, 3);
-    // D0→D1 的第一块尚未处理，D1→D2 的第二块应追加，不能静默丢失第一块。
-    expect(applied).toHaveLength(2);
-    expect(applied[1]).toHaveLength(2);
-    expect(applied[1].map((chunk) => chunk.insertedText)).toEqual(['外部一\n', '外部二\n']);
+    expect(applied).toHaveLength(1);
+    expect(applied[0]).toHaveLength(1);
+    expect(applied[0].map((chunk) => chunk.insertedText)).toEqual(['外部一\n']);
+    expect(getDiskSnapshot(tabId)).toEqual({ content: disk1, mtime: 2 });
+    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)).toMatchObject({
+      externalUpdatePending: true,
+      fileMtime: 2,
+    });
     const tab = useStore.getState().tabs.find((t) => t.id === tabId)!;
-    expect(tab.pendingReviewCount).toBe(2);
-    expect(tab.fileMtime).toBe(3);
+    expect(tab.pendingReviewCount).toBe(1);
+    expect(tab.fileMtime).toBe(2);
   });
 
   it('同一磁盘版本重复入库：不清空已有待决块，也不进入零块会话', () => {
@@ -168,7 +173,7 @@ describe('外部改动审阅数据流', () => {
     expect(applied).toHaveLength(1);
   });
 
-  it('AI 再次改写同一个未决行：更新为当前正文到最新磁盘版的待决块', () => {
+  it('AI 再次改写同一个未决行：不能替换本轮正在审阅的内容', () => {
     const disk0 = '原文\n';
     const disk1 = 'AI 第一次改写\n';
     const disk2 = 'AI 第二次改写\n';
@@ -191,7 +196,9 @@ describe('外部改动审阅数据流', () => {
     expect(tab.reviewSession).toBe(true);
     expect(tab.pendingReviewCount).toBe(1);
     expect(getChunks()[0].removedText).toBe(disk0);
-    expect(getChunks()[0].insertedText).toBe(disk2);
+    expect(getChunks()[0].insertedText).toBe(disk1);
+    expect(tab.externalUpdatePending).toBe(true);
+    expect(getDiskSnapshot(tabId)).toEqual({ content: disk1, mtime: 2 });
   });
 
   it('源码编辑器仍是旧标签内容：先排队，不把会话错误清成零块', () => {
@@ -224,7 +231,31 @@ describe('外部改动审阅数据流', () => {
     expect(applied).toHaveLength(1);
   });
 
-  it('后台标签的外部改动被撤销：清空队列并结束会话，不留下零块会话', () => {
+  it('待注入块定位失败时保持待审，原正文同步恢复后仍可注入', () => {
+    const base = '原文\n';
+    const disk = '外部修改\n';
+    const tabId = useStore.getState().addTab({ content: base, fileMtime: 1 });
+    setDiskSnapshot(tabId, base, 1);
+    useStore.setState({ viewMode: 'wysiwyg' });
+    const { applied, setDoc, getChunks } = installFakeHandle(base);
+    ingestReviewChunks(tabId, disk, 2);
+
+    // 模拟进入源码期间正文发生变化：校验失败不能丢弃整批外部改动。
+    useStore.getState().updateTab(tabId, { sourceContent: '另一份正文\n' });
+    setDoc('另一份正文\n');
+    useStore.setState({ viewMode: 'source' });
+    drainQueuedReviewChunks(tabId);
+    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)?.pendingReviewCount).toBe(1);
+    expect(applied).toHaveLength(0);
+
+    useStore.getState().updateTab(tabId, { sourceContent: base });
+    setDoc(base);
+    drainQueuedReviewChunks(tabId);
+    expect(getChunks()).toHaveLength(1);
+    expect(getChunks()[0].insertedText).toBe(disk);
+  });
+
+  it('后台标签的外部改动被撤销：仍保留本轮队列和审阅快照', () => {
     const disk0 = '原文\n';
     const disk1 = 'AI 改写\n';
     const { addTab, updateTab } = useStore.getState();
@@ -242,12 +273,14 @@ describe('外部改动审阅数据流', () => {
     ingestReviewChunks(tabId, disk0, 3);
 
     const tab = useStore.getState().tabs.find((t) => t.id === tabId)!;
-    expect(tab.pendingReviewCount).toBe(0);
-    expect(tab.reviewSession).toBe(false);
+    expect(tab.pendingReviewCount).toBe(1);
+    expect(tab.reviewSession).toBe(true);
+    expect(tab.externalUpdatePending).toBe(true);
+    expect(getDiskSnapshot(tabId)).toEqual({ content: disk1, mtime: 2 });
     expect(tab.isDirty).toBe(false);
   });
 
-  it('后台标签继续收到外部改动：从编辑器缓存保留原有未决块并追加新块', () => {
+  it('后台标签继续收到外部改动：保留缓存中的原有改动，不追加后来的新块', () => {
     const disk0 = 'AAAA\n第一块\nBBBB\n第二块\nCCCC\n第三块\n结尾';
     const disk1 = 'AAAA\n外部一\nBBBB\n第二块\nCCCC\n第三块\n结尾';
     const disk2 = 'AAAA\n外部一\nBBBB\n外部二\nCCCC\n第三块\n结尾';
@@ -276,14 +309,14 @@ describe('外部改动审阅数据流', () => {
     ingestReviewChunks(tabId, disk2, 3);
     ingestReviewChunks(tabId, disk3, 4);
 
-    useStore.setState({ activeTabId: tabId, viewMode: 'source' });
-    const background = installFakeHandle(disk0);
-    drainQueuedReviewChunks(tabId);
-    expect(background.getChunks().map((chunk) => chunk.insertedText)).toEqual([
+    const restored = editorStateCache.restore(tabId, 'source', disk0);
+    expect(restored?.field(reviewChunksField).chunks.map((chunk) => chunk.insertedText)).toEqual([
       '外部一\n',
-      '外部二\n',
-      '外部三\n',
     ]);
+    expect(getDiskSnapshot(tabId)).toEqual({ content: disk1, mtime: 2 });
+    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)?.externalUpdatePending).toBe(
+      true,
+    );
   });
 
   it('注入的块可直接驱动 CodeMirror 状态（set 效果）', () => {
