@@ -188,17 +188,25 @@
   overflow-x: auto;
   margin: 1em 0;
   font-size: 0.9em;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 .editor-container.theme-inkmark th,
 .editor-container.theme-inkmark td {
   border: 1px solid var(--border-color);
-  padding: 6px 10px;
+  /* 列宽下限：列压到此处不再压缩，超出部分由表格自身横向滚动（对齐 Obsidian 表格策略） */
+  min-width: 6ch;
+  padding: 4px 8px;
   text-align: left;
 }
 .editor-container.theme-inkmark th {
   background: var(--bg-secondary);
   font-weight: 600;
+}
+/* 单元格内容是段落节点，不沿用正文段落的段距与行距，行距由 table 的 line-height 统一控制 */
+.editor-container.theme-inkmark th p,
+.editor-container.theme-inkmark td p {
+  margin: 0;
+  line-height: inherit;
 }
 .editor-container.theme-inkmark img {
   max-width: 100%;
