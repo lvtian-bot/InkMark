@@ -4,6 +4,7 @@ import type {
   ResolveImageSourceRequest,
   StoreImageRequest,
 } from '../shared/image-storage';
+import type { DocumentLinkResolution } from '../shared/document-link';
 import type { WorkspaceEntry } from '../shared/workspace-tree';
 import type { RecentItem } from '../shared/recent-items';
 import type { ShortcutMap } from '../shared/shortcuts';
@@ -178,6 +179,9 @@ const api = {
   platform: process.platform,
 };
 
+  resolveDocumentLink: (request: { sourcePath: string; href: string }) =>
+    ipcRenderer.invoke('link:resolve', request) as Promise<DocumentLinkResolution>,
+  openExternalUrl: (url: string) => ipcRenderer.invoke('shell:openExternal', { url }),
 try {
   contextBridge.exposeInMainWorld('inkmark', api);
 } catch (error) {

@@ -52,6 +52,8 @@ import { listKeymap } from '../plugins/list-keymap';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { breaks } from '../plugins/breaks';
+import { linkGesture } from '../plugins/link-gesture';
+import { pickLinkHrefFromClick, isFollowLinkCombo, shouldHintFollowLink } from '../document-link';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import '../styles/editor.css';
@@ -70,16 +72,20 @@ const GITHUB_LINK_ID = 'inkmark-github-theme';
 interface EditorProps {
   onDocChange: (doc: unknown) => void;
   onDocInit: (doc: unknown) => void;
+  /** 点击文档内链接时回调（href 为链接的原始地址）。 */
+  onFollowLink: (href: string) => void;
 }
 
-export function Editor({ onDocChange, onDocInit }: EditorProps) {
+export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   const { t } = useI18n();
   const onDocChangeRef = useRef(onDocChange);
   const onDocInitRef = useRef(onDocInit);
+  const onFollowLinkRef = useRef(onFollowLink);
   useEffect(() => {
     onDocChangeRef.current = onDocChange;
     onDocInitRef.current = onDocInit;
-  }, [onDocChange, onDocInit]);
+    onFollowLinkRef.current = onFollowLink;
+  }, [onDocChange, onDocInit, onFollowLink]);
   const armedRef = useRef(false);
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
@@ -108,6 +114,29 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [tableContextMenu]);
+
+  // 链接跳转（与源码模式同一手势）：Ctrl/Cmd+点击跟随链接（文档链接开标签、
+  // 外链交系统），普通点击不拦截，保留光标放进链接内编辑的默认行为。
+  const handleEditorClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const href = pickLinkHrefFromClick(event.target);
+    if (!href) return;
+    if (!isFollowLinkCombo(event, window.inkmark.platform)) return;
+    event.preventDefault();
+    onFollowLinkRef.current(href);
+  };
+
+  // 悬停提示：按住跳转组合键扫过链接时让链接显示手指，与「此时点击会跳转」
+  // 对应；平时保持文本竖线。类名挂在容器上，由 CSS 作用于其内所有链接。
+  const handleEditorMouseMove = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    event.currentTarget.classList.toggle(
+      'is-link-follow-hint',
+      shouldHintFollowLink(event.target, event, window.inkmark.platform),
+    );
+  };
+
+  const handleEditorMouseLeave = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    event.currentTarget.classList.remove('is-link-follow-hint');
+  };
 
   const handleTableContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
     const target = event.target as HTMLElement | null;
@@ -192,6 +221,7 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
       .use(listKeymap)
       .use(listMarker)
       .use(breaks)
+      .use(linkGesture)
       .use(history)
       .use(listener)
       .use(findReplacePlugin)
@@ -633,6 +663,9 @@ export function Editor({ onDocChange, onDocInit }: EditorProps) {
     <div
       className={`editor-container theme-${contentTheme}`}
       onContextMenu={handleTableContextMenu}
+      onClick={handleEditorClick}
+      onMouseMove={handleEditorMouseMove}
+      onMouseLeave={handleEditorMouseLeave}
     >
       <Milkdown />
       {tableContextMenu && (

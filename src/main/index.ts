@@ -24,6 +24,7 @@ import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
 import { readStableTextFile } from './stable-file-read';
+import { resolveDocumentLink } from './document-link-resolver';
 import { resolveAutoUpdater } from './resolve-auto-updater';
 import { createUpdateService, type UpdateService } from './update-service';
 import type {
@@ -209,6 +210,11 @@ function getWindowStatePath(): string {
 }
 
 function getThemeStatePath(): string {
+/** 只放行网页与邮件协议，其余一律不开系统处理器，避免 file:// 等被借用执行。 */
+function openExternalUrl(url: string): void {
+  if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url);
+}
+
   return join(app.getPath('userData'), 'theme.json');
 }
 
@@ -478,10 +484,6 @@ function createWindow(): void {
       return false;
     }
   };
-  const openExternalUrl = (url: string): void => {
-    if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url);
-  };
-
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (isAppNavigation(url)) return;
     event.preventDefault();
@@ -1163,3 +1165,33 @@ ipcMain.on('workspace:unwatch', (event) => {
   if (!isTrustedRenderer(event)) return;
   workspaceWatchManager.unsubscribe(event.sender.id);
 });
+// 文档内链接跳转：以链接所在文档为基准解析目标绝对路径。
+// 只做字符串级解析，不做存在性检查——读取与「文件不存在」提示统一走 file:read。
+const MAX_LINK_HREF_LENGTH = 2048;
+ipcMain.handle('link:resolve', (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    !isDocumentPath(request.sourcePath) ||
+    typeof request.href !== 'string' ||
+    request.href.length === 0 ||
+    request.href.length > MAX_LINK_HREF_LENGTH
+  ) {
+    return { status: 'not-document' as const };
+  }
+  return resolveDocumentLink(request.sourcePath, request.href);
+});
+
+ipcMain.handle('shell:openExternal', (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    typeof request.url !== 'string' ||
+    request.url.length === 0 ||
+    request.url.length > MAX_LINK_HREF_LENGTH
+  ) {
+    return;
+  }
+  openExternalUrl(request.url);
+});
+

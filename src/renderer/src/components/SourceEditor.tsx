@@ -24,12 +24,16 @@ import {
   setReviewChunks,
 } from '../review/review-extension';
 import { drainQueuedReviewChunks } from '../review/review-store';
+import { findLinkHrefAtPos } from '../source-link';
+import { isFollowLinkCombo } from '../document-link';
 import '../styles/source-editor.css';
 
 interface SourceEditorProps {
   onChange: (state: EditorState) => void;
   /** 未决审阅块数量变化时上报（React 侧据此驱动工具条与角标）。 */
   onReviewCountChange?: (count: number, content: string) => void;
+  /** Ctrl/Cmd+点击链接时回调（href 为链接的原始地址）。 */
+  onFollowLink: (href: string) => void;
 }
 
 // iA Writer 风格：语法符号淡化成装饰色，正文按语义加粗/强调，结构清晰、内容突出。
@@ -67,7 +71,7 @@ const fadedMarksHighlight = HighlightStyle.define([
   // 列表项文字（tags.list）保持正文色，不加样式
 ]);
 
-export function SourceEditor({ onChange, onReviewCountChange }: SourceEditorProps) {
+export function SourceEditor({ onChange, onReviewCountChange, onFollowLink }: SourceEditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -79,10 +83,16 @@ export function SourceEditor({ onChange, onReviewCountChange }: SourceEditorProp
   const reviewCallbacksRef = useRef<{
     onCountChange?: (count: number, content: string) => void;
   }>({});
+  // 链接跳转回调容器：与审阅回调同理，扩展内经它取最新回调。
+  const followLinkRef = useRef(onFollowLink);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    followLinkRef.current = onFollowLink;
+  }, [onFollowLink]);
 
   useEffect(() => {
     reviewCallbacksRef.current.onCountChange = onReviewCountChange;
@@ -109,6 +119,21 @@ export function SourceEditor({ onChange, onReviewCountChange }: SourceEditorProp
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           EditorView.lineWrapping,
           updateListener,
+          EditorView.domEventHandlers({
+            // 与所见即所得模式同一手势：Ctrl/Cmd+点击跟随链接；普通点击承担
+            // 光标定位，Shift/Alt 组合按编辑意图处理，不触发跳转。
+            mousedown: (event, view) => {
+              if (event.button !== 0) return false;
+              if (!isFollowLinkCombo(event, window.inkmark.platform)) return false;
+              const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+              if (pos == null) return false;
+              const href = findLinkHrefAtPos(view.state, pos);
+              if (!href) return false;
+              event.preventDefault();
+              followLinkRef.current(href);
+              return true;
+            },
+          }),
           ...createReviewExtension(reviewCallbacksRef.current),
         ],
       });

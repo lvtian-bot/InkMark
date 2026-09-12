@@ -34,6 +34,7 @@ import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { comboMatchesEvent } from './shortcut-recorder';
 import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
+import { followDocumentLinkHref } from './document-link';
 import { runEditorCommand } from './editor-commands';
 
 // 源码模式与低频对话框拆成独立 chunk，避免它们的代码（CodeMirror 全家桶等）
@@ -125,6 +126,27 @@ function AppContent() {
   const { closeRoot: closeFileTreeRoot } = fileTree;
   const findReplace = useFindReplace({ activeTabId, viewMode });
   const {
+
+  // 文档内链接跳转：以链接所在文档的磁盘路径为基准解析相对地址；
+  // 文件读取、同文件去重激活与丢失提示复用 openFilePath 全套流程。
+  const handleFollowLink = useCallback(
+    (href: string) => {
+      const state = useStore.getState();
+      const sourceFilePath =
+        state.tabs.find((tab) => tab.id === state.activeTabId)?.filePath ?? null;
+      void followDocumentLinkHref(href, sourceFilePath, {
+        resolveDocumentLink: (request) => window.inkmark.resolveDocumentLink(request),
+        openFilePath: async (path) => {
+          await fileOps.openFilePath(path);
+        },
+        openExternalUrl: (url) => {
+          window.inkmark.openExternalUrl(url);
+        },
+      });
+    },
+    [fileOps],
+  );
+
     close: closeFindReplace,
     isOpen: isFindReplaceOpen,
     notifyContentChanged: notifyFindContentChanged,
@@ -1026,7 +1048,11 @@ function AppContent() {
           <div
             className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}
           >
-            <Editor onDocChange={handleDocChange} onDocInit={handleDocInit} />
+            <Editor
+              onDocChange={handleDocChange}
+              onDocInit={handleDocInit}
+              onFollowLink={handleFollowLink}
+            />
           </div>
           <div
             className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}
@@ -1049,6 +1075,7 @@ function AppContent() {
             <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
               <Outline side="right" />
             </div>
+                onFollowLink={handleFollowLink}
           </>
         )}
         {fileTreeVisible && fileTreeSide === 'right' && (

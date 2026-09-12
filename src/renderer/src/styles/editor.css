@@ -89,6 +89,11 @@
   line-height: var(--editor-line-height, 1.75);
   letter-spacing: var(--editor-letter-spacing, 0em);
 }
+/* 按住 Ctrl/Cmd 悬停链接时（容器由 JS 加上提示类）显示手指，对应
+   「此时点击会跳转」；平时可编辑区内保持文本竖线，普通点击只移动光标。 */
+.editor-container.is-link-follow-hint .ProseMirror a {
+  cursor: pointer;
+}
 /* 编辑器功能性样式：原由 nord 样式表提供，视觉层不再加载后由此接管 */
 .editor-container .ProseMirror-selectednode {
   outline: 2px solid #8cf;

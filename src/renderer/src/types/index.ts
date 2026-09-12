@@ -6,6 +6,7 @@ import type {
   StoreImageRequest,
   StoreImageResult,
 } from '../../../shared/image-storage';
+import type { DocumentLinkResolution } from '../../../shared/document-link';
 import type { ShortcutMap } from '../../../shared/shortcuts';
 export {
   isThemeId,
@@ -126,6 +127,11 @@ export interface InkMarkAPI {
 }
 
 declare global {
+  resolveDocumentLink: (request: {
+    sourcePath: string;
+    href: string;
+  }) => Promise<DocumentLinkResolution>;
+  openExternalUrl: (url: string) => Promise<void>;
   interface Window {
     inkmark: InkMarkAPI;
   }
