@@ -2,6 +2,23 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## 0.2.2（2026-09-12）
+### ⚙️ 工程维护
+- 应用图标替换为绿色 M 新设计
+### ✨ 新增
+- 文档内链接跳转
+- 文件菜单导出 HTML / PDF
+### 🏗️ 构建与集成
+- Commitlint 兼容 force-push 后的无效提交区间
+- 升级 checkout、setup-node 与 gh-release action 版本
+### 🐛 修复
+- 外部改动审阅折叠避开 widget 行与待办框对齐
+### 📝 文档
+- 发布流程记录版本号约定
+- 发布流程与待办清单更新及归档格式化
+- 更新产品定位导出边界与待办清单
+
+**完整对比**: [v0.2.1...v0.2.2](https://github.com/lvtian-bot/InkMark/compare/v0.2.1...v0.2.2)
 ## 0.2.1（2026-09-04）
 ### ✨ 新增
 - 外部改动审阅支持源码模式逐块接受或拒绝
