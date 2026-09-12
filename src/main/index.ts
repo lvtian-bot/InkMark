@@ -971,6 +971,7 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   const mtime = fileWatchManager.performSelfWrite(filePath, () =>
     atomicWriteFile(filePath, content),
   );
+  addRecent(filePath, 'file');
   return { path: filePath, mtime };
 });
 
