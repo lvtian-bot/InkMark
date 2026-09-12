@@ -1,0 +1,40 @@
+.export-progress-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.export-progress-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.export-progress-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: export-progress-spin 0.8s linear infinite;
+}
+
+.export-progress-text {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+@keyframes export-progress-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

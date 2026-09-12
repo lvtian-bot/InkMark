@@ -5,6 +5,7 @@ import type {
   StoreImageRequest,
 } from '../shared/image-storage';
 import type { DocumentLinkResolution } from '../shared/document-link';
+import type { ExportDocumentRequest, ExportDocumentResult } from '../shared/export-document';
 import type { WorkspaceEntry } from '../shared/workspace-tree';
 import type { RecentItem } from '../shared/recent-items';
 import type { ShortcutMap } from '../shared/shortcuts';
@@ -68,6 +69,14 @@ const api = {
   onMenuSaveAs: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:saveAs');
     ipcRenderer.on('menu:saveAs', () => cb());
+  },
+  onMenuExportHtml: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:exportHtml');
+    ipcRenderer.on('menu:exportHtml', () => cb());
+  },
+  onMenuExportPdf: (cb: () => void) => {
+    ipcRenderer.removeAllListeners('menu:exportPdf');
+    ipcRenderer.on('menu:exportPdf', () => cb());
   },
   onMenuSettings: (cb: () => void) => {
     ipcRenderer.removeAllListeners('menu:settings');
@@ -162,12 +171,17 @@ const api = {
   resolveImageSource: (request: ResolveImageSourceRequest) =>
     ipcRenderer.invoke('image:resolveSource', request),
   openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
+  exportDocument: (request: ExportDocumentRequest) =>
+    ipcRenderer.invoke('export:document', request) as Promise<ExportDocumentResult>,
   listDirectory: (path: string) =>
     ipcRenderer.invoke('dir:list', { path }) as Promise<{
       path: string;
       entries: WorkspaceEntry[];
     } | null>,
   revealInFolder: (path: string) => ipcRenderer.invoke('shell:reveal', { path }),
+  resolveDocumentLink: (request: { sourcePath: string; href: string }) =>
+    ipcRenderer.invoke('link:resolve', request) as Promise<DocumentLinkResolution>,
+  openExternalUrl: (url: string) => ipcRenderer.invoke('shell:openExternal', { url }),
   watchWorkspace: (path: string) => ipcRenderer.send('workspace:watch', { path }),
   unwatchWorkspace: () => ipcRenderer.send('workspace:unwatch'),
   onWorkspaceWatchEvent: (cb: (event: { path: string }) => void) => {
@@ -179,9 +193,6 @@ const api = {
   platform: process.platform,
 };
 
-  resolveDocumentLink: (request: { sourcePath: string; href: string }) =>
-    ipcRenderer.invoke('link:resolve', request) as Promise<DocumentLinkResolution>,
-  openExternalUrl: (url: string) => ipcRenderer.invoke('shell:openExternal', { url }),
 try {
   contextBridge.exposeInMainWorld('inkmark', api);
 } catch (error) {

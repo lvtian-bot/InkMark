@@ -7,6 +7,7 @@ import type {
   StoreImageResult,
 } from '../../../shared/image-storage';
 import type { DocumentLinkResolution } from '../../../shared/document-link';
+import type { ExportDocumentRequest, ExportDocumentResult } from '../../../shared/export-document';
 import type { ShortcutMap } from '../../../shared/shortcuts';
 export {
   isThemeId,
@@ -88,6 +89,8 @@ export interface InkMarkAPI {
   onMenuOpen: (cb: () => void) => void;
   onMenuSave: (cb: () => void) => void;
   onMenuSaveAs: (cb: () => void) => void;
+  onMenuExportHtml: (cb: () => void) => void;
+  onMenuExportPdf: (cb: () => void) => void;
   onMenuSettings: (cb: () => void) => void;
   onMenuSetTheme: (cb: (themeId: string) => void) => void;
   onMenuClose: (cb: () => void) => void;
@@ -114,6 +117,7 @@ export interface InkMarkAPI {
   syncShortcuts: (shortcuts: ShortcutMap) => void;
   syncLanguage: (language: string, systemLanguage: string) => void;
   openFolderDialog: () => Promise<{ path: string } | null>;
+  exportDocument: (request: ExportDocumentRequest) => Promise<ExportDocumentResult>;
   listDirectory: (path: string) => Promise<{ path: string; entries: WorkspaceEntry[] } | null>;
   revealInFolder: (path: string) => Promise<void>;
   watchWorkspace: (path: string) => void;
@@ -123,15 +127,15 @@ export interface InkMarkAPI {
   storeImage: (request: StoreImageRequest) => Promise<StoreImageResult>;
   discardStoredImage: (request: DiscardStoredImageRequest) => Promise<DiscardStoredImageResult>;
   resolveImageSource: (request: ResolveImageSourceRequest) => Promise<ResolveImageSourceResult>;
-  platform: string;
-}
-
-declare global {
   resolveDocumentLink: (request: {
     sourcePath: string;
     href: string;
   }) => Promise<DocumentLinkResolution>;
   openExternalUrl: (url: string) => Promise<void>;
+  platform: string;
+}
+
+declare global {
   interface Window {
     inkmark: InkMarkAPI;
   }

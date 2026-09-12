@@ -12,9 +12,11 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { FindReplaceBar } from './components/FindReplaceBar';
 import { ExternalUpdateBanner } from './components/ExternalUpdateBanner';
 import { ReviewToolbar } from './components/ReviewToolbar';
+import { ExportProgressDialog } from './components/ExportProgressDialog';
 import { useTheme } from './hooks/useTheme';
 import { useEditorFont } from './hooks/useEditorFont';
 import { useFile } from './hooks/useFile';
+import { useExport } from './hooks/useExport';
 import { useFileTree } from './hooks/useFileTree';
 import { useResizablePanel } from './hooks/useResizablePanel';
 import { useFindReplace } from './hooks/useFindReplace';
@@ -32,9 +34,9 @@ import { completeReview, drainQueuedReviewChunks } from './review/review-store';
 import { resolveAllReviewChunks } from './review/review-resolution';
 import { confirmDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
+import { followDocumentLinkHref } from './document-link';
 import { comboMatchesEvent } from './shortcut-recorder';
 import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
-import { followDocumentLinkHref } from './document-link';
 import { runEditorCommand } from './editor-commands';
 
 // 源码模式与低频对话框拆成独立 chunk，避免它们的代码（CodeMirror 全家桶等）
@@ -122,10 +124,8 @@ function AppContent() {
   }, []);
 
   const fileOps = useFile(setMarkdown, viewMode);
+  const { exportDocument: runExport } = useExport();
   const fileTree = useFileTree(activeFilePath);
-  const { closeRoot: closeFileTreeRoot } = fileTree;
-  const findReplace = useFindReplace({ activeTabId, viewMode });
-  const {
 
   // 文档内链接跳转：以链接所在文档的磁盘路径为基准解析相对地址；
   // 文件读取、同文件去重激活与丢失提示复用 openFilePath 全套流程。
@@ -147,6 +147,9 @@ function AppContent() {
     [fileOps],
   );
 
+  const { closeRoot: closeFileTreeRoot } = fileTree;
+  const findReplace = useFindReplace({ activeTabId, viewMode });
+  const {
     close: closeFindReplace,
     isOpen: isFindReplaceOpen,
     notifyContentChanged: notifyFindContentChanged,
@@ -509,6 +512,16 @@ function AppContent() {
     window.inkmark.onMenuSaveAs(() => {
       void fileOps.saveAs();
     });
+    if (window.inkmark.onMenuExportHtml) {
+      window.inkmark.onMenuExportHtml(() => {
+        void runExport('html');
+      });
+    }
+    if (window.inkmark.onMenuExportPdf) {
+      window.inkmark.onMenuExportPdf(() => {
+        void runExport('pdf');
+      });
+    }
     window.inkmark.onMenuSettings(() => {
       closeFindReplace();
       setIsSettingsOpen(true);
@@ -613,6 +626,7 @@ function AppContent() {
     fileOps,
     fileTree,
     openFindReplace,
+    runExport,
     setFileTreeVisible,
     setThemeId,
     toggleViewMode,
@@ -1061,6 +1075,7 @@ function AppContent() {
               <SourceEditor
                 onChange={handleSourceChange}
                 onReviewCountChange={handleReviewCountChange}
+                onFollowLink={handleFollowLink}
               />
             </Suspense>
           </div>
@@ -1075,7 +1090,6 @@ function AppContent() {
             <div style={{ width: outlineWidth, minWidth: outlineWidth }}>
               <Outline side="right" />
             </div>
-                onFollowLink={handleFollowLink}
           </>
         )}
         {fileTreeVisible && fileTreeSide === 'right' && (
@@ -1096,6 +1110,7 @@ function AppContent() {
         )}
       </div>
       <ConfirmDialog />
+      <ExportProgressDialog />
       {isSettingsOpen && (
         <Suspense fallback={null}>
           <SettingsDialog onClose={() => setIsSettingsOpen(false)} />

@@ -1,5 +1,6 @@
 import { $remark } from '@milkdown/kit/utils';
 import { useStore } from '../stores/useStore';
+import { transformBreaksInTree, type MdastNode } from '../../../shared/markdown-breaks';
 
 /// 宽松换行与严格换行支持。
 ///
@@ -14,58 +15,8 @@ import { useStore } from '../stores/useStore';
 /// - strictLineBreaks: false（默认，宽松换行）：将 isInline 设为 false，使 hardbreak 渲染为 `<br>` 换行。
 /// - strictLineBreaks: true（严格换行）：保持 isInline 为 true，遵循标准 CommonMark 渲染为空格。
 
-export interface MdastNode {
-  type: string;
-  value?: string;
-  data?: unknown;
-  children?: MdastNode[];
-}
-
-/**
- * 根据 strictLineBreaks 设置调整 mdast 树中 break 节点的 isInline 属性，
- * 并处理任何未切分的文本换行。
- */
-export function transformBreaksInTree(tree: MdastNode, strictLineBreaks: boolean): void {
-  function walk(parent: MdastNode): void {
-    if (!parent.children || !Array.isArray(parent.children)) return;
-
-    for (let i = 0; i < parent.children.length; i++) {
-      const child = parent.children[i];
-
-      if (child.type === 'break') {
-        const dataObj =
-          child.data && typeof child.data === 'object'
-            ? (child.data as Record<string, unknown>)
-            : {};
-        dataObj.isInline = strictLineBreaks;
-        child.data = dataObj;
-      } else if (
-        child.type === 'text' &&
-        typeof child.value === 'string' &&
-        child.value.includes('\n')
-      ) {
-        const lines = child.value.split(/\r?\n/);
-        const replacements: MdastNode[] = [];
-        for (let j = 0; j < lines.length; j++) {
-          if (j > 0) {
-            replacements.push({ type: 'break', data: { isInline: strictLineBreaks } });
-          }
-          if (lines[j].length > 0) {
-            replacements.push({ type: 'text', value: lines[j] });
-          }
-        }
-        if (replacements.length > 0) {
-          parent.children.splice(i, 1, ...replacements);
-          i += replacements.length - 1;
-        }
-      } else if (child.children) {
-        walk(child);
-      }
-    }
-  }
-
-  walk(tree);
-}
+export { transformBreaksInTree } from '../../../shared/markdown-breaks';
+export type { MdastNode } from '../../../shared/markdown-breaks';
 
 export const breaksTransformer = (tree: MdastNode): void => {
   const strict = useStore.getState().strictLineBreaks;

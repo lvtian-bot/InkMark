@@ -33,6 +33,11 @@ import type {
   StoreImageRequest,
 } from '../shared/image-storage';
 import { isThemeId } from '../shared/theme';
+import {
+  isExportDocumentRequest,
+  sanitizeExportFileName,
+  type ExportDocumentResult,
+} from '../shared/export-document';
 import { filterWorkspaceEntries, type WorkspaceEntry } from '../shared/workspace-tree';
 import {
   addOrUpdateRecent,
@@ -205,16 +210,16 @@ function isTrustedRenderer(event: Electron.IpcMainEvent | Electron.IpcMainInvoke
   return event.sender === mainWindow?.webContents && event.senderFrame === event.sender.mainFrame;
 }
 
-function getWindowStatePath(): string {
-  return join(app.getPath('userData'), 'window-state.json');
-}
-
-function getThemeStatePath(): string {
 /** 只放行网页与邮件协议，其余一律不开系统处理器，避免 file:// 等被借用执行。 */
 function openExternalUrl(url: string): void {
   if (/^(https?:|mailto:)/i.test(url)) void shell.openExternal(url);
 }
 
+function getWindowStatePath(): string {
+  return join(app.getPath('userData'), 'window-state.json');
+}
+
+function getThemeStatePath(): string {
   return join(app.getPath('userData'), 'theme.json');
 }
 
@@ -603,6 +608,19 @@ function createMenu(): void {
           click: () => mainWindow?.webContents.send('menu:saveAs'),
         },
         {
+          label: t('menu.export'),
+          submenu: [
+            {
+              label: t('menu.exportHtml'),
+              click: () => mainWindow?.webContents.send('menu:exportHtml'),
+            },
+            {
+              label: t('menu.exportPdf'),
+              click: () => mainWindow?.webContents.send('menu:exportPdf'),
+            },
+          ],
+        },
+        {
           label: t('menu.revealInFolder'),
           accelerator: shortcutAccelerator('revealInFolder'),
           click: () => mainWindow?.webContents.send('menu:revealInFolder'),
@@ -956,6 +974,55 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   return { path: filePath, mtime };
 });
 
+// 导出文档（HTML / PDF）：对话框选目标路径 → 渲染 → 落盘。
+// 渲染链路较重（remark 全家桶），随主进程代码动态加载，首次导出时才载入。
+ipcMain.handle(
+  'export:document',
+  async (event, request: unknown): Promise<ExportDocumentResult> => {
+    if (!isTrustedRenderer(event) || !isExportDocumentRequest(request)) {
+      throw new Error('Invalid export request.');
+    }
+    if (!mainWindow) return { status: 'canceled' };
+    const { kind, markdown, title, sourcePath, strictLineBreaks } = request;
+    const fileName = `${sanitizeExportFileName(title)}.${kind === 'html' ? 'html' : 'pdf'}`;
+    const defaultDirectory = sourcePath ? dirname(sourcePath) : getLastDialogPath();
+    const dialogResult = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultDirectory ? join(defaultDirectory, fileName) : fileName,
+      filters:
+        kind === 'html'
+          ? [{ name: 'HTML', extensions: ['html'] }]
+          : [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (dialogResult.canceled || !dialogResult.filePath) return { status: 'canceled' };
+    const targetPath = dialogResult.filePath;
+    const win = mainWindow;
+    // 导出期间任务栏不定态进度（值 >1 是 Windows 约定的不定态），完成或失败都还原。
+    win.setProgressBar(2);
+    try {
+      const { renderExportDocument } = await import('./export-document');
+      const html = await renderExportDocument({
+        markdown,
+        title,
+        sourcePath,
+        strictLineBreaks,
+        target: kind === 'html' ? 'standalone' : 'print',
+      });
+      if (kind === 'html') {
+        atomicWriteFile(targetPath, html);
+      } else {
+        const { printHtmlToPdf } = await import('./export-pdf');
+        writeFileSync(targetPath, await printHtmlToPdf(html));
+      }
+      setLastDialogPath(targetPath);
+      return { status: 'ok', path: targetPath };
+    } catch (error) {
+      return { status: 'error', message: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (!win.isDestroyed()) win.setProgressBar(-1);
+    }
+  },
+);
+
 ipcMain.on('file:watch', (event, request: unknown) => {
   if (!isTrustedRenderer(event) || !isRecord(request) || !isDocumentPath(request.path)) return;
   const { path } = request;
@@ -1156,15 +1223,6 @@ ipcMain.handle('shell:reveal', async (event, request: unknown) => {
   shell.showItemInFolder(request.path);
 });
 
-ipcMain.on('workspace:watch', (event, request: unknown) => {
-  if (!isTrustedRenderer(event) || !isRecord(request) || !isAbsolutePath(request.path)) return;
-  workspaceWatchManager.subscribe(event.sender, request.path);
-});
-
-ipcMain.on('workspace:unwatch', (event) => {
-  if (!isTrustedRenderer(event)) return;
-  workspaceWatchManager.unsubscribe(event.sender.id);
-});
 // 文档内链接跳转：以链接所在文档为基准解析目标绝对路径。
 // 只做字符串级解析，不做存在性检查——读取与「文件不存在」提示统一走 file:read。
 const MAX_LINK_HREF_LENGTH = 2048;
@@ -1195,3 +1253,12 @@ ipcMain.handle('shell:openExternal', (event, request: unknown) => {
   openExternalUrl(request.url);
 });
 
+ipcMain.on('workspace:watch', (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isAbsolutePath(request.path)) return;
+  workspaceWatchManager.subscribe(event.sender, request.path);
+});
+
+ipcMain.on('workspace:unwatch', (event) => {
+  if (!isTrustedRenderer(event)) return;
+  workspaceWatchManager.unsubscribe(event.sender.id);
+});
