@@ -130,6 +130,12 @@ export const messages: Record<MessageKey, string> = {
   'settings.appearance.recentWidthWide': 'Wide',
   'settings.appearance.recentWidthMedium': 'Medium',
   'settings.appearance.recentWidthNarrow': 'Narrow',
+  'settings.appearance.editorWidthLabel': 'Content Width',
+  'settings.appearance.editorWidthHint':
+    'Medium and Wide match the fixed limits on regular windows; on wider content areas (fullscreen, sidebars closed, or large monitors) the text column and margins keep scaling proportionally.',
+  'settings.appearance.editorWidthStandard': 'Medium',
+  'settings.appearance.editorWidthWide': 'Wide',
+  'settings.appearance.editorWidthFull': 'Fill Window',
   'settings.font.fontLabel': 'Content Font',
   'settings.font.fontHint':
     'Body font in the editor; the font must be installed on your system, otherwise it falls back to the default.',

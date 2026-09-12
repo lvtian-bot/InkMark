@@ -15,6 +15,7 @@ import { ReviewToolbar } from './components/ReviewToolbar';
 import { ExportProgressDialog } from './components/ExportProgressDialog';
 import { useTheme } from './hooks/useTheme';
 import { useEditorFont } from './hooks/useEditorFont';
+import { useEditorWidth } from './hooks/useEditorWidth';
 import { useFile } from './hooks/useFile';
 import { useExport } from './hooks/useExport';
 import { useFileTree } from './hooks/useFileTree';
@@ -55,6 +56,7 @@ function AppContent() {
   const { themeId, setThemeId } = useTheme();
   const { t } = useI18n();
   useEditorFont();
+  useEditorWidth();
   const { updateOutline, updateSourceOutline } = useOutline();
   const { updateWordCount, updateSourceWordCount } = useWordCount();
 

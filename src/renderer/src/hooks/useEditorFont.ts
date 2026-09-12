@@ -8,7 +8,8 @@ import {
 import { useStore } from '../stores/useStore';
 
 // 把用户选择的字体族、字号与排版参数注入为 CSS 变量，供编辑区读取。
-// 与 useTheme 并列：主题管明暗与排版风格，这里管正文的字体与基础排版。
+// 与 useTheme 并列：主题管明暗与排版风格，这里管正文的字体与基础排版；
+// 正文宽度档位由 useEditorWidth 注入。
 export function useEditorFont() {
   const fontPreset = useStore((s) => s.fontPreset);
   const fontSizePreset = useStore((s) => s.fontSizePreset);

@@ -16,6 +16,7 @@ import {
   isLetterSpacingPresetId,
   isLineHeightPresetId,
 } from '../font-presets';
+import { EDITOR_WIDTH_PRESETS, isEditorWidthPresetId } from '../editor-width-presets';
 import { useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import { isThemeId } from '../types';
@@ -336,6 +337,32 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       <option value="inkmark-dark">{t('theme.inkmarkDark')}</option>
                       <option value="github-light">{t('theme.githubLight')}</option>
                       <option value="github-dark">{t('theme.githubDark')}</option>
+                    </select>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.appearance.editorWidthLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.appearance.editorWidthHint')}
+                      </span>
+                    </span>
+                    <select
+                      value={draft.editorWidthPreset}
+                      onChange={(event) => {
+                        const editorWidthPreset = event.target.value;
+                        if (isEditorWidthPresetId(editorWidthPreset)) {
+                          setDraft((settings) => ({ ...settings, editorWidthPreset }));
+                        }
+                      }}
+                    >
+                      {EDITOR_WIDTH_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {t(preset.labelKey)}
+                        </option>
+                      ))}
                     </select>
                   </label>
 

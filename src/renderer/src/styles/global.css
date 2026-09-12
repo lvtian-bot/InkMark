@@ -21,6 +21,7 @@
   --editor-font-size: 16px;
   --editor-line-height: 1.75;
   --editor-letter-spacing: 0em;
+  /* 回落默认值；运行时由设置「正文宽度」档位经 useEditorWidth 覆盖 */
   --editor-max-width: 850px;
   --editor-side-padding: 56px;
   /* 侧栏面板统一基线:大纲、文件树等同类侧栏共用,保证视觉对齐 */

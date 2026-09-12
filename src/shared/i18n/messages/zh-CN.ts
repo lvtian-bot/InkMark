@@ -124,6 +124,12 @@ export const messages = {
   'settings.appearance.recentWidthWide': '宽',
   'settings.appearance.recentWidthMedium': '适中',
   'settings.appearance.recentWidthNarrow': '窄',
+  'settings.appearance.editorWidthLabel': '正文宽度',
+  'settings.appearance.editorWidthHint':
+    '适中、宽档在常规窗口下与固定上限观感一致；编辑区更宽（全屏、收起侧栏或大屏）时，正文与两侧留白按比例继续放大。',
+  'settings.appearance.editorWidthStandard': '适中',
+  'settings.appearance.editorWidthWide': '宽',
+  'settings.appearance.editorWidthFull': '占满窗口',
   'settings.font.fontLabel': '正文字体',
   'settings.font.fontHint':
     '编辑区的中文字体；所选字体需系统已安装，未安装时会自动回落到系统默认。',

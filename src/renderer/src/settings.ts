@@ -9,6 +9,7 @@ import {
   type LetterSpacingPresetId,
   type LineHeightPresetId,
 } from './font-presets';
+import { isEditorWidthPresetId, type EditorWidthPresetId } from './editor-width-presets';
 import {
   DEFAULT_EDITOR_SHORTCUT_MAP,
   DEFAULT_SHORTCUT_MAP,
@@ -50,6 +51,7 @@ export interface AppSettings {
   fontSizePreset: FontSizePresetId;
   lineHeightPreset: LineHeightPresetId;
   letterSpacingPreset: LetterSpacingPresetId;
+  editorWidthPreset: EditorWidthPresetId;
   startPageOnLaunch: boolean;
   fileTreeVisible: boolean;
   panelLayout: PanelLayout;
@@ -77,6 +79,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   fontSizePreset: 'medium',
   lineHeightPreset: 'medium',
   letterSpacingPreset: 'medium',
+  editorWidthPreset: 'standard',
   startPageOnLaunch: true,
   fileTreeVisible: false,
   panelLayout: 'outline-left',
@@ -100,6 +103,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     fontSizePreset: settings.fontSizePreset,
     lineHeightPreset: settings.lineHeightPreset,
     letterSpacingPreset: settings.letterSpacingPreset,
+    editorWidthPreset: settings.editorWidthPreset,
     startPageOnLaunch: settings.startPageOnLaunch,
     fileTreeVisible: settings.fileTreeVisible,
     panelLayout: settings.panelLayout,
@@ -196,6 +200,9 @@ function normalizeSettings(value: unknown): AppSettings {
     letterSpacingPreset: isLetterSpacingPresetId(candidate.letterSpacingPreset)
       ? candidate.letterSpacingPreset
       : DEFAULT_SETTINGS.letterSpacingPreset,
+    editorWidthPreset: isEditorWidthPresetId(candidate.editorWidthPreset)
+      ? candidate.editorWidthPreset
+      : DEFAULT_SETTINGS.editorWidthPreset,
     startPageOnLaunch:
       typeof candidate.startPageOnLaunch === 'boolean'
         ? candidate.startPageOnLaunch
