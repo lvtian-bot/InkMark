@@ -9,9 +9,10 @@ import '../styles/start-page.css';
 interface StartPageProps {
   onCreateBlank: () => void;
   onOpenFile: () => void;
-  onOpenPath: (path: string) => void;
-  /** 打开文件夹到文件树。不传路径时弹出选择框；传路径时直接打开该文件夹。 */
-  onOpenFolder?: (path?: string) => void;
+  /** 打开文件;返回是否成功。失败(已删除或移动)时开始页据此清理最近列表条目。 */
+  onOpenPath: (path: string) => Promise<boolean>;
+  /** 打开文件夹到文件树。不传路径时弹出选择框;传路径时直接打开该文件夹。 */
+  onOpenFolder?: (path?: string) => Promise<boolean>;
 }
 
 interface RecentRow extends RecentItem {
@@ -120,7 +121,14 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
                     <li
                       key={item.path}
                       className={`start-row start-row--recent${isStarred ? ' start-row--starred' : ''}`}
-                      onClick={() => (isFolder ? onOpenFolder?.(item.path) : onOpenPath(item.path))}
+                      onClick={() => {
+                        const open = isFolder ? onOpenFolder?.(item.path) : onOpenPath(item.path);
+                        if (!open) return;
+                        // 打开失败说明文件或文件夹已删除或移动:把该条目从最近列表清理掉
+                        void open.then((ok) => {
+                          if (!ok) void handleRemove(item.path);
+                        });
+                      }}
                     >
                       <span className="start-row-icon" aria-hidden="true">
                         {isFolder ? <Folder size={18} /> : <FileText size={18} />}

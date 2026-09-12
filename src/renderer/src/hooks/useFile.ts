@@ -270,7 +270,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   }, [openFileResult]);
 
   const openFilePath = useCallback(
-    async (path: string) => {
+    async (path: string): Promise<boolean> => {
       let result;
       try {
         result = await window.inkmark.openFilePath(path);
@@ -278,15 +278,16 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         await confirmDialog(t('confirm.openFailed'), t('confirm.openPathFailed', { path }), [
           t('common.ok'),
         ]);
-        return;
+        return false;
       }
       if (!result) {
         await confirmDialog(t('confirm.openFailed'), t('confirm.openPathMissing', { path }), [
           t('common.ok'),
         ]);
-        return;
+        return false;
       }
       await openFileResult(result);
+      return true;
     },
     [openFileResult],
   );

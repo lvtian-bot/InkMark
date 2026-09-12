@@ -613,8 +613,8 @@ function AppContent() {
     }
     if (window.inkmark.onOpenFolderPath) {
       window.inkmark.onOpenFolderPath((path: string) => {
-        void fileTree.openRoot(path).then(() => {
-          setFileTreeVisible(true);
+        void fileTree.openRoot(path).then((ok) => {
+          if (ok) setFileTreeVisible(true);
         });
       });
     }
@@ -1032,15 +1032,13 @@ function AppContent() {
               onCreateBlank={() => setStartPage(false)}
               onOpenFile={() => void fileOps.openFile()}
               onOpenFolder={(path) => {
-                const openResult =
-                  path != null
-                    ? fileTree.openRoot(path).then(() => true)
-                    : fileTree.openFolderDialog();
-                void openResult.then((ok) => {
+                if (path == null) return fileTree.openFolderDialog();
+                return fileTree.openRoot(path).then((ok) => {
                   if (ok) setFileTreeVisible(true);
+                  return ok;
                 });
               }}
-              onOpenPath={(path) => void fileOps.openFilePath(path)}
+              onOpenPath={(path) => fileOps.openFilePath(path)}
             />
           )}
           {!isStartPage && toolbarVisible && <Toolbar onSave={() => void fileOps.save()} />}

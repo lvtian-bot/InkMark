@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceEntry } from '../types';
+import { confirmDialog } from '../confirm-dialog';
+import { t } from '../i18n';
 import { decideFileTreeFollow, directoryChainFromRoot } from '../../../shared/file-tree-follow';
 
 interface DirListResult {
@@ -119,9 +121,19 @@ export function useFileTree(activeFilePath: string | null) {
   );
 
   // 用户显式打开文件夹:直接设置根(优先于跟随),使用全新展开状态并记入会话历史。
+  // 最近列表可能残留已删除或移动的文件夹:先探测可读性,失效时不切换文件树,
+  // 弹出与打开文件一致的缺失提示,并返回 false 供调用方从最近列表清理该条目。
   const openRoot = useCallback(
-    async (path: string): Promise<void> => {
+    async (path: string): Promise<boolean> => {
+      const listing = (await window.inkmark.listDirectory(path)) as DirListResult | null;
+      if (!listing) {
+        await confirmDialog(t('confirm.openFailed'), t('confirm.openPathMissing', { path }), [
+          t('common.ok'),
+        ]);
+        return false;
+      }
       await switchRoot(path, 'fresh');
+      return true;
     },
     [switchRoot],
   );
@@ -162,8 +174,7 @@ export function useFileTree(activeFilePath: string | null) {
   const openFolderDialog = useCallback(async (): Promise<boolean> => {
     const result = (await window.inkmark.openFolderDialog()) as { path: string } | null;
     if (!result) return false;
-    await openRoot(result.path);
-    return true;
+    return openRoot(result.path);
   }, [openRoot]);
 
   // 订阅工作区根目录的实时变化。收到事件时保留旧缓存,直接重新加载当前已展开的
