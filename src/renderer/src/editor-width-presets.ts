@@ -24,7 +24,7 @@ export const EDITOR_WIDTH_PRESETS: readonly EditorWidthPreset[] = [
     baseWidth: 850,
     ratio: 0.6,
   },
-  { id: 'wide', labelKey: 'settings.appearance.editorWidthWide', baseWidth: 1100, ratio: 0.7 },
+  { id: 'wide', labelKey: 'settings.appearance.editorWidthWide', baseWidth: 1000, ratio: 0.7 },
   {
     id: 'full',
     labelKey: 'settings.appearance.editorWidthFull',

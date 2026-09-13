@@ -14,7 +14,7 @@ describe('editor width presets', () => {
     expect(EDITOR_WIDTH_PRESETS).toHaveLength(3);
     expect(STANDARD.baseWidth).toBe(850);
     expect(STANDARD.ratio).toBe(0.6);
-    expect(WIDE.baseWidth).toBe(1100);
+    expect(WIDE.baseWidth).toBe(1000);
     expect(WIDE.ratio).toBe(0.7);
     expect(FULL.baseWidth).toBe(Number.POSITIVE_INFINITY);
     expect(resolveEditorWidthPreset('invalid').id).toBe('standard');
@@ -23,6 +23,8 @@ describe('editor width presets', () => {
   it('编辑区不宽时按基准上限，与旧版固定上限观感一致', () => {
     // 文件树 + 大纲全开（编辑区约 948）：适中档 850，与旧版一致
     expect(computeEditorMaxWidth(STANDARD, 948)).toBe(850);
+    // 只开大纲（编辑区约 1190）：宽档 1000，不到占满，与占满档拉开层次
+    expect(computeEditorMaxWidth(WIDE, 1190)).toBe(1000);
     // 编辑区比基准还窄时占满且不溢出
     expect(computeEditorMaxWidth(STANDARD, 600)).toBe(588);
     expect(computeEditorMaxWidth(STANDARD, 0)).toBe(0);
