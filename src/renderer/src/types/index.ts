@@ -131,6 +131,14 @@ export interface InkMarkAPI {
   unwatchWorkspace: () => void;
   onWorkspaceWatchEvent: (cb: (event: { path: string }) => void) => () => void;
   popupMenu: (pos?: { x: number; y: number }) => void;
+  /** 编辑区右键菜单：执行原生剪贴板编辑命令（作用于当前焦点元素）。 */
+  execClipboardCommand: (
+    action: 'cut' | 'copy' | 'paste' | 'pasteAndMatchStyle' | 'selectAll',
+  ) => Promise<boolean>;
+  /** 剪贴板是否含有可粘贴的数据（文本/富文本/图片）。 */
+  clipboardHasText: () => Promise<boolean>;
+  /** 写入纯文本到剪贴板（复制链接地址、复制代码块内容等）。 */
+  copyText: (text: string) => Promise<boolean>;
   storeImage: (request: StoreImageRequest) => Promise<StoreImageResult>;
   discardStoredImage: (request: DiscardStoredImageRequest) => Promise<DiscardStoredImageResult>;
   resolveImageSource: (request: ResolveImageSourceRequest) => Promise<ResolveImageSourceResult>;

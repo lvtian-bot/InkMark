@@ -173,6 +173,10 @@ const api = {
   popupMenu: (pos?: { x: number; y: number }) => {
     ipcRenderer.send('menu:popup', pos);
   },
+  execClipboardCommand: (action: 'cut' | 'copy' | 'paste' | 'pasteAndMatchStyle' | 'selectAll') =>
+    ipcRenderer.invoke('clipboard:exec', action) as Promise<boolean>,
+  clipboardHasText: () => ipcRenderer.invoke('clipboard:hasText') as Promise<boolean>,
+  copyText: (text: string) => ipcRenderer.invoke('clipboard:writeText', { text }),
   storeImage: (request: StoreImageRequest) => ipcRenderer.invoke('image:store', request),
   discardStoredImage: (request: DiscardStoredImageRequest) =>
     ipcRenderer.invoke('image:discard', request),

@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   ipcMain,
   dialog,
   Menu,
@@ -926,6 +927,39 @@ ipcMain.on('menu:popup', (event, pos?: unknown) => {
     }
     menu.popup(popupOptions);
   }
+});
+
+// 编辑区右键菜单的剪贴板动作：统一走主进程 webContents 原生编辑命令，
+// 让所见即所得编辑器的复制/粘贴保持富文本与 Markdown 双格式语义。
+const CLIPBOARD_COMMANDS: Record<string, (wc: Electron.WebContents) => void> = {
+  cut: (wc) => wc.cut(),
+  copy: (wc) => wc.copy(),
+  paste: (wc) => wc.paste(),
+  pasteAndMatchStyle: (wc) => wc.pasteAndMatchStyle(),
+  selectAll: (wc) => wc.selectAll(),
+};
+
+ipcMain.handle('clipboard:exec', (event, action: unknown) => {
+  if (!isTrustedRenderer(event)) return false;
+  if (!mainWindow) return false;
+  const command = CLIPBOARD_COMMANDS[action as string];
+  if (!command) return false;
+  command(mainWindow.webContents);
+  return true;
+});
+
+ipcMain.handle('clipboard:hasText', (event) => {
+  if (!isTrustedRenderer(event)) return false;
+  // 粘贴可用性看「有没有可粘贴的数据」：文本之外还包括网页富文本与截图图片。
+  return ['text/plain', 'text/html', 'image/png'].some((format) => clipboard.has(format));
+});
+
+ipcMain.handle('clipboard:writeText', (event, request: unknown) => {
+  if (!isTrustedRenderer(event)) return false;
+  const text = (request as { text?: unknown } | null)?.text;
+  if (typeof text !== 'string') return false;
+  clipboard.writeText(text);
+  return true;
 });
 
 ipcMain.handle('dialog:openFile', async (event) => {

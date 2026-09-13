@@ -12,6 +12,7 @@
 // 用法：这些字段需与 remarkStringifyOptionsCtx 的默认值（handlers/encode）合并，
 // 不能整体覆盖，否则会丢掉 Milkdown 内置的 handlers。详见 Editor.tsx 中的注入。
 
+import { isCellBreakNode } from '../../shared/markdown-breaks';
 import { useStore } from './stores/useStore';
 
 // remark-stringify 支持的标记风格子集，字段名与 mdast-util-to-markdown 一致。
@@ -34,6 +35,7 @@ export const markdownStringifyOverrides: MarkdownStringifyOverrides = {
 // remark-stringify 的 html 节点最小类型。只用 value 字段，避免引入 mdast 传递依赖。
 interface HtmlMdastNode {
   value?: unknown;
+  data?: unknown;
 }
 
 /// 丢弃 Milkdown `preserveEmptyLine` 特性注入的 `<br />` 空行占位（仅序列化方向）。
@@ -45,12 +47,15 @@ interface HtmlMdastNode {
 /// 保存的文件，污染纯 Markdown 文本（用户看到的就是 `* <br />`）。
 ///
 /// 处理：把值为 `<br />`/`<br>`/`<br/>` 的 html 节点输出为空，其余 html 原样保留。
+/// 例外：表格单元格内换行落盘的 `<br>` 带 CELL_BREAK_FLAG 标记，是真实内容，
+/// 原样输出（见 plugins/table-cell-breaks）。
 /// 安全性：用户手写的 `<br />` 在解析阶段已被 `remark-preserve-empty-line` 删除，
 /// 不会进入 ProseMirror 文档，所以序列化层遇到的 `<br />` 必来自该特性注入，丢弃它
 /// 不影响任何用户内容。代价是所见即所得里多按回车产生的「多余空行」不再被强行保留，
 /// 回归标准 Markdown 行为（多余空行折叠为正常段落分隔）。
 export function dropBrPlaceholderHandler(node: HtmlMdastNode | undefined): string {
   const value = typeof node?.value === 'string' ? node.value : '';
+  if (isCellBreakNode(node)) return value;
   return /^<br\s*\/?>$/i.test(value) ? '' : value;
 }
 

@@ -10,6 +10,7 @@ import {
 } from '@milkdown/kit/core';
 import {
   commonmark,
+  hardbreakFilterNodes,
   toggleStrongCommand,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
@@ -44,7 +45,6 @@ import { findTextMatchesInDocument } from '../find-replace-doc';
 import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
 import {
   addTableLine as applyAddTableLine,
-  deleteTableAt as applyDeleteTableAt,
   deleteTableLine as applyDeleteTableLine,
 } from '../plugins/table-edit';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
@@ -52,8 +52,12 @@ import { listKeymap } from '../plugins/list-keymap';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { breaks } from '../plugins/breaks';
+import { cellBrRemark, cellAwareHardbreak } from '../plugins/table-cell-breaks';
+import { tableEnterKeymap } from '../plugins/table-enter-keymap';
 import { linkGesture } from '../plugins/link-gesture';
 import { pickLinkHrefFromClick, isFollowLinkCombo, shouldHintFollowLink } from '../document-link';
+import { expandToLinkBounds } from '../link-selection';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import '../styles/editor.css';
@@ -76,6 +80,22 @@ interface EditorProps {
   onFollowLink: (href: string) => void;
 }
 
+/** 右键目标上下文：决定菜单在基础组之外追加哪些条目。 */
+type EditorMenuTarget =
+  | { kind: 'table' }
+  | { kind: 'link'; href: string; pos: number }
+  | { kind: 'code'; text: string }
+  | { kind: 'text' };
+
+interface MenuSnapshot {
+  /** 区分先后两次菜单，让异步剪贴板查询只更新当前这一份条目。 */
+  seq: number;
+  left: number;
+  top: number;
+  /** 打开菜单瞬间构造完成；渲染期只读，不再重算。 */
+  entries: ContextMenuItem[];
+}
+
 export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   const { t } = useI18n();
   const onDocChangeRef = useRef(onDocChange);
@@ -92,29 +112,8 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   const theme = useStore(selectAppTheme);
   const strictLineBreaks = useStore((s) => s.strictLineBreaks);
   const initialStrictRef = useRef(strictLineBreaks);
-  const [tableContextMenu, setTableContextMenu] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!tableContextMenu) return;
-
-    const closeOnOutsidePointer = (event: PointerEvent): void => {
-      const target = event.target as HTMLElement | null;
-      if (!target?.closest('.table-context-menu')) setTableContextMenu(null);
-    };
-    const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setTableContextMenu(null);
-    };
-
-    document.addEventListener('pointerdown', closeOnOutsidePointer);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [tableContextMenu]);
+  const [contextMenu, setContextMenu] = useState<MenuSnapshot | null>(null);
+  const menuSeqRef = useRef(0);
 
   // 链接跳转（与源码模式同一手势）：Ctrl/Cmd+点击跟随链接（文档链接开标签、
   // 外链交系统），普通点击不拦截，保留光标放进链接内编辑的默认行为。
@@ -139,115 +138,256 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
     event.currentTarget.classList.remove('is-link-follow-hint');
   };
 
-  const handleTableContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('.table-context-menu')) return;
-
-    const cell = target?.closest('td, th');
-    if (!cell || !cell.closest('.ProseMirror')) return;
-
-    const instance = get();
-    if (!instance) return;
-    const view = instance.ctx.get(editorViewCtx);
-    const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
-    if (!coords) return;
-
-    event.preventDefault();
-    view.dispatch(
-      view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))),
-    );
-
-    setTableContextMenu({
-      left: Math.max(8, Math.min(event.clientX, window.innerWidth - 196)),
-      top: Math.max(8, Math.min(event.clientY, window.innerHeight - 250)),
-    });
+  const runRemoveLink = (pos: number): void => {
+    try {
+      const instance = get();
+      if (!instance) return;
+      const view = instance.ctx.get(editorViewCtx);
+      const linkType = view.state.schema.marks.link;
+      const range = expandToLinkBounds(view.state.doc, pos, linkType);
+      if (!range) return;
+      view.dispatch(view.state.tr.removeMark(range.from, range.to, linkType));
+    } catch (e) {
+      console.error('removeLink error:', e);
+    }
   };
 
   const runTableContextMenuOp = (
     op:
       | { kind: 'add-row' | 'add-col'; position: 'before' | 'after' }
-      | { kind: 'delete-row' | 'delete-col' | 'delete-table' },
+      | { kind: 'delete-row' | 'delete-col' },
   ): void => {
-    setTableContextMenu(null);
     const handle = editorHandle.current;
     if (!handle) return;
 
     if (op.kind === 'add-row' || op.kind === 'add-col') {
       handle.addTableLine(op.kind === 'add-row' ? 'row' : 'col', op.position);
-    } else if (op.kind === 'delete-row' || op.kind === 'delete-col') {
-      handle.deleteTableLine(op.kind === 'delete-row' ? 'row' : 'col');
     } else {
-      handle.deleteTableAt();
+      handle.deleteTableLine(op.kind === 'delete-row' ? 'row' : 'col');
     }
   };
 
+  // 菜单条目只在打开菜单的事件处理器里构造（渲染期仅读取构造结果）：
+  // 剪切/粘贴等动作作用于仍持有焦点的编辑器，剪贴板可粘贴性异步确认前先置灰。
+  // 所有菜单一律平铺：目标专属操作在前（表格行列入/链接/代码块），剪贴板组在后。
+  const buildMenuEntries = (
+    target: EditorMenuTarget,
+    hasSelection: boolean,
+    clipboardHasText: boolean,
+  ): ContextMenuItem[] => {
+    const exec = (action: Parameters<typeof window.inkmark.execClipboardCommand>[0]) => () =>
+      void window.inkmark.execClipboardCommand(action);
+    const entries: ContextMenuItem[] = [];
+
+    if (target.kind === 'table') {
+      // 删表不需要专门条目：删除行删到最后一行数据时会自动删除整张表。
+      entries.push(
+        {
+          label: t('toolbar.tableAddRowAbove'),
+          onSelect: () => runTableContextMenuOp({ kind: 'add-row', position: 'before' }),
+        },
+        {
+          label: t('toolbar.tableAddRowBelow'),
+          onSelect: () => runTableContextMenuOp({ kind: 'add-row', position: 'after' }),
+        },
+        {
+          label: t('toolbar.tableAddColLeft'),
+          onSelect: () => runTableContextMenuOp({ kind: 'add-col', position: 'before' }),
+        },
+        {
+          label: t('toolbar.tableAddColRight'),
+          onSelect: () => runTableContextMenuOp({ kind: 'add-col', position: 'after' }),
+        },
+        {
+          label: t('toolbar.tableDeleteRow'),
+          onSelect: () => runTableContextMenuOp({ kind: 'delete-row' }),
+        },
+        {
+          label: t('toolbar.tableDeleteCol'),
+          onSelect: () => runTableContextMenuOp({ kind: 'delete-col' }),
+        },
+      );
+    } else if (target.kind === 'link') {
+      entries.push(
+        { label: t('contextMenu.openLink'), onSelect: () => onFollowLink(target.href) },
+        {
+          label: t('contextMenu.copyLinkAddress'),
+          onSelect: () => void window.inkmark.copyText(target.href),
+        },
+        { label: t('contextMenu.removeLink'), onSelect: () => runRemoveLink(target.pos) },
+      );
+    } else if (target.kind === 'code') {
+      entries.push({
+        label: t('contextMenu.copyCodeBlock'),
+        onSelect: () => void window.inkmark.copyText(target.text),
+      });
+    }
+
+    entries.push(
+      { label: t('menu.cut'), disabled: !hasSelection, onSelect: exec('cut') },
+      { label: t('menu.copy'), disabled: !hasSelection, onSelect: exec('copy') },
+      { label: t('menu.paste'), disabled: !clipboardHasText, onSelect: exec('paste') },
+      {
+        label: t('menu.pasteAsPlainText'),
+        disabled: !clipboardHasText,
+        onSelect: exec('pasteAndMatchStyle'),
+      },
+      { label: t('menu.selectAll'), onSelect: exec('selectAll') },
+    );
+    return entries;
+  };
+
+  // 打开菜单前采样选区状态并构造条目；剪贴板查询异步返回后只刷新当前这份的粘贴项。
+  const openContextMenu = (
+    target: EditorMenuTarget,
+    event: ReactMouseEvent<HTMLDivElement>,
+  ): void => {
+    const instance = get();
+    const view = instance ? instance.ctx.get(editorViewCtx) : null;
+    const hasSelection = view ? !view.state.selection.empty : false;
+
+    const seq = menuSeqRef.current + 1;
+    menuSeqRef.current = seq;
+    setContextMenu({
+      seq,
+      left: event.clientX,
+      top: event.clientY,
+      entries: buildMenuEntries(target, hasSelection, false),
+    });
+    void window.inkmark.clipboardHasText().then((has) => {
+      setContextMenu((prev) =>
+        prev && prev.seq === seq
+          ? { ...prev, entries: buildMenuEntries(target, hasSelection, has) }
+          : prev,
+      );
+    });
+  };
+
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('.context-menu')) return;
+    event.preventDefault();
+
+    const instance = get();
+    const view = instance ? instance.ctx.get(editorViewCtx) : null;
+    if (!view) return;
+
+    // 表格：右键点在已有选区内时保留选区（此时剪切/复制可用，表格操作作用于
+    // 选区所在行列）；点在选区外才把光标移到点击处，按新位置定位行列。
+    const cell = target?.closest('td, th');
+    if (cell && cell.closest('.ProseMirror')) {
+      const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+      if (coords) {
+        const { from, to } = view.state.selection;
+        const clickInSelection = from !== to && coords.pos >= from && coords.pos <= to;
+        if (!clickInSelection) {
+          view.dispatch(
+            view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))),
+          );
+        }
+        openContextMenu({ kind: 'table' }, event);
+        return;
+      }
+    }
+
+    // 链接：记录点击处的文档位置，「移除链接」按它扩展出完整链接范围。
+    const href = pickLinkHrefFromClick(target);
+    if (href) {
+      const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+      openContextMenu({ kind: 'link', href, pos: coords?.pos ?? 0 }, event);
+      return;
+    }
+
+    // 代码块：整块复制时取渲染后的纯文本。
+    const pre = target?.closest('pre');
+    if (pre) {
+      openContextMenu({ kind: 'code', text: pre.textContent ?? '' }, event);
+      return;
+    }
+
+    openContextMenu({ kind: 'text' }, event);
+  };
+
   useEditor((root) => {
-    return MilkdownEditor.make()
-      .config((ctx) => {
-        ctx.set(rootCtx, root);
-        ctx.set(defaultValueCtx, '');
-        // 与默认的 handlers/encode 合并，不能覆盖，否则会丢掉 Milkdown 内置的序列化处理器。
-        ctx.update(remarkStringifyOptionsCtx, (options) => ({
-          ...options,
-          ...markdownStringifyOverrides,
-          // 注入自定义 list 处理器：按节点保留的 bullet 字符输出（见 plugins/list-marker）。
-          // 注入 html 处理器：丢弃 preserveEmptyLine 特性注入的 <br /> 空行占位，
-          // 避免空列表项等空段落保存成 `* <br />` 污染 Markdown 文本（见 markdown-stringify-options）。
-          // 注入 break 处理器：宽松换行模式下输出干净的 '\n'，严格换行模式下输出 '\\\n'。
-          handlers: {
-            ...options.handlers,
-            list: listMarkerHandler,
-            html: dropBrPlaceholderHandler,
-            break: breakHandler,
-          },
-        }));
-      })
-      .config((ctx) => {
-        const manager = ctx.get(listenerCtx);
-        manager.updated((ctx, doc) => {
-          if (!armedRef.current || useStore.getState().viewMode !== 'wysiwyg') return;
-          // listener 会延迟 200ms 上报。切换/加载后的旧事务不能反写当前正文，
-          // 已程序加载或上报过的正文也无需再次序列化。
-          const currentDoc = ctx.get(editorViewCtx).state.doc;
-          if (!doc.eq(currentDoc) || syncedDocRef.current?.eq(doc)) return;
-          syncedDocRef.current = doc;
-          onDocChangeRef.current(doc);
-        });
-      })
-      .use((ctx) => {
-        // theme-nord 把 nord 的类型声明为 (ctx) => void，与 MilkdownPlugin
-        // 期望的返回值不匹配，这里包一层使其符合插件类型
-        nord(ctx);
-        return () => {};
-      })
-      .use(commonmark)
-      .use(gfm)
-      .use(frontmatter)
-      .use(taskList)
-      .use(listKeymap)
-      .use(listMarker)
-      .use(breaks)
-      .use(linkGesture)
-      .use(history)
-      .use(listener)
-      .use(findReplacePlugin)
-      .use(block)
-      .use(clipboard)
-      .config((ctx) => {
-        ctx.set(uploadConfig.key, {
-          enableHtmlFileUploader: true,
-          uploadWidgetFactory: (pos, spec) => {
-            const widgetDOM = document.createElement('span');
-            widgetDOM.hidden = true;
-            widgetDOM.setAttribute('aria-hidden', 'true');
-            return Decoration.widget(pos, widgetDOM, spec);
-          },
-          uploader: storeLocalImages,
-        });
-      })
-      .use(upload)
-      .use(imageView)
-      .use(prism);
+    return (
+      MilkdownEditor.make()
+        .config((ctx) => {
+          ctx.set(rootCtx, root);
+          ctx.set(defaultValueCtx, '');
+          // 与默认的 handlers/encode 合并，不能覆盖，否则会丢掉 Milkdown 内置的序列化处理器。
+          ctx.update(remarkStringifyOptionsCtx, (options) => ({
+            ...options,
+            ...markdownStringifyOverrides,
+            // 注入自定义 list 处理器：按节点保留的 bullet 字符输出（见 plugins/list-marker）。
+            // 注入 html 处理器：丢弃 preserveEmptyLine 特性注入的 <br /> 空行占位，
+            // 避免空列表项等空段落保存成 `* <br />` 污染 Markdown 文本（见 markdown-stringify-options）。
+            // 注入 break 处理器：宽松换行模式下输出干净的 '\n'，严格换行模式下输出 '\\\n'。
+            handlers: {
+              ...options.handlers,
+              list: listMarkerHandler,
+              html: dropBrPlaceholderHandler,
+              break: breakHandler,
+            },
+          }));
+          // 允许在表格单元格内插入硬换行（格内换行以 <br> 落盘，见 plugins/table-cell-breaks）。
+          // Milkdown 默认把 table 与 code_block 都列入硬换行禁插名单，这里只放开表格；
+          // 代码块内仍禁止。
+          ctx.update(hardbreakFilterNodes.key, (nodes) => nodes.filter((name) => name !== 'table'));
+        })
+        .config((ctx) => {
+          const manager = ctx.get(listenerCtx);
+          manager.updated((ctx, doc) => {
+            if (!armedRef.current || useStore.getState().viewMode !== 'wysiwyg') return;
+            // listener 会延迟 200ms 上报。切换/加载后的旧事务不能反写当前正文，
+            // 已程序加载或上报过的正文也无需再次序列化。
+            const currentDoc = ctx.get(editorViewCtx).state.doc;
+            if (!doc.eq(currentDoc) || syncedDocRef.current?.eq(doc)) return;
+            syncedDocRef.current = doc;
+            onDocChangeRef.current(doc);
+          });
+        })
+        .use((ctx) => {
+          // theme-nord 把 nord 的类型声明为 (ctx) => void，与 MilkdownPlugin
+          // 期望的返回值不匹配，这里包一层使其符合插件类型
+          nord(ctx);
+          return () => {};
+        })
+        // 单元格内 <br> 的解析插件必须先于 commonmark：remark 变换按注册顺序执行，
+        // 要赶在 preserve-empty-line 删除 <br> 之前抢救（见 plugins/table-cell-breaks）。
+        .use(cellBrRemark)
+        .use(commonmark)
+        .use(gfm)
+        .use(frontmatter)
+        .use(taskList)
+        .use(listKeymap)
+        .use(listMarker)
+        .use(breaks)
+        // 覆盖 commonmark 的 hardbreak 序列化：单元格内换行输出 <br>（upsertById
+        // 按 id 替换同名 schema 条目，因此必须在 commonmark 之后注册）。
+        .use(cellAwareHardbreak)
+        .use(tableEnterKeymap)
+        .use(linkGesture)
+        .use(history)
+        .use(listener)
+        .use(findReplacePlugin)
+        .use(block)
+        .use(clipboard)
+        .config((ctx) => {
+          ctx.set(uploadConfig.key, {
+            enableHtmlFileUploader: true,
+            uploadWidgetFactory: (pos, spec) => {
+              const widgetDOM = document.createElement('span');
+              widgetDOM.hidden = true;
+              widgetDOM.setAttribute('aria-hidden', 'true');
+              return Decoration.widget(pos, widgetDOM, spec);
+            },
+            uploader: storeLocalImages,
+          });
+        })
+        .use(upload)
+        .use(imageView)
+        .use(prism)
+    );
   }, []);
 
   // 不用 useEditor 返回的 get：它每次渲染都是新函数，放进下方 effect 依赖会导致
@@ -545,15 +685,6 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           console.error('deleteTableLine error:', e);
         }
       },
-      deleteTableAt: () => {
-        try {
-          const view = ed.ctx.get(editorViewCtx);
-          const tr = applyDeleteTableAt(view.state);
-          if (tr) view.dispatch(tr);
-        } catch (e) {
-          console.error('deleteTableAt error:', e);
-        }
-      },
       findTextMatches: (query: string) => {
         try {
           const view = ed.ctx.get(editorViewCtx);
@@ -679,70 +810,19 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   return (
     <div
       className={`editor-container theme-${contentTheme}`}
-      onContextMenu={handleTableContextMenu}
+      onContextMenu={handleContextMenu}
       onClick={handleEditorClick}
       onMouseMove={handleEditorMouseMove}
       onMouseLeave={handleEditorMouseLeave}
     >
       <Milkdown />
-      {tableContextMenu && (
-        <div
-          className="table-context-menu"
-          role="menu"
-          style={{ left: tableContextMenu.left, top: tableContextMenu.top }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runTableContextMenuOp({ kind: 'add-row', position: 'before' })}
-          >
-            {t('toolbar.tableAddRowAbove')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runTableContextMenuOp({ kind: 'add-row', position: 'after' })}
-          >
-            {t('toolbar.tableAddRowBelow')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runTableContextMenuOp({ kind: 'add-col', position: 'before' })}
-          >
-            {t('toolbar.tableAddColLeft')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runTableContextMenuOp({ kind: 'add-col', position: 'after' })}
-          >
-            {t('toolbar.tableAddColRight')}
-          </button>
-          <div className="table-context-menu-sep" />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runTableContextMenuOp({ kind: 'delete-row' })}
-          >
-            {t('toolbar.tableDeleteRow')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runTableContextMenuOp({ kind: 'delete-col' })}
-          >
-            {t('toolbar.tableDeleteCol')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runTableContextMenuOp({ kind: 'delete-table' })}
-          >
-            {t('toolbar.tableDeleteTable')}
-          </button>
-        </div>
+      {contextMenu && (
+        <ContextMenu
+          left={contextMenu.left}
+          top={contextMenu.top}
+          items={contextMenu.entries}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   );

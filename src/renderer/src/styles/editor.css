@@ -43,7 +43,7 @@
   outline: none;
 }
 
-.table-context-menu {
+.context-menu {
   position: fixed;
   z-index: 1000;
   display: flex;
@@ -57,7 +57,7 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
 }
 
-.table-context-menu button {
+.context-menu button {
   display: block;
   width: 100%;
   padding: 6px 10px;
@@ -71,14 +71,13 @@
   cursor: pointer;
 }
 
-.table-context-menu button:hover {
+.context-menu button:hover:not(:disabled) {
   background: var(--bg-tertiary);
 }
 
-.table-context-menu-sep {
-  height: 1px;
-  margin: 4px 2px;
-  background: var(--border-color, rgba(0, 0, 0, 0.08));
+.context-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .editor-container .ProseMirror {

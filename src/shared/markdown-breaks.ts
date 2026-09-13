@@ -13,9 +13,20 @@ export interface MdastNode {
   children?: MdastNode[];
 }
 
+// 单元格内显式换行的 data 标记。GFM 管道表格一格只有一行，格内换行唯一的
+// 标准写法就是 <br>（GitHub/Obsidian/Typora 通用），它是用户主动要求的换行，
+// 语义上等价于硬换行：宽松/严格换行设置都不应把它降级为空格。
+export const CELL_BREAK_FLAG = 'inkmarkCellBreak';
+
+/// 节点是否带单元格换行标记。
+export function isCellBreakNode(node: { data?: unknown } | undefined | null): boolean {
+  if (!node || typeof node.data !== 'object' || node.data === null) return false;
+  return (node.data as Record<string, unknown>)[CELL_BREAK_FLAG] === true;
+}
+
 /**
  * 根据 strictLineBreaks 设置调整 mdast 树中 break 节点的 isInline 属性，
- * 并处理任何未切分的文本换行。
+ * 并处理任何未切分的文本换行。带单元格换行标记的 break 是显式硬换行，跳过不改写。
  */
 export function transformBreaksInTree(tree: MdastNode, strictLineBreaks: boolean): void {
   function walk(parent: MdastNode): void {
@@ -25,6 +36,7 @@ export function transformBreaksInTree(tree: MdastNode, strictLineBreaks: boolean
       const child = parent.children[i];
 
       if (child.type === 'break') {
+        if (isCellBreakNode(child)) continue;
         const dataObj =
           child.data && typeof child.data === 'object'
             ? (child.data as Record<string, unknown>)

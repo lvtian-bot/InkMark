@@ -48,6 +48,10 @@ export const messages: Record<MessageKey, string> = {
   'menu.paste': 'Paste',
   'menu.pasteAsPlainText': 'Paste as Plain Text',
   'menu.selectAll': 'Select All',
+  'contextMenu.openLink': 'Open Link',
+  'contextMenu.copyLinkAddress': 'Copy Link Address',
+  'contextMenu.removeLink': 'Remove Link',
+  'contextMenu.copyCodeBlock': 'Copy Code Block',
   'menu.find': 'Find...',
   'menu.replace': 'Replace...',
   'menu.outline': 'Outline',
@@ -250,7 +254,6 @@ export const messages: Record<MessageKey, string> = {
   'toolbar.tableAddColRight': 'Insert Column Right',
   'toolbar.tableDeleteRow': 'Delete Row',
   'toolbar.tableDeleteCol': 'Delete Column',
-  'toolbar.tableDeleteTable': 'Delete Table',
   'toolbar.save': 'Save',
 
   'statusBar.showOutline': 'Show Outline ({shortcut})',

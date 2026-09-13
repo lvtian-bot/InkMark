@@ -5,8 +5,6 @@ import { TextSelection } from '@milkdown/kit/prose/state';
 import {
   type TableRect,
   addColumn,
-  cellAround,
-  deleteTable,
   isInTable,
   removeColumn,
   removeRow,
@@ -130,9 +128,9 @@ function placeCursor(tr: Transaction, tableStart: number, row: number, col: numb
   if (!table) return;
   const map = TableMap.get(table);
   const cellStart = tableStart + map.positionAt(row, col, table);
-  const resolved = tr.doc.resolve(cellStart);
-  const inCell = cellAround(resolved);
-  if (inCell) tr.setSelection(TextSelection.near(tr.doc.resolve(inCell.pos + 1)));
+  // cellStart 是单元格节点的开边界，resolve 落在行层级（两侧都是单元格边界），
+  // cellAround 在此返回 null，因此直接进入单元格内部（+1）取最近的文本光标。
+  tr.setSelection(TextSelection.near(tr.doc.resolve(cellStart + 1)));
 }
 
 /// 在 WYSIWYG 模式插入一行/列。方向相对于光标所在行/列。
@@ -196,15 +194,4 @@ export function deleteTableLine(state: EditorState, kind: TableLineKind): Transa
   if (width <= 1) return null;
   removeColumn(tr, rect, rect.left);
   return tr;
-}
-
-/// 在 WYSIWYG 模式删除光标所在表格。
-/// 返回 null 表示光标不在表格中。
-export function deleteTableAt(state: EditorState): Transaction | null {
-  if (!isInTable(state)) return null;
-  let result: Transaction | null = null;
-  const ok = deleteTable(state, (tr) => {
-    result = tr;
-  });
-  return ok ? result : null;
 }

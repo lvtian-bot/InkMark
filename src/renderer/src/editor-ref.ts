@@ -34,8 +34,6 @@ export interface EditorHandle {
   addTableLine: (kind: 'row' | 'col', position: 'before' | 'after') => void;
   /// 删除光标所在行/列。
   deleteTableLine: (kind: 'row' | 'col') => void;
-  /// 删除光标所在表格。
-  deleteTableAt: () => void;
   findTextMatches: (query: string) => readonly TextMatch[];
   showTextMatches: (matches: readonly TextMatch[], activeIndex: number) => void;
   replaceTextMatch: (match: TextMatch, replacement: string) => boolean;

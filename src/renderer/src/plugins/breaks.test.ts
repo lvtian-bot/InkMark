@@ -93,6 +93,28 @@ describe('transformBreaksInTree（纯函数）', () => {
     expect(para.children).toHaveLength(3);
     expect(para.children![1]).toEqual({ type: 'break', data: { isInline: false } });
   });
+
+  it('带单元格换行标记的 break 是显式硬换行：严格模式下也不改写 isInline', () => {
+    const tree: MdastNode = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'text', value: 'a' },
+            { type: 'break', data: { isInline: false, inkmarkCellBreak: true } },
+            { type: 'text', value: 'b' },
+          ],
+        },
+      ],
+    };
+
+    transformBreaksInTree(tree, true);
+
+    const data = (tree.children![0].children![1] as any).data;
+    expect(data.isInline).toBe(false);
+    expect(data.inkmarkCellBreak).toBe(true);
+  });
 });
 
 describe('breakHandler 序列化（纯函数）', () => {

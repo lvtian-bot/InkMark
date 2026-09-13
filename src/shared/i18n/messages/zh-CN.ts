@@ -46,6 +46,10 @@ export const messages = {
   'menu.paste': '粘贴',
   'menu.pasteAsPlainText': '粘贴为纯文本',
   'menu.selectAll': '全选',
+  'contextMenu.openLink': '打开链接',
+  'contextMenu.copyLinkAddress': '复制链接地址',
+  'contextMenu.removeLink': '移除链接',
+  'contextMenu.copyCodeBlock': '复制代码块内容',
   'menu.find': '查找...',
   'menu.replace': '替换...',
   'menu.outline': '大纲',
@@ -242,7 +246,6 @@ export const messages = {
   'toolbar.tableAddColRight': '右侧插入列',
   'toolbar.tableDeleteRow': '删除当前行',
   'toolbar.tableDeleteCol': '删除当前列',
-  'toolbar.tableDeleteTable': '删除表格',
   'toolbar.save': '保存',
 
   'statusBar.showOutline': '显示大纲 ({shortcut})',

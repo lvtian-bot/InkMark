@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { EditorView, keymap } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import {
@@ -15,6 +15,7 @@ import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
+import { useI18n } from '../i18n';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import {
   acceptAllReviewChunks,
@@ -26,6 +27,7 @@ import {
 import { drainQueuedReviewChunks } from '../review/review-store';
 import { findLinkHrefAtPos } from '../source-link';
 import { isFollowLinkCombo } from '../document-link';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import '../styles/source-editor.css';
 
 interface SourceEditorProps {
@@ -92,6 +94,14 @@ export function SourceEditor({
   }>({});
   // 链接跳转回调容器：与审阅回调同理，扩展内经它取最新回调。
   const followLinkRef = useRef(onFollowLink);
+  // 右键菜单状态：条目在打开菜单的事件处理器里一次性构造，渲染期仅读取。
+  const [contextMenu, setContextMenu] = useState<{
+    seq: number;
+    left: number;
+    top: number;
+    items: ContextMenuItem[];
+  } | null>(null);
+  const menuSeqRef = useRef(0);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -234,7 +244,64 @@ export function SourceEditor({
     };
   }, []);
 
+  const { t } = useI18n();
+
+  // 与所见即所得模式一致的剪贴板基础组；源码模式下链接/代码块是纯文本
+  // 语法，没有对应的上下文组。条目只在打开菜单时构造，渲染期仅读取。
+  const buildEntries = (hasSelection: boolean, clipboardHasText: boolean): ContextMenuItem[] => {
+    const exec = (action: Parameters<typeof window.inkmark.execClipboardCommand>[0]) => () =>
+      void window.inkmark.execClipboardCommand(action);
+    return [
+      { label: t('menu.cut'), disabled: !hasSelection, onSelect: exec('cut') },
+      { label: t('menu.copy'), disabled: !hasSelection, onSelect: exec('copy') },
+      { label: t('menu.paste'), disabled: !clipboardHasText, onSelect: exec('paste') },
+      {
+        label: t('menu.pasteAsPlainText'),
+        disabled: !clipboardHasText,
+        onSelect: exec('pasteAndMatchStyle'),
+      },
+      { label: t('menu.selectAll'), onSelect: exec('selectAll') },
+    ];
+  };
+
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>): void => {
+    const view = viewRef.current;
+    if (!view) return;
+    event.preventDefault();
+
+    const { from, to } = view.state.selection.main;
+    const hasSelection = from !== to;
+
+    const seq = menuSeqRef.current + 1;
+    menuSeqRef.current = seq;
+    setContextMenu({
+      seq,
+      left: event.clientX,
+      top: event.clientY,
+      items: buildEntries(hasSelection, false),
+    });
+    void window.inkmark.clipboardHasText().then((has) => {
+      setContextMenu((prev) =>
+        prev && prev.seq === seq ? { ...prev, items: buildEntries(hasSelection, has) } : prev,
+      );
+    });
+  };
+
   return (
-    <div className={`source-container theme-${contentTheme} cm-theme-${theme}`} ref={hostRef} />
+    <>
+      <div
+        className={`source-container theme-${contentTheme} cm-theme-${theme}`}
+        ref={hostRef}
+        onContextMenu={handleContextMenu}
+      />
+      {contextMenu && (
+        <ContextMenu
+          left={contextMenu.left}
+          top={contextMenu.top}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+    </>
   );
 }

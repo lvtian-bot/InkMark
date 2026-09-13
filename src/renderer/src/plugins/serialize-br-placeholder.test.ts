@@ -52,6 +52,14 @@ describe('dropBrPlaceholderHandler（纯函数）', () => {
     expect(dropBrPlaceholderHandler({})).toBe('');
     expect(dropBrPlaceholderHandler({ value: 123 })).toBe('');
   });
+
+  it('带单元格换行标记的 <br> 是真实内容，原样输出', () => {
+    expect(dropBrPlaceholderHandler({ value: '<br>', data: { inkmarkCellBreak: true } })).toBe(
+      '<br>',
+    );
+    // 无标记的同值 html 仍按占位符丢弃
+    expect(dropBrPlaceholderHandler({ value: '<br>' })).toBe('');
+  });
 });
 
 describe('序列化空列表项不再产生 <br />（集成）', () => {
