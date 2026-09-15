@@ -8,7 +8,7 @@ interface ExternalUpdateBannerProps {
 }
 
 // 编辑区顶部的「文件已被外部更新」提示条（change-review.md 默认状态）：
-// 干净标签页被外部修改后不静默刷新，由用户选择「直接替换」或「逐项审阅」。
+// 干净标签页被外部修改后不静默刷新，由用户选择「重新加载」或「逐项审阅」。
 export function ExternalUpdateBanner({ onReload, onReview }: ExternalUpdateBannerProps) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);

@@ -259,7 +259,7 @@ export const messages = {
   'statusBar.wordCount': '{wordCount} 字',
   'statusBar.charCount': '{charCount} 字符',
 
-  'review.replaceNow': '直接替换',
+  'review.replaceNow': '重新加载',
   'review.enterReview': '逐项审阅',
   'review.toolbarTitle': '外部改动审阅 · {count} 处待决',
   'review.toolbarHint': '处理完成后确认保存；外部有更新时另存新版本',

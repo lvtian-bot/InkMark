@@ -852,7 +852,7 @@ describe('外部修改审阅入口', () => {
     }
   });
 
-  it('源码模式直接替换后，第一次真实输入会标记脏且不写盘', async () => {
+  it('源码模式重新加载后，第一次真实输入会标记脏且不写盘', async () => {
     const { host, root, scenario } = await mountScenario('原正文\n', '原正文\n', '外部新正文\n');
     try {
       await act(async () => useStore.setState({ viewMode: 'source' }));
@@ -863,10 +863,10 @@ describe('外部修改审阅入口', () => {
         '源码模式未加载原正文',
       );
 
-      await act(async () => buttonByText(host, '直接替换').click());
+      await act(async () => buttonByText(host, '重新加载').click());
       await waitFor(
         () => sourceEditorHandle.current?.getValue() === scenario.external,
-        '直接替换后源码编辑器未加载外部版本',
+        '重新加载后源码编辑器未加载外部版本',
       );
       expect(scenario.saveFile).not.toHaveBeenCalled();
 
@@ -874,7 +874,7 @@ describe('外部修改审阅入口', () => {
       await waitFor(() => {
         const tab = useStore.getState().tabs.find((item) => item.id === scenario.tabId);
         return tab?.isDirty === true && tab.sourceContent.startsWith('用户输入');
-      }, '直接替换后的第一次源码输入未标记脏');
+      }, '重新加载后的第一次源码输入未标记脏');
 
       expect(scenario.saveFile).not.toHaveBeenCalled();
       expect(scenario.state.disk).toBe(scenario.external);

@@ -15,7 +15,7 @@ export interface ExternalChangeInput {
 // 判定某个已打开标签在面对外部文件变化时应走哪条分支。
 // 调用前应已确认文件存在（missing 由事件/查询层先行过滤）。
 // 返回值与 useFile 的 checkExternalChanges 中 mtime 比较后的分支一一对应：
-// 无待决块时干净标签走提示条（prompt，用户选直接替换或逐项审阅）、
+// 无待决块时干净标签走提示条（prompt，用户选重新加载或逐项审阅）、
 // 脏标签走冲突弹窗（conflict，弹窗内含逐项审阅选项）；
 // 审阅会话进行中（inReview）只通知审阅结果需另存（review）。
 export function decideExternalChange(input: ExternalChangeInput): ExternalChangeDecision {

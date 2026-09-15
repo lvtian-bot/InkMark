@@ -819,7 +819,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
               }
             } else {
               // 干净标签页不静默刷新（change-review.md 默认状态）：仅标记待处理，
-              // 由用户在编辑区顶部提示条上选择「直接替换」或「逐项审阅」。
+              // 由用户在编辑区顶部提示条上选择「重新加载」或「逐项审阅」。
               updateTab(currentTab.id, { externalUpdatePending: true });
             }
           }

@@ -267,7 +267,7 @@ export const messages: Record<MessageKey, string> = {
   'statusBar.wordCount': '{wordCount} words',
   'statusBar.charCount': '{charCount} chars',
 
-  'review.replaceNow': 'Replace now',
+  'review.replaceNow': 'Reload',
   'review.enterReview': 'Review changes',
   'review.toolbarTitle': 'External changes · {count} pending',
   'review.toolbarHint': 'Confirm to save; save a new copy if the original changes',
