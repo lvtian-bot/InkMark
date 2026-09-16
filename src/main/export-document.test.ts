@@ -7,7 +7,6 @@ import { renderExportBodyHtml, renderExportDocument } from './export-document';
 const baseOptions = {
   title: '示例文档',
   sourcePath: null,
-  strictLineBreaks: false,
   target: 'standalone' as const,
 };
 
@@ -72,23 +71,12 @@ describe('renderExportBodyHtml 基础渲染', () => {
 });
 
 describe('换行语义', () => {
-  it('宽松换行把段内单回车渲染为 <br>', async () => {
+  it('段内单回车渲染为 <br>（宽松换行）', async () => {
     const html = await renderExportBodyHtml({
       ...baseOptions,
-      strictLineBreaks: false,
       markdown: '第一行\n第二行\n',
     });
     expect(html).toContain('第一行<br>第二行');
-  });
-
-  it('严格换行把段内单回车渲染为空格', async () => {
-    const html = await renderExportBodyHtml({
-      ...baseOptions,
-      strictLineBreaks: true,
-      markdown: '第一行\n第二行\n',
-    });
-    expect(html).not.toContain('<br');
-    expect(html).toContain('第一行 第二行');
   });
 });
 

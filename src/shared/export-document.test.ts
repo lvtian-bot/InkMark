@@ -33,7 +33,6 @@ describe('isExportDocumentRequest', () => {
         markdown: '# t',
         title: 't.md',
         sourcePath: null,
-        strictLineBreaks: false,
       }),
     ).toBe(true);
   });
@@ -46,7 +45,6 @@ describe('isExportDocumentRequest', () => {
         markdown: '',
         title: '',
         sourcePath: null,
-        strictLineBreaks: true,
       }),
     ).toBe(false);
     expect(
@@ -54,7 +52,6 @@ describe('isExportDocumentRequest', () => {
         kind: 'html',
         title: '',
         sourcePath: null,
-        strictLineBreaks: true,
       }),
     ).toBe(false);
     expect(
@@ -62,7 +59,6 @@ describe('isExportDocumentRequest', () => {
         kind: 'html',
         markdown: '',
         sourcePath: null,
-        strictLineBreaks: true,
       }),
     ).toBe(false);
     expect(
@@ -71,11 +67,7 @@ describe('isExportDocumentRequest', () => {
         markdown: '',
         title: '',
         sourcePath: '',
-        strictLineBreaks: true,
       }),
-    ).toBe(false);
-    expect(
-      isExportDocumentRequest({ kind: 'html', markdown: '', title: '', sourcePath: null }),
     ).toBe(false);
   });
 });

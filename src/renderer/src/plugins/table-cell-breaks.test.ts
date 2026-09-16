@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Editor } from '@milkdown/core';
 import { commonmark, hardbreakFilterNodes } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
@@ -16,7 +16,6 @@ import { breakHandler, dropBrPlaceholderHandler } from '../markdown-stringify-op
 import { breaks } from './breaks';
 import { cellBrRemark, cellAwareHardbreak, transformCellBrInTree } from './table-cell-breaks';
 import { tableEnterKeymap } from './table-enter-keymap';
-import { useStore } from '../stores/useStore';
 import type { MdastNode } from '../../../shared/markdown-breaks';
 
 describe('transformCellBrInTree（纯函数）', () => {
@@ -145,20 +144,7 @@ async function makeEditor(markdown: string) {
 const CELL_BR_TABLE = '| a<br>b | c |\n| --- | --- |\n| d | e |';
 
 describe('单元格内换行（集成：生产编排）', () => {
-  beforeEach(() => {
-    useStore.setState({ strictLineBreaks: false });
-  });
-
-  it('解析：外部文档单元格内的 <br> 变成硬换行节点（宽松模式）', async () => {
-    const { parser } = await makeEditor('');
-    const headerCell = parser(CELL_BR_TABLE).toJSON().content[0].content[0].content[0];
-    const br = headerCell.content[0].content.find((n: any) => n.type === 'hardbreak');
-    expect(br).toBeDefined();
-    expect(br.attrs.isInline).toBe(false);
-  });
-
-  it('解析：严格模式下格内 <br> 仍是硬换行（显式换行不随软换行设置降级）', async () => {
-    useStore.setState({ strictLineBreaks: true });
+  it('解析：外部文档单元格内的 <br> 变成硬换行节点', async () => {
     const { parser } = await makeEditor('');
     const headerCell = parser(CELL_BR_TABLE).toJSON().content[0].content[0].content[0];
     const br = headerCell.content[0].content.find((n: any) => n.type === 'hardbreak');
@@ -167,14 +153,6 @@ describe('单元格内换行（集成：生产编排）', () => {
   });
 
   it('序列化往返：保存仍是 <br>，连续往返稳定', async () => {
-    const { parser, serializer } = await makeEditor('');
-    const once = serializer(parser(CELL_BR_TABLE));
-    expect(once).toContain('a<br>b');
-    expect(serializer(parser(once))).toBe(once);
-  });
-
-  it('序列化：严格模式下往返同样稳定', async () => {
-    useStore.setState({ strictLineBreaks: true });
     const { parser, serializer } = await makeEditor('');
     const once = serializer(parser(CELL_BR_TABLE));
     expect(once).toContain('a<br>b');

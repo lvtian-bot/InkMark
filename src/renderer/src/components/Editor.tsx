@@ -110,8 +110,6 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   const syncedDocRef = useRef<ProseNode | null>(null);
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
-  const strictLineBreaks = useStore((s) => s.strictLineBreaks);
-  const initialStrictRef = useRef(strictLineBreaks);
   const [contextMenu, setContextMenu] = useState<MenuSnapshot | null>(null);
   const menuSeqRef = useRef(0);
 
@@ -792,20 +790,6 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       editorHandle.current = null;
     };
   }, [loading, get]);
-
-  // 严格换行开关：设置变化时重新解析当前文档（跳过初始挂载）。
-  useEffect(() => {
-    if (loading || !armedRef.current) return;
-    if (initialStrictRef.current === strictLineBreaks) return;
-    initialStrictRef.current = strictLineBreaks;
-    const ed = get();
-    if (!ed) return;
-    const state = useStore.getState();
-    const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
-    if (activeTab && activeTab.sourceContent) {
-      editorHandle.current?.setMarkdown(activeTab.sourceContent);
-    }
-  }, [loading, get, strictLineBreaks]);
 
   return (
     <div

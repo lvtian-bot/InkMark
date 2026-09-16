@@ -1090,7 +1090,7 @@ ipcMain.handle(
       throw new Error('Invalid export request.');
     }
     if (!mainWindow) return { status: 'canceled' };
-    const { kind, markdown, title, sourcePath, strictLineBreaks } = request;
+    const { kind, markdown, title, sourcePath } = request;
     const fileName = `${sanitizeExportFileName(title)}.${kind === 'html' ? 'html' : 'pdf'}`;
     const defaultDirectory = sourcePath ? dirname(sourcePath) : getLastDialogPath();
     const dialogResult = await dialog.showSaveDialog(mainWindow, {
@@ -1111,7 +1111,6 @@ ipcMain.handle(
         markdown,
         title,
         sourcePath,
-        strictLineBreaks,
         target: kind === 'html' ? 'standalone' : 'print',
       });
       if (kind === 'html') {

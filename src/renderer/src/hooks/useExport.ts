@@ -42,7 +42,6 @@ export function useExport() {
         markdown: tab.sourceContent,
         title: tabDisplayName(tab, t),
         sourcePath: tab.filePath,
-        strictLineBreaks: state.strictLineBreaks,
       });
     } catch {
       result = { status: 'error', message: '' };

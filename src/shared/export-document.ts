@@ -11,8 +11,6 @@ export interface ExportDocumentRequest {
   title: string;
   /** 源文档绝对路径；未落盘的新文档为 null（相对图片无法解析，保持原样）。 */
   sourcePath: string | null;
-  /** 与编辑器一致的换行语义：false 宽松换行（单回车 <br>），true 严格换行。 */
-  strictLineBreaks: boolean;
 }
 
 export type ExportDocumentResult =
@@ -26,8 +24,7 @@ export function isExportDocumentRequest(value: unknown): value is ExportDocument
     typeof request.markdown === 'string' &&
     typeof request.title === 'string' &&
     (request.sourcePath === null ||
-      (typeof request.sourcePath === 'string' && request.sourcePath.length > 0)) &&
-    typeof request.strictLineBreaks === 'boolean'
+      (typeof request.sourcePath === 'string' && request.sourcePath.length > 0))
   );
 }
 

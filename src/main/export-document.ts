@@ -27,7 +27,6 @@ export interface RenderExportOptions {
   markdown: string;
   title: string;
   sourcePath: string | null;
-  strictLineBreaks: boolean;
   target: ExportTarget;
 }
 
@@ -162,14 +161,11 @@ function readLocalImageAsDataUrl(localPath: string): string | null {
 /**
  * 渲染 Markdown 正文为 HTML 片段（不含文档外壳）。
  * 换行语义与编辑器一致：先用统一的树变换把段内裸换行提升为 break 节点，
- * 宽松换行（默认）渲染为 <br>，严格换行渲染为空格。
+ * 渲染为 <br>（宽松换行）。
  */
 export async function renderExportBodyHtml(options: RenderExportOptions): Promise<string> {
   const rehypeHandlers: RemarkRehypeOptions['handlers'] = {
-    break: () =>
-      options.strictLineBreaks
-        ? { type: 'text', value: ' ' }
-        : { type: 'element', tagName: 'br', properties: {}, children: [] },
+    break: () => ({ type: 'element', tagName: 'br', properties: {}, children: [] }),
     // 编辑器不执行原始 HTML，导出同样按字面文本显示（自动转义，无脚本注入）。
     html: (_state, node) =>
       node.type === 'html' ? { type: 'text', value: node.value } : undefined,
@@ -197,7 +193,7 @@ export async function renderExportBodyHtml(options: RenderExportOptions): Promis
     .use(remarkGfm)
     .use(remarkFrontmatter, 'yaml')
     .use(() => (tree: Root) => {
-      transformBreaksInTree(tree, options.strictLineBreaks);
+      transformBreaksInTree(tree);
       rewriteLocalImages(tree, options);
     })
     .use(remarkRehype, { handlers: rehypeHandlers })
