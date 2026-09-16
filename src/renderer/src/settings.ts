@@ -3,12 +3,17 @@ import {
   isFontPresetId,
   isFontSizePresetId,
   isLetterSpacingPresetId,
-  isLineHeightPresetId,
   type FontPresetId,
   type FontSizePresetId,
   type LetterSpacingPresetId,
-  type LineHeightPresetId,
 } from './font-presets';
+import {
+  LINE_HEIGHT_RANGE,
+  LIST_SPACING_RANGE,
+  PARAGRAPH_SPACING_RANGE,
+  clampTypographyValue,
+  migrateLegacyLineHeight,
+} from './typography';
 import { isEditorWidthPresetId, type EditorWidthPresetId } from './editor-width-presets';
 import {
   DEFAULT_EDITOR_SHORTCUT_MAP,
@@ -49,14 +54,15 @@ export interface AppSettings {
   recentListWidth: RecentListWidth;
   fontPreset: FontPresetId;
   fontSizePreset: FontSizePresetId;
-  lineHeightPreset: LineHeightPresetId;
+  lineHeight: number;
+  paragraphSpacing: number;
+  listSpacing: number;
   letterSpacingPreset: LetterSpacingPresetId;
   editorWidthPreset: EditorWidthPresetId;
   startPageOnLaunch: boolean;
   fileTreeVisible: boolean;
   panelLayout: PanelLayout;
   fileTreeWidth: number;
-  strictLineBreaks: boolean;
   autoSave: boolean;
   language: LanguageSetting;
   shortcuts: ShortcutMap;
@@ -77,14 +83,15 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   recentListWidth: 'medium',
   fontPreset: 'system',
   fontSizePreset: 'medium',
-  lineHeightPreset: 'medium',
+  lineHeight: LINE_HEIGHT_RANGE.default,
+  paragraphSpacing: PARAGRAPH_SPACING_RANGE.default,
+  listSpacing: LIST_SPACING_RANGE.default,
   letterSpacingPreset: 'medium',
   editorWidthPreset: 'standard',
   startPageOnLaunch: true,
   fileTreeVisible: false,
   panelLayout: 'outline-left',
   fileTreeWidth: 240,
-  strictLineBreaks: false,
   autoSave: false,
   language: 'system',
   shortcuts: normalizeShortcutMap(DEFAULT_SHORTCUT_MAP),
@@ -101,14 +108,15 @@ export function selectSettings(settings: AppSettings): AppSettings {
     recentListWidth: settings.recentListWidth,
     fontPreset: settings.fontPreset,
     fontSizePreset: settings.fontSizePreset,
-    lineHeightPreset: settings.lineHeightPreset,
+    lineHeight: settings.lineHeight,
+    paragraphSpacing: settings.paragraphSpacing,
+    listSpacing: settings.listSpacing,
     letterSpacingPreset: settings.letterSpacingPreset,
     editorWidthPreset: settings.editorWidthPreset,
     startPageOnLaunch: settings.startPageOnLaunch,
     fileTreeVisible: settings.fileTreeVisible,
     panelLayout: settings.panelLayout,
     fileTreeWidth: settings.fileTreeWidth,
-    strictLineBreaks: settings.strictLineBreaks,
     autoSave: settings.autoSave,
     language: settings.language,
     shortcuts: settings.shortcuts,
@@ -194,9 +202,13 @@ function normalizeSettings(value: unknown): AppSettings {
     fontSizePreset: isFontSizePresetId(candidate.fontSizePreset)
       ? candidate.fontSizePreset
       : DEFAULT_SETTINGS.fontSizePreset,
-    lineHeightPreset: isLineHeightPresetId(candidate.lineHeightPreset)
-      ? candidate.lineHeightPreset
-      : DEFAULT_SETTINGS.lineHeightPreset,
+    // 行距优先读数值；缺失时迁移旧版档位（lineHeightPreset），仍无效回落默认。
+    lineHeight: clampTypographyValue(
+      LINE_HEIGHT_RANGE,
+      candidate.lineHeight ?? migrateLegacyLineHeight(candidate.lineHeightPreset),
+    ),
+    paragraphSpacing: clampTypographyValue(PARAGRAPH_SPACING_RANGE, candidate.paragraphSpacing),
+    listSpacing: clampTypographyValue(LIST_SPACING_RANGE, candidate.listSpacing),
     letterSpacingPreset: isLetterSpacingPresetId(candidate.letterSpacingPreset)
       ? candidate.letterSpacingPreset
       : DEFAULT_SETTINGS.letterSpacingPreset,
@@ -215,10 +227,6 @@ function normalizeSettings(value: unknown): AppSettings {
       ? candidate.panelLayout
       : DEFAULT_SETTINGS.panelLayout,
     fileTreeWidth: normalizeFileTreeWidth(candidate.fileTreeWidth),
-    strictLineBreaks:
-      typeof candidate.strictLineBreaks === 'boolean'
-        ? candidate.strictLineBreaks
-        : DEFAULT_SETTINGS.strictLineBreaks,
     autoSave:
       typeof candidate.autoSave === 'boolean' ? candidate.autoSave : DEFAULT_SETTINGS.autoSave,
     language: normalizeLanguageSetting(candidate.language),

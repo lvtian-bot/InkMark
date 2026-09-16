@@ -90,32 +90,6 @@ export function resolveFontSize(id: unknown): number {
   return FONT_SIZE_PRESET_BY_ID.get(id)?.px ?? DEFAULT_FONT_SIZE_PRESET.px;
 }
 
-export type LineHeightPresetId = 'compact' | 'medium' | 'relaxed';
-
-export interface LineHeightPreset {
-  id: LineHeightPresetId;
-  labelKey: MessageKey;
-  value: number;
-}
-
-export const LINE_HEIGHT_PRESETS: readonly LineHeightPreset[] = [
-  { id: 'compact', labelKey: 'font.lineHeightCompact', value: 1.6 },
-  { id: 'medium', labelKey: 'font.lineHeightMedium', value: 1.75 },
-  { id: 'relaxed', labelKey: 'font.lineHeightRelaxed', value: 2 },
-];
-
-const DEFAULT_LINE_HEIGHT_PRESET = LINE_HEIGHT_PRESETS[1];
-const LINE_HEIGHT_PRESET_BY_ID = new Map(LINE_HEIGHT_PRESETS.map((preset) => [preset.id, preset]));
-
-export function isLineHeightPresetId(value: unknown): value is LineHeightPresetId {
-  return LINE_HEIGHT_PRESETS.some((preset) => preset.id === value);
-}
-
-export function resolveLineHeight(id: unknown): number {
-  if (!isLineHeightPresetId(id)) return DEFAULT_LINE_HEIGHT_PRESET.value;
-  return LINE_HEIGHT_PRESET_BY_ID.get(id)?.value ?? DEFAULT_LINE_HEIGHT_PRESET.value;
-}
-
 export type LetterSpacingPresetId = 'tight' | 'medium' | 'wide';
 
 export interface LetterSpacingPreset {

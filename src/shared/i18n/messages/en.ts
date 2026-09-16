@@ -107,7 +107,7 @@ export const messages: Record<MessageKey, string> = {
   'settings.navAria': 'Settings sections',
   'settings.section.general': 'General',
   'settings.section.appearance': 'Appearance',
-  'settings.section.font': 'Font',
+  'settings.section.font': 'Font & Typography',
   'settings.section.editor': 'Editor',
   'settings.section.startup': 'Startup',
   'settings.section.shortcuts': 'Shortcuts',
@@ -146,7 +146,13 @@ export const messages: Record<MessageKey, string> = {
   'settings.font.sizeLabel': 'Font Size',
   'settings.font.sizeHint': 'Body text and headings scale together.',
   'settings.font.lineHeightLabel': 'Line Height',
-  'settings.font.lineHeightHint': 'Adjusts the spacing between lines.',
+  'settings.font.lineHeightHint': 'Spacing between lines, 1.2–2.4 (multiplier).',
+  'settings.font.paragraphSpacingLabel': 'Paragraph Spacing',
+  'settings.font.paragraphSpacingHint':
+    'Extra spacing between paragraphs, 0–2 (em, scales with font size).',
+  'settings.font.listSpacingLabel': 'List Item Spacing',
+  'settings.font.listSpacingHint':
+    'Extra spacing between list and task items, 0–1 (em); keep it below paragraph spacing.',
   'settings.font.letterSpacingLabel': 'Letter Spacing',
   'settings.font.letterSpacingHint': 'Adjusts the spacing between characters.',
   'settings.editor.outlineVisibleLabel': 'Show Outline',
@@ -154,9 +160,6 @@ export const messages: Record<MessageKey, string> = {
   'settings.editor.fileTreeVisibleLabel': 'Show File Tree',
   'settings.editor.fileTreeVisibleHint':
     'Browse Markdown documents in a folder; toggle from the status bar or the View menu.',
-  'settings.editor.strictLineBreaksLabel': 'Strict Line Breaks',
-  'settings.editor.strictLineBreaksHint':
-    'When off, single line breaks render as new lines (like Obsidian default). When on, follows standard Markdown where single line breaks collapse to spaces.',
   'settings.editor.autoSaveLabel': 'Auto Save',
   'settings.editor.autoSaveHint':
     'Saves opened files about 3 seconds after you stop typing; new documents without a saved path still need manual saving.',
@@ -430,9 +433,6 @@ export const messages: Record<MessageKey, string> = {
   'font.sizeMedium': 'Default',
   'font.sizeLarge': 'Large',
   'font.sizeXlarge': 'Extra Large',
-  'font.lineHeightCompact': 'Compact',
-  'font.lineHeightMedium': 'Default',
-  'font.lineHeightRelaxed': 'Relaxed',
   'font.letterSpacingTight': 'Tight',
   'font.letterSpacingMedium': 'Default',
   'font.letterSpacingWide': 'Wide',

@@ -10,12 +10,11 @@ import {
   FONT_PRESETS,
   FONT_SIZE_PRESETS,
   LETTER_SPACING_PRESETS,
-  LINE_HEIGHT_PRESETS,
   isFontPresetId,
   isFontSizePresetId,
   isLetterSpacingPresetId,
-  isLineHeightPresetId,
 } from '../font-presets';
+import { LINE_HEIGHT_RANGE, LIST_SPACING_RANGE, PARAGRAPH_SPACING_RANGE } from '../typography';
 import { EDITOR_WIDTH_PRESETS, isEditorWidthPresetId } from '../editor-width-presets';
 import { useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
@@ -472,21 +471,70 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                         {t('settings.font.lineHeightHint')}
                       </span>
                     </span>
-                    <select
-                      value={draft.lineHeightPreset}
+                    <input
+                      type="number"
+                      min={LINE_HEIGHT_RANGE.min}
+                      max={LINE_HEIGHT_RANGE.max}
+                      step={LINE_HEIGHT_RANGE.step}
+                      value={draft.lineHeight}
                       onChange={(event) => {
-                        const lineHeightPreset = event.target.value;
-                        if (isLineHeightPresetId(lineHeightPreset)) {
-                          setDraft((settings) => ({ ...settings, lineHeightPreset }));
+                        if (event.target.value === '') return;
+                        const value = Number(event.target.value);
+                        if (Number.isFinite(value)) {
+                          setDraft((settings) => ({ ...settings, lineHeight: value }));
                         }
                       }}
-                    >
-                      {LINE_HEIGHT_PRESETS.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {t(preset.labelKey)}
-                        </option>
-                      ))}
-                    </select>
+                    />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.font.paragraphSpacingLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.font.paragraphSpacingHint')}
+                      </span>
+                    </span>
+                    <input
+                      type="number"
+                      min={PARAGRAPH_SPACING_RANGE.min}
+                      max={PARAGRAPH_SPACING_RANGE.max}
+                      step={PARAGRAPH_SPACING_RANGE.step}
+                      value={draft.paragraphSpacing}
+                      onChange={(event) => {
+                        if (event.target.value === '') return;
+                        const value = Number(event.target.value);
+                        if (Number.isFinite(value)) {
+                          setDraft((settings) => ({ ...settings, paragraphSpacing: value }));
+                        }
+                      }}
+                    />
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.font.listSpacingLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.font.listSpacingHint')}
+                      </span>
+                    </span>
+                    <input
+                      type="number"
+                      min={LIST_SPACING_RANGE.min}
+                      max={LIST_SPACING_RANGE.max}
+                      step={LIST_SPACING_RANGE.step}
+                      value={draft.listSpacing}
+                      onChange={(event) => {
+                        if (event.target.value === '') return;
+                        const value = Number(event.target.value);
+                        if (Number.isFinite(value)) {
+                          setDraft((settings) => ({ ...settings, listSpacing: value }));
+                        }
+                      }}
+                    />
                   </label>
 
                   <label className="settings-field">
@@ -520,33 +568,6 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
               {activeSection === 'editor' && (
                 <fieldset className="settings-group">
                   <legend>{t('settings.section.editor')}</legend>
-                  <div className="settings-field">
-                    <span className="settings-field-copy">
-                      <span className="settings-field-label">
-                        {t('settings.editor.strictLineBreaksLabel')}
-                      </span>
-                      <span className="settings-field-hint">
-                        {t('settings.editor.strictLineBreaksHint')}
-                      </span>
-                    </span>
-                    <label
-                      className="settings-switch"
-                      aria-label={t('settings.editor.strictLineBreaksLabel')}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={draft.strictLineBreaks}
-                        onChange={(event) =>
-                          setDraft((settings) => ({
-                            ...settings,
-                            strictLineBreaks: event.target.checked,
-                          }))
-                        }
-                      />
-                      <span className="settings-switch-slider" />
-                    </label>
-                  </div>
-
                   <div className="settings-field">
                     <span className="settings-field-copy">
                       <span className="settings-field-label">

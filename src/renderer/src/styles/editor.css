@@ -137,7 +137,14 @@
 }
 .editor-container.theme-inkmark p {
   line-height: var(--editor-line-height, 1.75);
-  margin: 0.6em 0;
+  margin: var(--editor-paragraph-spacing, 0.6em) 0;
+}
+/* 列表项不承担分段职责：项间间距取一档小值，介于段内行距与段落间距之间
+   （三档行距：段内 0 / 列表项间 / 段落间）。间距数值由设置的排版参数注入
+   （--editor-paragraph-spacing / --editor-list-spacing）。margin-block 只设
+   垂直间距，任务项的负 margin-left 悬挂缩进不受影响。 */
+.editor-container.theme-inkmark li > p {
+  margin-block: var(--editor-list-spacing, 0.3em);
 }
 .editor-container.theme-inkmark code {
   font-family: var(--font-mono);
