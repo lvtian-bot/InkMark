@@ -25,6 +25,25 @@ InkMark 的样式分外壳与内容两层管理。本文记录当前结构、历
 
 `<Milkdown />` 渲染的根节点**没有** `.milkdown` 这个类，稳定标识是属性 `data-milkdown-root`（`prose` / `milkdown-theme-nord` 类名来自 nord 插件）。历史上内容限宽居中和 `markdown-body` 挂载两处选择器都挂在 `.milkdown` 上，从未生效，导致 GitHub 主题整体失效、内容限宽失效、表格被压满窗口。凡是 targeting 内容根节点的样式或 JS 查询，一律挂 `[data-milkdown-root]`。
 
+## 正文行距规格
+
+InkMark 主题（`editor.css` 的 `.editor-container.theme-inkmark` 作用域）的垂直间距分三档，重新设计排版时保持这个层次，不要把某一档拉平或对齐到另一档：
+
+| 层次             | 间距                            | 规则                                                  |
+| ---------------- | ------------------------------- | ----------------------------------------------------- |
+| 段内换行/折行    | 只有行高，无附加间距            | `p` 的 `line-height`（`--editor-line-height`）        |
+| 列表项（含待办） | 行高 + 列表项间距（默认 0.3em） | `li > p { margin-block: var(--editor-list-spacing) }` |
+| 段落之间         | 段落间距（默认 0.6em）          | `p { margin: var(--editor-paragraph-spacing) 0 }`     |
+
+间距与行距是**设置里的排版数值参数**（2026-09-16 定稿，见 `src/renderer/src/typography.ts`）：直接暴露具体数值并限定范围——行距 1.2–2.4 倍、段落间距 0–2em、列表项间距 0–1em，不做"紧凑/标准/宽松"式命名档位；旧版行距档位设置自动迁移为数值。数值经 `useEditorFont` 注入为 CSS 变量，编辑器与持久化两层都会夹回范围。
+
+设计约束（来龙去脉见 [line-break-mode.md](./line-break-mode.md)）：
+
+- 列表项间距不按段落间距设计，默认应小于段落间距（设置项提示里有此建议，不做硬性联动）。
+- 段落间距默认不要放大到整行空行高度：段落空隙不可编辑，过大会暗示那里有一行可以输入（块间空隙光标方案已试用并否决）。
+- 列表间距规则只设垂直方向（`margin-block`），不得影响任务项 `margin-left: -24px` 的悬挂缩进。
+- 排版数值目前只驱动 InkMark 主题；GitHub 内容主题的间距由 `github-markdown-css` 自带，若重新设计主题，两套内容的层次观感应大体一致。
+
 ## 改颜色时的同步点
 
 - 右上角窗口按钮区（最小化/最大化/关闭）由系统 `titleBarOverlay` 原生绘制，颜色与窗口启动底色（`backgroundColor`）统一由主进程 `chromeColorsFor(themeId)` 提供，`createWindow` 初始值与 `theme:syncThemeId` 处理器两处都从这里取值。改标签栏或启动底色只改这一个函数，否则右上角色差或启动闪错色。启动底色取主题内容区底色（浅色纯白、深色 `#1e1e2e`），不是标签栏淡蓝——整窗闪标签栏色对白色主体是显眼的异物色块。
