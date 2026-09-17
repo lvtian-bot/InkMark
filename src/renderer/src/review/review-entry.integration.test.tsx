@@ -126,6 +126,8 @@ function createEditorHandle(
     deleteLine: () => undefined,
     addTableLine: () => undefined,
     deleteTableLine: () => undefined,
+    selectTable: () => undefined,
+    copyTable: () => undefined,
     findTextMatches: () => [],
     showTextMatches: () => undefined,
     replaceTextMatch: () => false,

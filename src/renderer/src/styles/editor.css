@@ -104,6 +104,19 @@
 .editor-container .ProseMirror .tableWrapper {
   overflow-x: auto;
 }
+/* 表格单元格选区功能性样式（对齐 prosemirror-tables） */
+.editor-container .ProseMirror td,
+.editor-container .ProseMirror th {
+  position: relative;
+}
+.editor-container .ProseMirror .selectedCell::after {
+  z-index: 2;
+  position: absolute;
+  content: '';
+  inset: 0;
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  pointer-events: none;
+}
 .editor-container.theme-inkmark h1 {
   font-size: 1.8em;
   font-weight: 700;

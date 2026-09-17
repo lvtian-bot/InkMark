@@ -54,6 +54,8 @@ import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { breaks } from '../plugins/breaks';
 import { cellBrRemark, cellAwareHardbreak } from '../plugins/table-cell-breaks';
 import { tableEnterKeymap } from '../plugins/table-enter-keymap';
+import { tableCopyPlugin, copyTableAtPos, selectTableAtPos } from '../plugins/table-copy';
+import { CellSelection, cellAround } from '@milkdown/kit/prose/tables';
 import { linkGesture } from '../plugins/link-gesture';
 import { pickLinkHrefFromClick, isFollowLinkCombo, shouldHintFollowLink } from '../document-link';
 import { expandToLinkBounds } from '../link-selection';
@@ -153,15 +155,20 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   const runTableContextMenuOp = (
     op:
       | { kind: 'add-row' | 'add-col'; position: 'before' | 'after' }
-      | { kind: 'delete-row' | 'delete-col' },
+      | { kind: 'delete-row' | 'delete-col' }
+      | { kind: 'select-table' | 'copy-table' },
   ): void => {
     const handle = editorHandle.current;
     if (!handle) return;
 
     if (op.kind === 'add-row' || op.kind === 'add-col') {
       handle.addTableLine(op.kind === 'add-row' ? 'row' : 'col', op.position);
-    } else {
+    } else if (op.kind === 'delete-row' || op.kind === 'delete-col') {
       handle.deleteTableLine(op.kind === 'delete-row' ? 'row' : 'col');
+    } else if (op.kind === 'select-table') {
+      handle.selectTable();
+    } else if (op.kind === 'copy-table') {
+      handle.copyTable();
     }
   };
 
@@ -180,6 +187,14 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
     if (target.kind === 'table') {
       // 删表不需要专门条目：删除行删到最后一行数据时会自动删除整张表。
       entries.push(
+        {
+          label: t('toolbar.tableSelectTable'),
+          onSelect: () => runTableContextMenuOp({ kind: 'select-table' }),
+        },
+        {
+          label: t('toolbar.tableCopyTable'),
+          onSelect: () => runTableContextMenuOp({ kind: 'copy-table' }),
+        },
         {
           label: t('toolbar.tableAddRowAbove'),
           onSelect: () => runTableContextMenuOp({ kind: 'add-row', position: 'before' }),
@@ -276,8 +291,19 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
     if (cell && cell.closest('.ProseMirror')) {
       const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
       if (coords) {
-        const { from, to } = view.state.selection;
-        const clickInSelection = from !== to && coords.pos >= from && coords.pos <= to;
+        const { selection } = view.state;
+        const { from, to } = selection;
+        let clickInSelection = false;
+        if (selection instanceof CellSelection) {
+          const $cell = cellAround(view.state.doc.resolve(coords.pos));
+          if ($cell) {
+            selection.forEachCell((_node, pos) => {
+              if (pos === $cell.pos) clickInSelection = true;
+            });
+          }
+        } else {
+          clickInSelection = from !== to && coords.pos >= from && coords.pos <= to;
+        }
         if (!clickInSelection) {
           view.dispatch(
             view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(coords.pos))),
@@ -364,6 +390,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         // 按 id 替换同名 schema 条目，因此必须在 commonmark 之后注册）。
         .use(cellAwareHardbreak)
         .use(tableEnterKeymap)
+        .use(tableCopyPlugin)
         .use(linkGesture)
         .use(history)
         .use(listener)
@@ -681,6 +708,23 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           if (tr) view.dispatch(tr);
         } catch (e) {
           console.error('deleteTableLine error:', e);
+        }
+      },
+      selectTable: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          selectTableAtPos(view);
+        } catch (e) {
+          console.error('selectTable error:', e);
+        }
+      },
+      copyTable: () => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          const serializer = ed.ctx.get(serializerCtx);
+          void copyTableAtPos(view, serializer);
+        } catch (e) {
+          console.error('copyTable error:', e);
         }
       },
       findTextMatches: (query: string) => {

@@ -34,6 +34,10 @@ export interface EditorHandle {
   addTableLine: (kind: 'row' | 'col', position: 'before' | 'after') => void;
   /// 删除光标所在行/列。
   deleteTableLine: (kind: 'row' | 'col') => void;
+  /// 选中光标所在的整个表格。
+  selectTable: () => void;
+  /// 复制光标所在的整个表格。
+  copyTable: () => void;
   findTextMatches: (query: string) => readonly TextMatch[];
   showTextMatches: (matches: readonly TextMatch[], activeIndex: number) => void;
   replaceTextMatch: (match: TextMatch, replacement: string) => boolean;

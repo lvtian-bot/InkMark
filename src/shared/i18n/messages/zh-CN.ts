@@ -247,6 +247,8 @@ export const messages = {
   'toolbar.tableAddColRight': '右侧插入列',
   'toolbar.tableDeleteRow': '删除当前行',
   'toolbar.tableDeleteCol': '删除当前列',
+  'toolbar.tableSelectTable': '选中整个表格',
+  'toolbar.tableCopyTable': '复制整个表格',
   'toolbar.save': '保存',
 
   'statusBar.showOutline': '显示大纲 ({shortcut})',

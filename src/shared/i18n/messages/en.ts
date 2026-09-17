@@ -257,6 +257,8 @@ export const messages: Record<MessageKey, string> = {
   'toolbar.tableAddColRight': 'Insert Column Right',
   'toolbar.tableDeleteRow': 'Delete Row',
   'toolbar.tableDeleteCol': 'Delete Column',
+  'toolbar.tableSelectTable': 'Select Entire Table',
+  'toolbar.tableCopyTable': 'Copy Entire Table',
   'toolbar.save': 'Save',
 
   'statusBar.showOutline': 'Show Outline ({shortcut})',
