@@ -292,22 +292,28 @@
 .editor-container li[data-item-type='task'] {
   list-style: none;
 }
+/* 复选框所在段落建立定位上下文，框体相对本段第一行绝对定位。 */
+.editor-container li[data-item-type='task'] > p {
+  position: relative;
+}
 /* 真实 checkbox（task-list-view 的 widget decoration 在段落行首插入的 span），
    替代此前的 CSS 伪元素 + 点击坐标判定。
-   悬挂缩进：不在 p 上使用「负 margin + 负 text-indent」，因为负 text-indent 会导致
-   Chromium 在带有 text-decoration: line-through 的多行段落中，于换行行首空白缩进区
-   错误绘制一截孤立的删除线。改由复选框自身 margin-left: -24px 将其送入 ul 的 24px gutter，
-   width + margin-right 恒为 24px，流内占位净值为 0，首行文字与换行行自然精准对齐。
-   垂直对齐：尺寸 0.9em 随字号缩放，vertical-align: -0.1em 让框中心对准文字墨迹中心。
-   overflow: hidden 确保 inline-block 的基线恒定为下外边距边缘，避免勾选前后因伪元素
-   文字内容而产生基线漂移。 */
+   绝对定位悬挂：框体固定悬挂在本段左侧 ul 的 24px gutter 里（left: -24px），
+   完全脱离段落行内流。此前用负 margin 的 inline-block 悬挂时，空待办项的光标
+   折叠在框体之后的非文本位置，Chromium 会把光标贴着框体边缘绘制并放大光标
+   高度，回车新建空待办项后光标位置因此错误；脱离行内流后，空段落光标与普通
+   段落一致落在文字行首。注意不要改回「负 margin / 负 text-indent」的流内悬挂：
+   负 text-indent 还会让 Chromium 在 line-through 多行段落的换行行首误绘删除线；
+   而负 margin 方案未计入边框宽度，首行文字比换行行右偏约 2px。
+   垂直对齐：top 以行高单位 lh 对第一行几何居中，再加 0.06em 让框中心对准文字
+   墨迹中心（微软雅黑等 CJK 字体的墨迹中心略低于行盒几何中心，实测标定值），
+   尺寸 0.9em 随字号缩放；overflow: hidden 保持框体渲染尺寸稳定。 */
 .editor-container .task-checkbox {
-  display: inline-block;
+  position: absolute;
+  left: -24px;
+  top: calc((1lh - 0.9em) / 2 + 0.06em);
   width: 0.9em;
   height: 0.9em;
-  margin-left: -24px;
-  margin-right: calc(24px - 0.9em);
-  vertical-align: -0.1em;
   overflow: hidden;
   border: 1.5px solid var(--text-tertiary);
   border-radius: 3px;
