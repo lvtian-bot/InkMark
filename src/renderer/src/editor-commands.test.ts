@@ -32,8 +32,12 @@ function makeSourceHandle(
   sourceEditorHandle.current = {
     getValue: () => (recorded.length ? recorded[recorded.length - 1].text : text),
     getSelection: () => ({ from, to }),
-    replaceRange: (_from: number, _to: number, value: string) => {
-      recorded.push({ text: value, selection: { from: 0, to: 0 } });
+    replaceRange: (rangeFrom: number, rangeTo: number, value: string) => {
+      const base = recorded.length ? recorded[recorded.length - 1].text : text;
+      recorded.push({
+        text: base.slice(0, rangeFrom) + value + base.slice(rangeTo),
+        selection: { from: 0, to: 0 },
+      });
     },
     setSelection: (selFrom: number, selTo: number) => {
       recorded[recorded.length - 1].selection = { from: selFrom, to: selTo };
@@ -148,6 +152,21 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     expect(calls).toEqual(['deleteLine']);
   });
 
+  it('插入日期：在光标处写入 YYYY-MM-DD，选区被替换', () => {
+    const { recorded } = makeSourceHandle('a|b', 1, 2);
+    runEditorCommand('insertDate');
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].text).toMatch(/^a\d{4}-\d{2}-\d{2}b$/);
+    // 光标落位由 replaceRange 自带，这里不额外 setSelection
+    expect(recorded[0].selection).toEqual({ from: 0, to: 0 });
+  });
+
+  it('插入日期时间：格式为 YYYY-MM-DD HH:mm', () => {
+    const { recorded } = makeSourceHandle('', 0, 0);
+    runEditorCommand('insertDateTime');
+    expect(recorded[0].text).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  });
+
   it('链接：弹窗取地址后生成 [文本](地址)，选区落在链接文本上', async () => {
     const { recorded } = makeSourceHandle('site', 0, 4);
     runEditorCommand('link');
@@ -202,5 +221,18 @@ describe('runEditorCommand 所见即所得模式', () => {
 
     runEditorCommand('deleteLine');
     expect(calls).toEqual(['deleteLine']);
+  });
+
+  it('插入日期/日期时间分发到句柄 insertText，格式正确', () => {
+    const inserted: string[] = [];
+    editorHandle.current = {
+      insertText: (text: string) => inserted.push(text),
+    } as unknown as typeof editorHandle.current;
+
+    runEditorCommand('insertDate');
+    runEditorCommand('insertDateTime');
+    expect(inserted).toHaveLength(2);
+    expect(inserted[0]).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(inserted[1]).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 });

@@ -659,6 +659,15 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           console.error('insertTable error:', e);
         }
       },
+      insertText: (text: string) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+          view.focus();
+        } catch (e) {
+          console.error('insertText error:', e);
+        }
+      },
       deleteLine: () => {
         try {
           const view = ed.ctx.get(editorViewCtx);

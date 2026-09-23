@@ -305,7 +305,7 @@ export function hasShortcutConflicts(map: ShortcutMap): boolean {
   return false;
 }
 
-/** 工具栏格式命令的可配置快捷键动作（渲染进程专用，不进原生菜单）。 */
+/** 工具栏格式命令与编辑器插入命令的可配置快捷键动作（渲染进程专用，不进原生菜单）。 */
 export type EditorShortcutAction =
   | 'bold'
   | 'italic'
@@ -319,6 +319,8 @@ export type EditorShortcutAction =
   | 'codeBlock'
   | 'link'
   | 'table'
+  | 'insertDate'
+  | 'insertDateTime'
   | 'deleteLine';
 
 /**
@@ -340,6 +342,8 @@ export const EDITOR_SHORTCUT_ACTIONS: readonly EditorShortcutAction[] = [
   'codeBlock',
   'link',
   'table',
+  'insertDate',
+  'insertDateTime',
   'deleteLine',
 ];
 
@@ -361,6 +365,8 @@ export const EDITOR_SHORTCUT_ACTION_META: Record<EditorShortcutAction, EditorSho
   codeBlock: { action: 'codeBlock', labelKey: 'shortcut.codeBlock' },
   link: { action: 'link', labelKey: 'shortcut.link' },
   table: { action: 'table', labelKey: 'shortcut.table' },
+  insertDate: { action: 'insertDate', labelKey: 'shortcut.insertDate' },
+  insertDateTime: { action: 'insertDateTime', labelKey: 'shortcut.insertDateTime' },
   deleteLine: { action: 'deleteLine', labelKey: 'shortcut.deleteLine' },
 };
 
@@ -370,6 +376,8 @@ export const EDITOR_SHORTCUT_ACTION_META: Record<EditorShortcutAction, EditorSho
  * 行内代码的内置键 Mod-E 已被应用快捷键「切换源码模式」在捕获阶段抢占，
  * 实际不可用，因此默认不设；任务列表、链接、表格本就无内置键。
  * 删除整行是应用自身的命令，默认采用业界通用的 Ctrl/Cmd+Shift+K。
+ * 插入日期与日期时间是应用自身的命令，默认采用常见软件通用的
+ * Ctrl/Cmd+; 与 Ctrl/Cmd+Shift+;。
  */
 export const DEFAULT_EDITOR_SHORTCUT_MAP: Readonly<EditorShortcutMap> = {
   bold: { mod: true, alt: false, shift: false, key: 'b' },
@@ -384,6 +392,8 @@ export const DEFAULT_EDITOR_SHORTCUT_MAP: Readonly<EditorShortcutMap> = {
   codeBlock: { mod: true, alt: true, shift: false, key: 'c' },
   link: undefined,
   table: undefined,
+  insertDate: { mod: true, alt: false, shift: false, key: ';' },
+  insertDateTime: { mod: true, alt: false, shift: true, key: ';' },
   deleteLine: { mod: true, alt: false, shift: true, key: 'k' },
 };
 

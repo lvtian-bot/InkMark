@@ -218,6 +218,8 @@ export const messages: Record<MessageKey, string> = {
   'shortcut.codeBlock': 'Code Block',
   'shortcut.link': 'Link',
   'shortcut.table': 'Table',
+  'shortcut.insertDate': 'Insert Current Date',
+  'shortcut.insertDateTime': 'Insert Current Date and Time',
   'shortcut.deleteLine': 'Delete Line',
 
   'startPage.new': 'New',

@@ -209,6 +209,8 @@ export const messages = {
   'shortcut.codeBlock': '代码块',
   'shortcut.link': '链接',
   'shortcut.table': '表格',
+  'shortcut.insertDate': '插入当前日期',
+  'shortcut.insertDateTime': '插入当前日期和时间',
   'shortcut.deleteLine': '删除整行',
 
   'startPage.new': '新建',

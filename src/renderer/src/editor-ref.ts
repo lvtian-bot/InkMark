@@ -28,6 +28,8 @@ export interface EditorHandle {
   insertCodeBlock: () => void;
   insertLink: (href: string, title?: string) => void;
   insertTable: () => void;
+  /// 在光标处插入纯文本（替换当前选区），不改变所在块结构。
+  insertText: (text: string) => void;
   /// 删除光标所在的整行（文本块；列表项内容时删除整个列表项）。表格内不执行。
   deleteLine: () => void;
   /// 在光标所在表格指定方向加行/列。

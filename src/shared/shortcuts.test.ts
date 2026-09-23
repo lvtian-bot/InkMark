@@ -347,9 +347,10 @@ describe('editor shortcut map', () => {
   });
 
   it('EDITOR_BUILTIN_COMBOS 覆盖全部有默认值的格式动作', () => {
-    // deleteLine 是应用自身命令（无编辑器内置键位），不进吞键清单
+    // deleteLine、insertDate、insertDateTime 是应用自身命令（无编辑器内置键位），不进吞键清单
+    const appOwnedActions: readonly string[] = ['deleteLine', 'insertDate', 'insertDateTime'];
     const withDefault = EDITOR_SHORTCUT_ACTIONS.filter(
-      (a) => DEFAULT_EDITOR_SHORTCUT_MAP[a] && a !== 'deleteLine',
+      (a) => DEFAULT_EDITOR_SHORTCUT_MAP[a] && !appOwnedActions.includes(a),
     );
     expect(EDITOR_BUILTIN_COMBOS).toHaveLength(withDefault.length);
     for (const combo of EDITOR_BUILTIN_COMBOS) {

@@ -6,6 +6,7 @@ import type { EditorShortcutAction } from '../../shared/shortcuts';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle, type SourceSelection } from './source-editor-ref';
 import { promptDialog } from './confirm-dialog';
+import { formatDate, formatDateTime } from './datetime-format';
 import { t } from './i18n';
 import { useStore } from './stores/useStore';
 
@@ -187,6 +188,19 @@ function insertSourceTable(): void {
   });
 }
 
+/// 在光标处插入纯文本：所见即所得走命令句柄；源码模式直接替换选区，
+/// 光标落位由 replaceRange 自带（落在插入文本之后），不再整篇重写。
+function insertPlainText(text: string): void {
+  if (useStore.getState().viewMode === 'wysiwyg') {
+    editorHandle.current?.insertText(text);
+    return;
+  }
+  const handle = sourceEditorHandle.current;
+  if (!handle) return;
+  const { from, to } = handle.getSelection();
+  handle.replaceRange(from, to, text);
+}
+
 const SOURCE_MARK_ACTIONS: Partial<Record<EditorShortcutAction, [string, string]>> = {
   bold: ['**', '**'],
   italic: ['*', '*'],
@@ -238,6 +252,12 @@ export function runEditorCommand(action: EditorShortcutAction): void {
       case 'table':
         editorHandle.current?.insertTable();
         return;
+      case 'insertDate':
+        insertPlainText(formatDate(new Date()));
+        return;
+      case 'insertDateTime':
+        insertPlainText(formatDateTime(new Date()));
+        return;
       case 'deleteLine':
         editorHandle.current?.deleteLine();
         return;
@@ -271,6 +291,12 @@ export function runEditorCommand(action: EditorShortcutAction): void {
       return;
     case 'table':
       insertSourceTable();
+      return;
+    case 'insertDate':
+      insertPlainText(formatDate(new Date()));
+      return;
+    case 'insertDateTime':
+      insertPlainText(formatDateTime(new Date()));
       return;
     case 'deleteLine':
       sourceEditorHandle.current?.deleteLine();

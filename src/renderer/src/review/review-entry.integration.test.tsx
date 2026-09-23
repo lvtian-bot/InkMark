@@ -123,6 +123,7 @@ function createEditorHandle(
     insertCodeBlock: () => undefined,
     insertLink: () => undefined,
     insertTable: () => undefined,
+    insertText: () => undefined,
     deleteLine: () => undefined,
     addTableLine: () => undefined,
     deleteTableLine: () => undefined,
