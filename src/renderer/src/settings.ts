@@ -45,6 +45,12 @@ export function isPanelLayout(value: unknown): value is PanelLayout {
   return value === 'outline-left' || value === 'outline-right';
 }
 
+export type StartPageLayout = 'classic' | 'stacked';
+
+export function isStartPageLayout(value: unknown): value is StartPageLayout {
+  return value === 'classic' || value === 'stacked';
+}
+
 export interface AppSettings {
   themeId: ThemeId;
   outlineWidth: number;
@@ -60,6 +66,7 @@ export interface AppSettings {
   letterSpacingPreset: LetterSpacingPresetId;
   editorWidthPreset: EditorWidthPresetId;
   startPageOnLaunch: boolean;
+  startPageLayout: StartPageLayout;
   fileTreeVisible: boolean;
   panelLayout: PanelLayout;
   fileTreeWidth: number;
@@ -89,6 +96,7 @@ export const DEFAULT_SETTINGS: Readonly<AppSettings> = {
   letterSpacingPreset: 'medium',
   editorWidthPreset: 'standard',
   startPageOnLaunch: true,
+  startPageLayout: 'classic',
   fileTreeVisible: false,
   panelLayout: 'outline-left',
   fileTreeWidth: 240,
@@ -114,6 +122,7 @@ export function selectSettings(settings: AppSettings): AppSettings {
     letterSpacingPreset: settings.letterSpacingPreset,
     editorWidthPreset: settings.editorWidthPreset,
     startPageOnLaunch: settings.startPageOnLaunch,
+    startPageLayout: settings.startPageLayout,
     fileTreeVisible: settings.fileTreeVisible,
     panelLayout: settings.panelLayout,
     fileTreeWidth: settings.fileTreeWidth,
@@ -219,6 +228,9 @@ function normalizeSettings(value: unknown): AppSettings {
       typeof candidate.startPageOnLaunch === 'boolean'
         ? candidate.startPageOnLaunch
         : DEFAULT_SETTINGS.startPageOnLaunch,
+    startPageLayout: isStartPageLayout(candidate.startPageLayout)
+      ? candidate.startPageLayout
+      : DEFAULT_SETTINGS.startPageLayout,
     fileTreeVisible:
       typeof candidate.fileTreeVisible === 'boolean'
         ? candidate.fileTreeVisible

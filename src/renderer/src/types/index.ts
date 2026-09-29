@@ -79,6 +79,7 @@ export interface InkMarkAPI {
   removeRecentFile: (path: string) => Promise<void>;
   toggleStarRecentFile: (path: string) => Promise<void>;
   clearRecentFiles: () => Promise<void>;
+  clearUnstarredRecentFiles: () => Promise<void>;
   getAppInfo: () => Promise<AppInfo>;
   getUpdateState: () => Promise<UpdateState>;
   checkForUpdates: () => Promise<UpdateState>;

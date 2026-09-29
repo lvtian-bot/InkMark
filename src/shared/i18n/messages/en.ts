@@ -130,10 +130,15 @@ export const messages: Record<MessageKey, string> = {
   'settings.appearance.toolbarNarrow': 'Narrow',
   'settings.appearance.recentWidthLabel': 'Recent List Width',
   'settings.appearance.recentWidthHint':
-    'Adjusts the Recent list width on the start page; long paths ellipsize at every level.',
+    'Adjusts the Recent list width in the two-column start page; long paths ellipsize at every level.',
   'settings.appearance.recentWidthWide': 'Wide',
   'settings.appearance.recentWidthMedium': 'Medium',
   'settings.appearance.recentWidthNarrow': 'Narrow',
+  'settings.appearance.startPageLayoutLabel': 'Start Page Layout',
+  'settings.appearance.startPageLayoutHint':
+    'Two columns: New on the left, recents on the right. Stacked: New, Starred and Recent stacked top to bottom.',
+  'settings.appearance.startPageLayoutClassic': 'Two columns',
+  'settings.appearance.startPageLayoutStacked': 'Stacked',
   'settings.appearance.editorWidthLabel': 'Content Width',
   'settings.appearance.editorWidthHint':
     'Medium and Wide match the fixed limits on regular windows; on wider content areas (fullscreen, sidebars closed, or large monitors) the text column and margins keep scaling proportionally.',
@@ -226,6 +231,8 @@ export const messages: Record<MessageKey, string> = {
   'startPage.newBlankDoc': 'New Blank Document',
   'startPage.openFile': 'Open File...',
   'startPage.openFolder': 'Open Folder...',
+  'startPage.starred': 'Starred',
+  'startPage.starredEmpty': 'No starred items yet. Click the star next to a recent item to pin it.',
   'startPage.recent': 'Recent',
   'startPage.clearAll': 'Clear All',
   'startPage.removeRecent': 'Remove from recents',

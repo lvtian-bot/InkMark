@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FilePlus, FileText, Folder, Star, X } from 'lucide-react';
-import { toggleRecentStar } from '../../../shared/recent-items';
+import { splitRecentByStar, toggleRecentStar } from '../../../shared/recent-items';
 import { useI18n } from '../i18n';
 import { useStore } from '../stores/useStore';
 import type { RecentItem } from '../types';
@@ -27,9 +27,70 @@ function splitPath(path: string): { name: string; dir: string } {
   return { name, dir };
 }
 
+interface RecentRowItemProps {
+  item: RecentRow;
+  onOpen: (item: RecentRow) => void;
+  onToggleStar: (path: string) => void;
+  onRemove: (path: string) => void;
+}
+
+// 最近列表条目行,双栏与上中下两种版式共用
+function RecentRowItem({ item, onOpen, onToggleStar, onRemove }: RecentRowItemProps) {
+  const { t } = useI18n();
+  const isFolder = item.kind === 'folder';
+  const isStarred = item.starred === true;
+  const starLabel = isStarred ? t('startPage.unstarRecent') : t('startPage.starRecent');
+  return (
+    <li
+      className={`start-row start-row--recent${isStarred ? ' start-row--starred' : ''}`}
+      onClick={() => onOpen(item)}
+    >
+      <span className="start-row-icon" aria-hidden="true">
+        {isFolder ? <Folder size={18} /> : <FileText size={18} />}
+      </span>
+      <span className="start-row-text start-row-text--inline">
+        <span className="start-row-name">{item.name}</span>
+        <span className="start-row-dir">{item.dir || '-'}</span>
+      </span>
+      {isStarred && (
+        <span className="start-row-star-badge" aria-hidden="true">
+          <Star size={12} fill="currentColor" strokeWidth={0} />
+        </span>
+      )}
+      <span className="start-row-actions">
+        <button
+          type="button"
+          className="start-row-action"
+          title={starLabel}
+          aria-label={starLabel}
+          onClick={(e) => {
+            e.stopPropagation();
+            void onToggleStar(item.path);
+          }}
+        >
+          <Star size={14} fill={isStarred ? 'currentColor' : 'none'} />
+        </button>
+        <button
+          type="button"
+          className="start-row-action"
+          title={t('startPage.removeRecent')}
+          aria-label={t('startPage.removeRecent')}
+          onClick={(e) => {
+            e.stopPropagation();
+            void onRemove(item.path);
+          }}
+        >
+          <X size={14} />
+        </button>
+      </span>
+    </li>
+  );
+}
+
 export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder }: StartPageProps) {
   const { t } = useI18n();
   const recentListWidth = useStore((s) => s.recentListWidth);
+  const startPageLayout = useStore((s) => s.startPageLayout);
   const [recent, setRecent] = useState<RecentRow[]>([]);
   const [appName, setAppName] = useState('InkMark');
 
@@ -57,6 +118,106 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
     await window.inkmark.clearRecentFiles();
     setRecent([]);
   };
+
+  // 上中下版式:「清除全部」只清「最近打开」区的未加星条目,星标必须逐条取消
+  const handleClearPlain = async () => {
+    await window.inkmark.clearUnstarredRecentFiles();
+    setRecent((prev) => prev.filter((item) => item.starred !== true));
+  };
+
+  const handleOpenRow = (item: RecentRow) => {
+    const open = item.kind === 'folder' ? onOpenFolder?.(item.path) : onOpenPath(item.path);
+    if (!open) return;
+    // 打开失败说明文件或文件夹已删除或移动:把该条目从最近列表清理掉
+    void open.then((ok) => {
+      if (!ok) void handleRemove(item.path);
+    });
+  };
+
+  if (startPageLayout === 'stacked') {
+    // 上中下版式:加星项单独成区,最近打开区只列未加星项,避免同一条目重复出现
+    const { starred, plain } = splitRecentByStar(recent);
+    return (
+      <div className={`start-page recent-width-${recentListWidth} start-page--stacked`}>
+        <div className="start-content">
+          <h1 className="start-brand">{appName}</h1>
+
+          <section className="start-section">
+            <div className="start-col-head">
+              <h2 className="start-col-title">{t('startPage.new')}</h2>
+            </div>
+            <div className="start-quick-actions">
+              <button
+                type="button"
+                className="start-quick-action start-quick-action--primary"
+                onClick={onCreateBlank}
+              >
+                <FilePlus size={16} aria-hidden="true" />
+                <span>{t('startPage.newBlankDoc')}</span>
+              </button>
+              <button type="button" className="start-quick-action" onClick={onOpenFile}>
+                <FileText size={16} aria-hidden="true" />
+                <span>{t('startPage.openFile')}</span>
+              </button>
+              {onOpenFolder && (
+                <button type="button" className="start-quick-action" onClick={() => onOpenFolder()}>
+                  <Folder size={16} aria-hidden="true" />
+                  <span>{t('startPage.openFolder')}</span>
+                </button>
+              )}
+            </div>
+          </section>
+
+          <section className="start-section">
+            <div className="start-col-head">
+              <h2 className="start-col-title">{t('startPage.starred')}</h2>
+            </div>
+            {starred.length > 0 ? (
+              <ul className="start-list">
+                {starred.map((item) => (
+                  <RecentRowItem
+                    key={item.path}
+                    item={item}
+                    onOpen={handleOpenRow}
+                    onToggleStar={handleToggleStar}
+                    onRemove={handleRemove}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="start-empty-hint">{t('startPage.starredEmpty')}</p>
+            )}
+          </section>
+
+          <section className="start-section">
+            <div className="start-col-head">
+              <h2 className="start-col-title">{t('startPage.recent')}</h2>
+              {plain.length > 0 && (
+                <button className="start-clear" onClick={handleClearPlain}>
+                  {t('startPage.clearAll')}
+                </button>
+              )}
+            </div>
+            {plain.length > 0 ? (
+              <ul className="start-list">
+                {plain.map((item) => (
+                  <RecentRowItem
+                    key={item.path}
+                    item={item}
+                    onOpen={handleOpenRow}
+                    onToggleStar={handleToggleStar}
+                    onRemove={handleRemove}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="start-empty-hint">{t('startPage.recentEmpty')}</p>
+            )}
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`start-page recent-width-${recentListWidth}`}>
@@ -111,66 +272,15 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
             </div>
             {recent.length > 0 ? (
               <ul className="start-list">
-                {recent.map((item) => {
-                  const isFolder = item.kind === 'folder';
-                  const isStarred = item.starred === true;
-                  const starLabel = isStarred
-                    ? t('startPage.unstarRecent')
-                    : t('startPage.starRecent');
-                  return (
-                    <li
-                      key={item.path}
-                      className={`start-row start-row--recent${isStarred ? ' start-row--starred' : ''}`}
-                      onClick={() => {
-                        const open = isFolder ? onOpenFolder?.(item.path) : onOpenPath(item.path);
-                        if (!open) return;
-                        // 打开失败说明文件或文件夹已删除或移动:把该条目从最近列表清理掉
-                        void open.then((ok) => {
-                          if (!ok) void handleRemove(item.path);
-                        });
-                      }}
-                    >
-                      <span className="start-row-icon" aria-hidden="true">
-                        {isFolder ? <Folder size={18} /> : <FileText size={18} />}
-                      </span>
-                      <span className="start-row-text start-row-text--inline">
-                        <span className="start-row-name">{item.name}</span>
-                        <span className="start-row-dir">{item.dir || '-'}</span>
-                      </span>
-                      {isStarred && (
-                        <span className="start-row-star-badge" aria-hidden="true">
-                          <Star size={12} fill="currentColor" strokeWidth={0} />
-                        </span>
-                      )}
-                      <span className="start-row-actions">
-                        <button
-                          type="button"
-                          className="start-row-action"
-                          title={starLabel}
-                          aria-label={starLabel}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleToggleStar(item.path);
-                          }}
-                        >
-                          <Star size={14} fill={isStarred ? 'currentColor' : 'none'} />
-                        </button>
-                        <button
-                          type="button"
-                          className="start-row-action"
-                          title={t('startPage.removeRecent')}
-                          aria-label={t('startPage.removeRecent')}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void handleRemove(item.path);
-                          }}
-                        >
-                          <X size={14} />
-                        </button>
-                      </span>
-                    </li>
-                  );
-                })}
+                {recent.map((item) => (
+                  <RecentRowItem
+                    key={item.path}
+                    item={item}
+                    onOpen={handleOpenRow}
+                    onToggleStar={handleToggleStar}
+                    onRemove={handleRemove}
+                  />
+                ))}
               </ul>
             ) : (
               <p className="start-empty-hint">{t('startPage.recentEmpty')}</p>

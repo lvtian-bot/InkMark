@@ -49,6 +49,7 @@ import {
   addOrUpdateRecent,
   normalizeRecentItems,
   removeRecent,
+  removeUnstarredRecent,
   toggleRecentStar,
   type RecentItem,
   type RecentKind,
@@ -347,6 +348,13 @@ function removeRecentItem(filePath: string): void {
 function toggleRecentStarItem(filePath: string): void {
   const next = toggleRecentStar(getRecentFiles(), filePath);
   if (next === getRecentFiles()) return;
+  writeRecentFiles(next);
+  createMenu();
+}
+
+function clearUnstarredRecentItems(): void {
+  const next = removeUnstarredRecent(getRecentFiles());
+  if (next.length === recentFilesCache!.length) return;
   writeRecentFiles(next);
   createMenu();
 }
@@ -1207,6 +1215,11 @@ ipcMain.handle('recent:clear', async (event) => {
   if (!isTrustedRenderer(event)) return;
   writeRecentFiles([]);
   createMenu();
+});
+
+ipcMain.handle('recent:clearUnstarred', async (event) => {
+  if (!isTrustedRenderer(event)) return;
+  clearUnstarredRecentItems();
 });
 
 ipcMain.handle('app:getInfo', (event) =>

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import {
   isPanelLayout,
   isRecentListWidth,
+  isStartPageLayout,
   isToolbarWidth,
   selectSettings,
   type AppSettings,
@@ -410,6 +411,33 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                       <option value="wide">{t('settings.appearance.recentWidthWide')}</option>
                       <option value="medium">{t('settings.appearance.recentWidthMedium')}</option>
                       <option value="narrow">{t('settings.appearance.recentWidthNarrow')}</option>
+                    </select>
+                  </label>
+
+                  <label className="settings-field">
+                    <span className="settings-field-copy">
+                      <span className="settings-field-label">
+                        {t('settings.appearance.startPageLayoutLabel')}
+                      </span>
+                      <span className="settings-field-hint">
+                        {t('settings.appearance.startPageLayoutHint')}
+                      </span>
+                    </span>
+                    <select
+                      value={draft.startPageLayout}
+                      onChange={(event) => {
+                        const startPageLayout = event.target.value;
+                        if (isStartPageLayout(startPageLayout)) {
+                          setDraft((settings) => ({ ...settings, startPageLayout }));
+                        }
+                      }}
+                    >
+                      <option value="classic">
+                        {t('settings.appearance.startPageLayoutClassic')}
+                      </option>
+                      <option value="stacked">
+                        {t('settings.appearance.startPageLayoutStacked')}
+                      </option>
                     </select>
                   </label>
                 </fieldset>

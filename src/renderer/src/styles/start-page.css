@@ -231,3 +231,63 @@
   color: var(--text-tertiary);
   padding: 9px 10px;
 }
+
+/* 上中下版式:新建 -> 加星 -> 最近打开 三段纵向排布,加星与最近列表内部按两列展示。
+   recent-width-* 档位类只作用于双栏右栏,上中下版式固定版心宽度,不受档位影响。 */
+.start-page--stacked .start-content {
+  max-width: 800px;
+  height: auto;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 72px 24px 64px;
+}
+
+.start-page--stacked .start-section + .start-section {
+  margin-top: 44px;
+}
+
+.start-page--stacked .start-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 24px;
+}
+
+.start-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.start-quick-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 180px;
+  gap: 8px;
+  font-family: var(--font-family);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.start-quick-action:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--text-tertiary);
+}
+
+.start-quick-action--primary {
+  color: var(--accent);
+}
+
+.start-quick-action--primary:hover {
+  color: var(--accent-hover);
+}

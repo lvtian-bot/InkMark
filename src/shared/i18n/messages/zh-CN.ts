@@ -124,10 +124,15 @@ export const messages = {
   'settings.appearance.toolbarNarrow': '窄',
   'settings.appearance.recentWidthLabel': '最近列表宽度',
   'settings.appearance.recentWidthHint':
-    '调整首页「最近打开」栏的宽度；路径过长时各档都会显示省略号。',
+    '调整双栏版式下「最近打开」栏的宽度；路径过长时各档都会显示省略号。',
   'settings.appearance.recentWidthWide': '宽',
   'settings.appearance.recentWidthMedium': '适中',
   'settings.appearance.recentWidthNarrow': '窄',
+  'settings.appearance.startPageLayoutLabel': '开始页版式',
+  'settings.appearance.startPageLayoutHint':
+    '双栏：左侧新建、右侧最近打开；上中下：新建、加星、最近打开三段纵向排列。',
+  'settings.appearance.startPageLayoutClassic': '双栏',
+  'settings.appearance.startPageLayoutStacked': '上中下',
   'settings.appearance.editorWidthLabel': '正文宽度',
   'settings.appearance.editorWidthHint':
     '适中、宽档在常规窗口下与固定上限观感一致；编辑区更宽（全屏、收起侧栏或大屏）时，正文与两侧留白按比例继续放大。',
@@ -217,6 +222,8 @@ export const messages = {
   'startPage.newBlankDoc': '新建空白文档',
   'startPage.openFile': '打开文件…',
   'startPage.openFolder': '打开文件夹…',
+  'startPage.starred': '星标',
+  'startPage.starredEmpty': '暂无星标条目，点击最近条目右侧的★即可加星',
   'startPage.recent': '最近打开',
   'startPage.clearAll': '清除全部',
   'startPage.removeRecent': '从最近列表中移除',

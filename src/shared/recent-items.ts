@@ -206,3 +206,35 @@ export function toggleRecentStar<T extends RecentItem>(items: T[], path: string)
 export function removeRecent(items: RecentItem[], path: string): RecentItem[] {
   return items.filter((item) => item.path !== path);
 }
+
+/**
+ * 按加星状态把最近列表拆成两组,各自保持输入顺序。
+ * 开始页的上中下版式据此分区块:已加星项进「加星」区,未加星项进「最近打开」区,
+ * 避免同一条目重复出现在两个区块;双栏版式不拆分,维持加星置顶的混排展示。
+ */
+export function splitRecentByStar<T extends RecentItem>(
+  items: T[],
+): {
+  starred: T[];
+  plain: T[];
+} {
+  const starred: T[] = [];
+  const plain: T[] = [];
+  for (const item of items) {
+    if (item.starred === true) {
+      starred.push(item);
+    } else {
+      plain.push(item);
+    }
+  }
+  return { starred, plain };
+}
+
+/**
+ * 清除全部未加星条目,只保留加星项,返回新数组。
+ * 上中下版式的「最近打开」区据此实现本区清除:星标是需要逐条确认的谨慎操作,
+ * 不能被清除动作连带清空。
+ */
+export function removeUnstarredRecent(items: RecentItem[]): RecentItem[] {
+  return items.filter((item) => item.starred === true);
+}

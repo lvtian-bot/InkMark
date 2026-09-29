@@ -3,6 +3,8 @@ import {
   addOrUpdateRecent,
   normalizeRecentItems,
   removeRecent,
+  removeUnstarredRecent,
+  splitRecentByStar,
   toggleRecentStar,
   type RecentItem,
 } from './recent-items';
@@ -325,5 +327,86 @@ describe('recent-items removeRecent', () => {
   it('returns equivalent array when path absent', () => {
     const items: RecentItem[] = [{ path: '/a.md', kind: 'file' }];
     expect(removeRecent(items, '/missing.md')).toEqual([{ path: '/a.md', kind: 'file' }]);
+  });
+});
+
+describe('recent-items splitRecentByStar', () => {
+  it('returns two empty groups for an empty list', () => {
+    expect(splitRecentByStar([])).toEqual({ starred: [], plain: [] });
+  });
+
+  it('splits starred and plain items while keeping input order in each group', () => {
+    const items: RecentItem[] = [
+      { path: '/star-dir', kind: 'folder', starred: true },
+      { path: '/docs', kind: 'folder' },
+      { path: '/star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(splitRecentByStar(items)).toEqual({
+      starred: [
+        { path: '/star-dir', kind: 'folder', starred: true },
+        { path: '/star.md', kind: 'file', starred: true },
+      ],
+      plain: [
+        { path: '/docs', kind: 'folder' },
+        { path: '/a.md', kind: 'file' },
+      ],
+    });
+  });
+
+  it('treats explicit starred:false rows as plain', () => {
+    const items: RecentItem[] = [
+      { path: '/star.md', kind: 'file', starred: false },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(splitRecentByStar(items)).toEqual({
+      starred: [],
+      plain: [
+        { path: '/star.md', kind: 'file', starred: false },
+        { path: '/a.md', kind: 'file' },
+      ],
+    });
+  });
+
+  it('handles all-starred and all-plain lists', () => {
+    const allStarred: RecentItem[] = [
+      { path: '/star.md', kind: 'file', starred: true },
+      { path: '/star-dir', kind: 'folder', starred: true },
+    ];
+    expect(splitRecentByStar(allStarred)).toEqual({
+      starred: allStarred,
+      plain: [],
+    });
+
+    const allPlain: RecentItem[] = [
+      { path: '/docs', kind: 'folder' },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(splitRecentByStar(allPlain)).toEqual({
+      starred: [],
+      plain: allPlain,
+    });
+  });
+});
+
+describe('recent-items removeUnstarredRecent', () => {
+  it('keeps only starred items', () => {
+    const items: RecentItem[] = [
+      { path: '/star-dir', kind: 'folder', starred: true },
+      { path: '/docs', kind: 'folder' },
+      { path: '/star.md', kind: 'file', starred: true },
+      { path: '/a.md', kind: 'file' },
+    ];
+    expect(removeUnstarredRecent(items)).toEqual([
+      { path: '/star-dir', kind: 'folder', starred: true },
+      { path: '/star.md', kind: 'file', starred: true },
+    ]);
+  });
+
+  it('returns empty for all-plain lists and passes through all-starred lists', () => {
+    const allStarred: RecentItem[] = [{ path: '/star.md', kind: 'file', starred: true }];
+    expect(removeUnstarredRecent(allStarred)).toEqual(allStarred);
+    expect(removeUnstarredRecent([{ path: '/a.md', kind: 'file' }])).toEqual([]);
+    expect(removeUnstarredRecent([])).toEqual([]);
   });
 });

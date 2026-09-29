@@ -30,6 +30,7 @@ const api = {
   removeRecentFile: (path: string) => ipcRenderer.invoke('recent:remove', path),
   toggleStarRecentFile: (path: string) => ipcRenderer.invoke('recent:toggleStar', path),
   clearRecentFiles: () => ipcRenderer.invoke('recent:clear'),
+  clearUnstarredRecentFiles: () => ipcRenderer.invoke('recent:clearUnstarred'),
   getAppInfo: () => ipcRenderer.invoke('app:getInfo'),
   getUpdateState: () => ipcRenderer.invoke('app:getUpdateState') as Promise<UpdateState>,
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates') as Promise<UpdateState>,
