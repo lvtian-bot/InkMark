@@ -187,6 +187,23 @@ describe('折叠与新增 widget 的渲染', () => {
       view.destroy();
     }
   });
+
+  it('纯新增块的按钮停在绿色文本行尾，尾部换行排到按钮之后', () => {
+    // 回归：插入行 token 含行尾换行，pre-wrap 文本若原样结尾，
+    // 按钮会被断行推到下一行行首，看似挂在未改动段落上。
+    const base = '前文\n未改动行\n后文';
+    const { view } = renderInsert(base, '前文\n- 新增列表项\n未改动行\n后文');
+    try {
+      const insert = view.dom.querySelector('.review-insert')!;
+      const text = insert.querySelector('.review-insert-text')!;
+      const actions = insert.querySelector('.review-actions')!;
+      expect(text.textContent).toBe('- 新增列表项');
+      expect(actions.previousSibling).toBe(text);
+      expect(actions.nextSibling?.textContent).toBe('\n');
+    } finally {
+      view.destroy();
+    }
+  });
 });
 
 describe('buildAcceptChange 与块决定', () => {

@@ -268,9 +268,22 @@ class ReviewInsertWidget extends WidgetType {
     wrap.className = 'review-insert';
     const text = document.createElement('span');
     text.className = 'review-insert-text';
-    text.textContent = this.chunk.insertedText;
+    // 行级 token 含行尾换行，而文本 span 是 pre-wrap：尾部换行留在文本内
+    // 会把按钮断行推到下一行行首，视觉上挂在未改动的段落上。把尾部换行
+    // 拆到按钮之后，按钮停在绿色文本最后一行的行尾。
+    const trailingBreaks = this.chunk.insertedText.match(/\n+$/)?.[0] ?? '';
+    text.textContent = this.chunk.insertedText.slice(
+      0,
+      this.chunk.insertedText.length - trailingBreaks.length,
+    );
     wrap.appendChild(text);
     appendChunkActions(view, this.chunk, wrap);
+    if (trailingBreaks) {
+      const breaks = document.createElement('span');
+      breaks.className = 'review-insert-break';
+      breaks.textContent = trailingBreaks;
+      wrap.appendChild(breaks);
+    }
     return wrap;
   }
 

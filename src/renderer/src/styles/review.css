@@ -22,6 +22,12 @@
   white-space: pre-wrap;
 }
 
+/* 新增文本的尾部换行拆到按钮之后：pre-wrap 渲染为真实断行，
+   把按钮身后的未变化原文隔到下一行 */
+.cm-content .review-insert-break {
+  white-space: pre-wrap;
+}
+
 .cm-content .review-actions {
   display: inline-flex;
   align-items: center;
