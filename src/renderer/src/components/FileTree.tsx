@@ -1,4 +1,14 @@
-import { ChevronRight, FileText, Folder, FolderOpen, RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  ChevronRight,
+  FilePlus,
+  FileText,
+  Folder,
+  FolderOpen,
+  PenLine,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import type { WorkspaceEntry } from '../types';
 import type { useFileTree } from '../hooks/useFileTree';
 import { useI18n } from '../i18n';
@@ -9,6 +19,9 @@ interface FileTreeProps {
   side: 'left' | 'right';
   activeFilePath: string | null;
   onOpenFile: (path: string) => void;
+  onCreateDocument: (dirPath: string) => void;
+  onRenameFile: (entry: WorkspaceEntry) => void;
+  onDeleteEntry: (entry: WorkspaceEntry) => void;
 }
 
 interface RowProps {
@@ -20,6 +33,12 @@ interface RowProps {
   activeFilePath: string | null;
   onToggle: (path: string) => void;
   onOpenFile: (path: string) => void;
+  onEntryContextMenu: (entry: WorkspaceEntry, position: { x: number; y: number }) => void;
+}
+
+interface ContextMenuState {
+  entry: WorkspaceEntry;
+  position: { x: number; y: number };
 }
 
 function FileTreeRow({
@@ -31,6 +50,7 @@ function FileTreeRow({
   activeFilePath,
   onToggle,
   onOpenFile,
+  onEntryContextMenu,
 }: RowProps) {
   const isOpen = expanded.has(entry.absolutePath);
   const isActive = activeFilePath === entry.absolutePath;
@@ -48,6 +68,10 @@ function FileTreeRow({
         onClick={() =>
           entry.isDirectory ? onToggle(entry.absolutePath) : onOpenFile(entry.absolutePath)
         }
+        onContextMenu={(event) => {
+          event.preventDefault();
+          onEntryContextMenu(entry, { x: event.clientX, y: event.clientY });
+        }}
         title={entry.name}
       >
         {entry.isDirectory ? (
@@ -78,6 +102,7 @@ function FileTreeRow({
               activeFilePath={activeFilePath}
               onToggle={onToggle}
               onOpenFile={onOpenFile}
+              onEntryContextMenu={onEntryContextMenu}
             />
           ))}
         </ul>
@@ -86,12 +111,46 @@ function FileTreeRow({
   );
 }
 
-export function FileTree({ state, side, activeFilePath, onOpenFile }: FileTreeProps) {
+export function FileTree({
+  state,
+  side,
+  activeFilePath,
+  onOpenFile,
+  onCreateDocument,
+  onRenameFile,
+  onDeleteEntry,
+}: FileTreeProps) {
   const { rootPath, dirCache, expanded, loadingDirs, toggleExpand, openFolderDialog } = state;
   const { t } = useI18n();
   const rootEntries = rootPath ? dirCache.get(rootPath) : undefined;
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const handleOpenFolder = () => void openFolderDialog();
+
+  // 菜单在按下外部任意处或按 Esc 时关闭;用 mousedown 保证先于菜单项的
+  // click 生效顺序之外(菜单内部按下不关闭,点击条目才能触发动作)。
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleMouseDown = (event: MouseEvent): void => {
+      const target = event.target as Element | null;
+      if (target?.closest('.file-tree-context-menu')) return;
+      setContextMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [contextMenu]);
+
+  const runMenuAction = (action: () => void): void => {
+    setContextMenu(null);
+    action();
+  };
 
   return (
     <aside className={`file-tree side-${side}`}>
@@ -139,11 +198,86 @@ export function FileTree({ state, side, activeFilePath, onOpenFile }: FileTreePr
                 activeFilePath={activeFilePath}
                 onToggle={toggleExpand}
                 onOpenFile={onOpenFile}
+                onEntryContextMenu={(entry, position) => setContextMenu({ entry, position })}
               />
             ))}
           </ul>
         )}
       </div>
+      {contextMenu && (
+        <FileTreeContextMenu
+          menu={contextMenu}
+          labels={{
+            newDocument: t('fileTree.menu.newDocument'),
+            rename: t('fileTree.menu.rename'),
+            remove: t('fileTree.menu.remove'),
+          }}
+          onCreateDocument={() =>
+            runMenuAction(() => onCreateDocument(contextMenu.entry.absolutePath))
+          }
+          onRename={() => runMenuAction(() => onRenameFile(contextMenu.entry))}
+          onDelete={() => runMenuAction(() => onDeleteEntry(contextMenu.entry))}
+        />
+      )}
     </aside>
+  );
+}
+
+interface ContextMenuProps {
+  menu: ContextMenuState;
+  labels: { newDocument: string; rename: string; remove: string };
+  onCreateDocument: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}
+
+function FileTreeContextMenu({
+  menu,
+  labels,
+  onCreateDocument,
+  onRename,
+  onDelete,
+}: ContextMenuProps) {
+  // 靠近视口右/下边缘时向内收,避免菜单被裁剪
+  const MENU_WIDTH = 168;
+  const MENU_HEIGHT_ESTIMATE = 108;
+  const x = Math.min(menu.position.x, window.innerWidth - MENU_WIDTH - 8);
+  const y = Math.min(menu.position.y, window.innerHeight - MENU_HEIGHT_ESTIMATE - 8);
+
+  const items = menu.entry.isDirectory
+    ? [
+        {
+          key: 'new-document',
+          icon: FilePlus,
+          label: labels.newDocument,
+          action: onCreateDocument,
+        },
+        { key: 'remove', icon: Trash2, label: labels.remove, action: onDelete },
+      ]
+    : [
+        { key: 'rename', icon: PenLine, label: labels.rename, action: onRename },
+        { key: 'remove', icon: Trash2, label: labels.remove, action: onDelete },
+      ];
+
+  return (
+    <div
+      className="file-tree-context-menu"
+      role="menu"
+      style={{ left: x, top: y }}
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      {items.map(({ key, icon: Icon, label, action }) => (
+        <button
+          key={key}
+          type="button"
+          role="menuitem"
+          className="file-tree-context-item"
+          onClick={action}
+        >
+          <Icon size={14} />
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
   );
 }

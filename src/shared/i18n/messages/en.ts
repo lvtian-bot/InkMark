@@ -347,6 +347,32 @@ export const messages: Record<MessageKey, string> = {
   'fileTree.loading': 'Loading...',
   'fileTree.folderEmpty': 'This folder is empty',
 
+  'fileTree.menu.newDocument': 'New Document',
+  'fileTree.menu.rename': 'Rename',
+  'fileTree.menu.remove': 'Delete',
+  'fileTree.newDocumentDefaultName': 'Untitled.md',
+  'fileTree.createDocumentTitle': 'New Document',
+  'fileTree.createDocumentPrompt':
+    'Create a new Markdown document in "{folder}". Leave empty to cancel.',
+  'fileTree.renameTitle': 'Rename',
+  'fileTree.renamePrompt': 'Enter a new name for "{name}". Leave empty to cancel.',
+  'fileTree.deleteTitle': 'Delete',
+  'fileTree.deleteConfirm': 'Move "{name}" to the Recycle Bin?',
+  'fileTree.deleteDirtyConfirm':
+    '"{name}" is open with unsaved changes. Deleting it will lose those changes. Delete anyway?',
+  'fileTree.createAction': 'Create',
+  'fileTree.renameAction': 'Rename',
+  'fileTree.deleteAction': 'Move to Recycle Bin',
+  'fileTree.deleteAnyway': 'Delete Anyway',
+  'fileTree.errorNameEmpty': 'The name cannot be empty.',
+  'fileTree.errorNameInvalidChars': 'The name cannot contain characters like \\ / : * ? " < > |.',
+  'fileTree.errorNameReserved': 'This is a reserved system name. Please choose another.',
+  'fileTree.errorNameTrailing': 'The name cannot end with a dot or space.',
+  'fileTree.errorNameExists': 'A file with this name already exists. Please choose another.',
+  'fileTree.errorOpFailed': 'The operation failed. Please try again.',
+  'fileTree.reviewInProgress':
+    '"{name}" is under change review. Finish or discard the review before this operation.',
+
   'outline.title': 'Outline',
   'outline.empty': 'No outline',
 

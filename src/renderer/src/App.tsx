@@ -27,18 +27,32 @@ import { useStore } from './stores/useStore';
 import { I18nProvider, t as tt, useI18n } from './i18n';
 import { tabDisplayName } from './tab-name';
 import { isThemeId } from './types';
+import type { WorkspaceEntry } from './types';
 import { editorHandle } from './editor-ref';
 import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
 import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
 import { drainQueuedReviewChunks } from './review/review-store';
 import { resolveAllReviewChunks } from './review/review-resolution';
-import { confirmDialog } from './confirm-dialog';
+import { confirmDialog, promptDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { followDocumentLinkHref } from './document-link';
 import { comboMatchesEvent } from './shortcut-recorder';
 import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
 import { runEditorCommand } from './editor-commands';
+import type { MessageKey } from '../../shared/i18n';
+import {
+  findTabsUnderPath,
+  findTabsWithActiveReview,
+  decideDeleteWarning,
+} from './file-tree-actions';
+import { parentDirectory } from '../../shared/file-tree-follow';
+import {
+  ensureUniqueFileName,
+  validateWorkspaceFileName,
+  type WorkspaceFileNameIssue,
+} from '../../shared/workspace-file-name';
+import type { WorkspaceFileOpError } from '../../shared/workspace-file-name';
 
 // 源码模式与低频对话框拆成独立 chunk，避免它们的代码（CodeMirror 全家桶等）
 // 拖慢启动首帧；首次使用时按需加载。查找替换等高频路径不懒加载。
@@ -51,6 +65,22 @@ const SettingsDialog = lazy(() =>
 const UpdateDialog = lazy(() =>
   import('./components/UpdateDialog').then((m) => ({ default: m.UpdateDialog })),
 );
+
+// 文件树操作失败原因 → 提示文案键
+const FILE_NAME_ISSUE_MESSAGE: Record<WorkspaceFileNameIssue, MessageKey> = {
+  empty: 'fileTree.errorNameEmpty',
+  'invalid-chars': 'fileTree.errorNameInvalidChars',
+  'reserved-name': 'fileTree.errorNameReserved',
+  'trailing-dot-or-space': 'fileTree.errorNameTrailing',
+};
+
+const FILE_OP_ERROR_MESSAGE: Record<WorkspaceFileOpError, MessageKey> = {
+  'invalid-name': 'fileTree.errorNameInvalidChars',
+  exists: 'fileTree.errorNameExists',
+  'parent-missing': 'fileTree.errorOpFailed',
+  'source-missing': 'fileTree.errorOpFailed',
+  'io-error': 'fileTree.errorOpFailed',
+};
 
 function AppContent() {
   const { themeId, setThemeId } = useTheme();
@@ -150,6 +180,119 @@ function AppContent() {
       });
     },
     [fileOps],
+  );
+
+  // 文件树基础操作：名称输入与删除确认在此编排，目录刷新由 useFileTree
+  // 的操作方法负责；操作成功后同步已打开标签并打开新建的文档。
+  const handleFileTreeCreateDocument = useCallback(
+    async (dirPath: string): Promise<void> => {
+      const folderName = dirPath.split(/[/\\]/).pop() ?? dirPath;
+      const siblingNames = (fileTree.dirCache.get(dirPath) ?? []).map((entry) => entry.name);
+      const defaultName = ensureUniqueFileName(t('fileTree.newDocumentDefaultName'), siblingNames);
+      const name = await promptDialog(
+        t('fileTree.createDocumentTitle'),
+        t('fileTree.createDocumentPrompt', { folder: folderName }),
+        { defaultValue: defaultName, confirmLabel: t('fileTree.createAction') },
+      );
+      if (name === null) return;
+      const issue = validateWorkspaceFileName(name);
+      if (issue) {
+        await confirmDialog(t('fileTree.createDocumentTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      const result = await fileTree.createDocumentInDir(dirPath, name);
+      if ('error' in result) {
+        await confirmDialog(
+          t('fileTree.createDocumentTitle'),
+          t(FILE_OP_ERROR_MESSAGE[result.error]),
+          [t('common.ok')],
+        );
+        return;
+      }
+      await fileOps.openFilePath(result.path);
+    },
+    [fileTree, fileOps, t],
+  );
+
+  const handleFileTreeRenameFile = useCallback(
+    async (entry: WorkspaceEntry): Promise<void> => {
+      const affectedTabs = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
+      const reviewTabs = findTabsWithActiveReview(affectedTabs);
+      if (reviewTabs.length > 0) {
+        await confirmDialog(
+          t('fileTree.renameTitle'),
+          t('fileTree.reviewInProgress', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      const newName = await promptDialog(
+        t('fileTree.renameTitle'),
+        t('fileTree.renamePrompt', { name: entry.name }),
+        { defaultValue: entry.name, confirmLabel: t('fileTree.renameAction') },
+      );
+      if (newName === null || newName === entry.name) return;
+      const issue = validateWorkspaceFileName(newName);
+      if (issue) {
+        await confirmDialog(t('fileTree.renameTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      const parentDir = parentDirectory(entry.absolutePath);
+      if (!parentDir) return;
+      const result = await fileTree.renameEntry(entry.absolutePath, parentDir, newName);
+      if ('error' in result) {
+        await confirmDialog(t('fileTree.renameTitle'), t(FILE_OP_ERROR_MESSAGE[result.error]), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      fileOps.renameTabFile(entry.absolutePath, result.path, result.mtime);
+    },
+    [fileTree, fileOps, t],
+  );
+
+  const handleFileTreeDeleteEntry = useCallback(
+    async (entry: WorkspaceEntry): Promise<void> => {
+      const warning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
+      if (warning === 'review-blocked') {
+        await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t('fileTree.reviewInProgress', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      const body =
+        warning === 'dirty-open'
+          ? t('fileTree.deleteDirtyConfirm', { name: entry.name })
+          : t('fileTree.deleteConfirm', { name: entry.name });
+      // 危险操作默认聚焦取消，确认键统一放在第二位
+      const choice = await confirmDialog(
+        t('fileTree.deleteTitle'),
+        body,
+        [
+          t('common.cancel'),
+          warning === 'dirty-open' ? t('fileTree.deleteAnyway') : t('fileTree.deleteAction'),
+        ],
+        { defaultId: 0, cancelId: 0 },
+      );
+      if (choice !== 1) return;
+      const parentDir = parentDirectory(entry.absolutePath);
+      if (!parentDir) return;
+      const ok = await fileTree.trashEntry(entry.absolutePath, parentDir);
+      if (!ok) {
+        await confirmDialog(t('fileTree.deleteTitle'), t('fileTree.errorOpFailed'), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      fileOps.forceCloseTabsUnderPath(entry.absolutePath);
+    },
+    [fileTree, fileOps, t],
   );
 
   const { closeRoot: closeFileTreeRoot } = fileTree;
@@ -1015,6 +1158,9 @@ function AppContent() {
                 side="left"
                 activeFilePath={activeFilePath}
                 onOpenFile={(path) => void fileOps.openFilePath(path)}
+                onCreateDocument={(dirPath) => void handleFileTreeCreateDocument(dirPath)}
+                onRenameFile={(entry) => void handleFileTreeRenameFile(entry)}
+                onDeleteEntry={(entry) => void handleFileTreeDeleteEntry(entry)}
               />
             </div>
             <div
@@ -1114,6 +1260,9 @@ function AppContent() {
                 side="right"
                 activeFilePath={activeFilePath}
                 onOpenFile={(path) => void fileOps.openFilePath(path)}
+                onCreateDocument={(dirPath) => void handleFileTreeCreateDocument(dirPath)}
+                onRenameFile={(entry) => void handleFileTreeRenameFile(entry)}
+                onDeleteEntry={(entry) => void handleFileTreeDeleteEntry(entry)}
               />
             </div>
           </>

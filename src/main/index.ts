@@ -23,6 +23,7 @@ import {
 import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
+import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
 import { createImageStorage } from './image-storage';
 import { readStableTextFile } from './stable-file-read';
 import {
@@ -1380,4 +1381,53 @@ ipcMain.on('workspace:watch', (event, request: unknown) => {
 ipcMain.on('workspace:unwatch', (event) => {
   if (!isTrustedRenderer(event)) return;
   workspaceWatchManager.unsubscribe(event.sender.id);
+});
+
+// 文件树基础操作：新建文档、重命名、删除到回收站。
+// 渲染层在操作成功后主动刷新受影响目录；这里的 recordSelfWrite 抑制
+// 工作区监听对自身操作的广播，避免文件树刚刷新又被事件触发整树重载。
+
+ipcMain.handle('workspace:createDocument', (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    !isAbsolutePath(request.dirPath) ||
+    typeof request.fileName !== 'string'
+  ) {
+    return { error: 'io-error' as const };
+  }
+  const result = createWorkspaceDocument(request.dirPath, request.fileName);
+  if ('path' in result) workspaceWatchManager.recordSelfWrite(result.path);
+  return result;
+});
+
+ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    !isAbsolutePath(request.path) ||
+    typeof request.newName !== 'string'
+  ) {
+    return { error: 'io-error' as const };
+  }
+  const result = renameWorkspaceFile(request.path, request.newName);
+  if ('path' in result) {
+    workspaceWatchManager.recordSelfWrite(request.path);
+    workspaceWatchManager.recordSelfWrite(result.path);
+  }
+  return result;
+});
+
+ipcMain.handle('workspace:trash', async (event, request: unknown) => {
+  if (!isTrustedRenderer(event) || !isRecord(request) || !isAbsolutePath(request.path)) {
+    return { ok: false as const };
+  }
+  const targetPath = request.path;
+  workspaceWatchManager.recordSelfWrite(targetPath);
+  try {
+    await shell.trashItem(targetPath);
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const };
+  }
 });

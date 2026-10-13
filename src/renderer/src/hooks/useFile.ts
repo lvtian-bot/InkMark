@@ -20,6 +20,7 @@ import {
   decideExternalChange,
   resolveConflictChoice,
 } from '../file-conflict-decision';
+import { isPathInside } from '../../../shared/file-tree-follow';
 import type { FileResult, FileWatchEvent, ViewMode } from '../types';
 
 function filePathKey(path: string): string {
@@ -520,6 +521,45 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     [saveTab, closeTabStore, flushAutoSave],
   );
 
+  // 文件树重命名后同步标签身份：路径、文件名与磁盘基线一起切换，未保存
+  // 修改保留，后续保存写入新路径。磁盘内容不因重命名变化，快照沿用原内容
+  // 只更新修改时间；审阅中的文件由调用方先行阻止，不在此处理。
+  const renameTabFile = useCallback(
+    (oldPath: string, newPath: string, mtime: number): void => {
+      const key = filePathKey(oldPath);
+      for (const tab of useStore.getState().tabs) {
+        if (!tab.filePath || filePathKey(tab.filePath) !== key) continue;
+        const snapshot = getDiskSnapshot(tab.id);
+        if (snapshot) setDiskSnapshot(tab.id, snapshot.content, mtime);
+        missingNotifiedTabIdsRef.current.delete(tab.id);
+        autoSaveTimersRef.current.delete(tab.id);
+        updateTab(tab.id, {
+          filePath: newPath,
+          fileName: newPath.split(/[/\\]/).pop()!,
+          fileMtime: mtime,
+          externalUpdatePending: false,
+        });
+      }
+    },
+    [updateTab],
+  );
+
+  // 文件树删除后静默关闭落在目标（文件或目录）之内的标签：磁盘文件已进
+  // 回收站，不再走保存询问。调用方已在删除确认中警示过未保存修改的丢失。
+  const forceCloseTabsUnderPath = useCallback(
+    (targetPath: string): void => {
+      for (const tab of useStore.getState().tabs) {
+        if (!tab.filePath || !isPathInside(tab.filePath, targetPath)) continue;
+        autoSaveTimersRef.current.delete(tab.id);
+        missingNotifiedTabIdsRef.current.delete(tab.id);
+        editorStateCache.dispose(tab.id);
+        clearReviewForTab(tab.id);
+        closeTabStore(tab.id);
+      }
+    },
+    [closeTabStore],
+  );
+
   const prepareToClose = useCallback(async (): Promise<boolean> => {
     if (isImageUploadInProgress()) {
       await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingCloseWindow'), [
@@ -931,6 +971,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       reviewActiveTab,
       finishReview,
       saveReviewResult,
+      renameTabFile,
+      forceCloseTabsUnderPath,
     }),
     [
       newFile,
@@ -948,6 +990,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       reviewActiveTab,
       finishReview,
       saveReviewResult,
+      renameTabFile,
+      forceCloseTabsUnderPath,
     ],
   );
 }

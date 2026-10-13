@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { WorkspaceEntry } from '../types';
+import type { WorkspaceEntry, WorkspaceFileOpResult } from '../types';
 import { confirmDialog } from '../confirm-dialog';
 import { t } from '../i18n';
 import { decideFileTreeFollow, directoryChainFromRoot } from '../../../shared/file-tree-follow';
@@ -177,6 +177,45 @@ export function useFileTree(activeFilePath: string | null) {
     return openRoot(result.path);
   }, [openRoot]);
 
+  // 基础文件操作:只负责发起请求并刷新受影响目录;名称输入、确认对话框
+  // 与打开标签的同步由调用方编排,操作失败时把结构化原因交回调用方提示。
+
+  const createDocumentInDir = useCallback(
+    async (dirPath: string, fileName: string): Promise<WorkspaceFileOpResult> => {
+      const result = await window.inkmark.createWorkspaceDocument(dirPath, fileName);
+      if ('path' in result) await loadDir(dirPath);
+      return result;
+    },
+    [loadDir],
+  );
+
+  const renameEntry = useCallback(
+    async (oldPath: string, parentDir: string, newName: string): Promise<WorkspaceFileOpResult> => {
+      const result = await window.inkmark.renameWorkspaceFile(oldPath, newName);
+      if ('path' in result) await loadDir(parentDir);
+      return result;
+    },
+    [loadDir],
+  );
+
+  const trashEntry = useCallback(
+    async (targetPath: string, parentDir: string): Promise<boolean> => {
+      const result = await window.inkmark.trashWorkspaceEntry(targetPath);
+      if (result.ok) {
+        await loadDir(parentDir);
+        // 目录被删除时清掉其展开状态,避免残留失效条目
+        setExpanded((prev) => {
+          if (!prev.has(targetPath)) return prev;
+          const next = new Set(prev);
+          next.delete(targetPath);
+          return next;
+        });
+      }
+      return result.ok;
+    },
+    [loadDir],
+  );
+
   // 订阅工作区根目录的实时变化。收到事件时保留旧缓存,直接重新加载当前已展开的
   // 目录,新数据回来后逐个替换(stale-while-revalidate)。先清缓存会让树瞬间变空、
   // 显示"读取中…"占位,即便主进程已做自身写入抑制,渲染端也不再制造额外闪烁。
@@ -229,5 +268,8 @@ export function useFileTree(activeFilePath: string | null) {
     closeRoot,
     toggleExpand,
     openFolderDialog,
+    createDocumentInDir,
+    renameEntry,
+    trashEntry,
   };
 }
