@@ -324,8 +324,9 @@ function AppContent() {
         { defaultId: 0, cancelId: 0 },
       );
       if (choice !== 1) return;
-      // 确认框打开期间可能又有外部改动到达;执行删除前以最新状态复核,
-      // 审阅中或待处理外部更新时终止,不连带丢弃未见过的内容
+      // 确认框打开期间状态可能已变化，执行删除前以最新标签状态复核:
+      // 外部改动/审阅到达时终止;刚输入的编辑延迟上报把标签变为未保存时,
+      // 原确认没有警示内容丢失，必须补一次强确认
       const liveWarning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
       if (liveWarning === 'review-blocked' || liveWarning === 'external-pending') {
         await confirmDialog(
@@ -339,6 +340,15 @@ function AppContent() {
           [t('common.ok')],
         );
         return;
+      }
+      if (liveWarning === 'dirty-open' && warning !== 'dirty-open') {
+        const reconfirm = await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t('fileTree.deleteDirtyConfirm', { name: entry.name }),
+          [t('common.cancel'), t('fileTree.deleteAnyway')],
+          { defaultId: 0, cancelId: 0 },
+        );
+        if (reconfirm !== 1) return;
       }
       const parentDir = parentDirectory(entry.absolutePath);
       if (!parentDir) return;

@@ -10,7 +10,7 @@ import {
   net,
   shell,
 } from 'electron';
-import { join, dirname, isAbsolute, basename, extname, resolve } from 'path';
+import { join, dirname, isAbsolute, basename, extname } from 'path';
 import {
   readFileSync,
   writeFileSync,
@@ -24,7 +24,7 @@ import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
-import { isPathInside } from '../shared/file-tree-follow';
+import { createWorkspaceAuthorization } from './workspace-authorization';
 import { createImageStorage } from './image-storage';
 import { readStableTextFile } from './stable-file-read';
 import {
@@ -124,22 +124,18 @@ const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
 const fileWatchManager = createFileWatchManager();
 const workspaceWatchManager = createWorkspaceWatchManager();
 const imageStorage = createImageStorage({ t });
-// 已批准工作区根:只记录用户通过可信途径触及的文件夹(原生对话框选择、
-// 打开的文档所在目录),供文件树新建/重命名/删除做边界校验。
-// 不用 workspace:watch 的订阅状态作授权依据——那是渲染层可控的输入,
-// 被攻破的渲染层可借它授权任意目录;也不依赖 watcher 是否创建成功,
-// 避免网络盘等 fs.watch 不可用的场景误拒正常操作。
-const approvedWorkspaceRoots = new Set<string>();
+// 已批准工作区根：文件树新建/重命名/删除的边界授权。来源只限四类用户
+// 可感知的可信途径——文件夹对话框、打开文件对话框、应用主动推送的打开
+// （最近菜单 / 文件关联 / 命令行参数）以及启动时从最近记录播种；渲染层
+// 任意可控的 IPC（如 file:read、workspace:watch）不产生授权，被攻破的
+// 渲染层无法自行扩大可变更范围。判定与登记前先解析路径并拒绝盘符根，
+// 见 workspace-authorization.ts。
+const workspaceAuthorization = createWorkspaceAuthorization();
 
-function approveWorkspaceRoot(directoryPath: string): void {
-  approvedWorkspaceRoots.add(resolve(directoryPath));
-}
-
-function isPathInsideApprovedRoot(targetPath: string): boolean {
-  for (const root of approvedWorkspaceRoots) {
-    if (isPathInside(targetPath, root)) return true;
-  }
-  return false;
+/** 登记某文档所在目录为已批准根（盘符根等会被模块内部忽略）。 */
+function approveWorkspaceAroundFile(filePath: string): void {
+  const parentDir = dirname(filePath);
+  if (parentDir) workspaceAuthorization.approve(parentDir);
 }
 // electron-updater 依赖图较大，推迟到首次访问更新功能时再动态加载，
 // 避免在 app ready 前评估整棵模块、拖慢窗口创建。
@@ -473,6 +469,8 @@ if (!gotLock) {
     const filePaths = getFileFromArgs(argv);
     if (mainWindow) {
       for (const fp of filePaths) {
+        // 命令行/文件关联打开属于系统级用户动作，其所在目录计入授权
+        approveWorkspaceAroundFile(fp);
         mainWindow.webContents.send('file:open-path', fp);
       }
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -521,6 +519,8 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     if (pendingFilePaths.length > 0) {
       for (const fp of pendingFilePaths) {
+        // 启动参数携带的文件（文件关联/命令行），同 second-instance 处理授权
+        approveWorkspaceAroundFile(fp);
         mainWindow?.webContents.send('file:open-path', fp);
       }
       pendingFilePaths = [];
@@ -608,6 +608,8 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
     label: basename(path) || path,
     sublabel: path,
     click: () => {
+      // 原生菜单点击是用户动作，其所在目录计入授权
+      approveWorkspaceAroundFile(path);
       mainWindow?.webContents.send('file:open-path', path);
     },
   }));
@@ -866,11 +868,12 @@ app.whenReady().then(() => {
   });
   applyNativeTheme(currentThemeId);
   createMenu();
-  // 从最近记录播种已批准根:历史根要么来自原生对话框(folder 条目),
-  // 要么来自用户打开过的文档(file 条目所在目录),二者当初都已获授权;
-  // 重启后恢复,使最近记录重新打开的文件夹可继续使用文件树操作。
+  // 从最近记录播种已批准根：历史条目当初都经可信途径进入（对话框选择、
+  // 文件关联或推送打开），重启后从最近列表恢复打开的文件夹可继续使用
+  // 文件树操作；文件条目登记其所在目录，文件夹条目登记自身。
   for (const item of getRecentFiles()) {
-    approveWorkspaceRoot(item.path);
+    if (item.kind === 'folder') workspaceAuthorization.approve(item.path);
+    else approveWorkspaceAroundFile(item.path);
   }
 
   protocol.handle('inkmark-local', (request) => {
@@ -1020,6 +1023,9 @@ ipcMain.handle('dialog:openFile', async (event) => {
     try {
       const { content, mtime } = readStableTextFile(filePath);
       addRecent(filePath, 'file');
+      // 原生对话框选择的文件，其所在目录计入授权；否则文件树跟随到
+      // 新文件夹后，右键新建/重命名/删除会被误拒
+      approveWorkspaceAroundFile(filePath);
       files.push({ path: filePath, content, mtime });
     } catch {
       /* skip unreadable files */
@@ -1193,10 +1199,6 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
   try {
     const { content, mtime } = readStableTextFile(path);
     addRecent(path, 'file');
-    // 打开文档即授权其所在目录:文件树跟随会把工作区根切到这里,
-    // 该来源与用户在资源管理器中打开文档的感知一致
-    const parentDir = dirname(path);
-    if (parentDir) approveWorkspaceRoot(parentDir);
     return { path, content, mtime };
   } catch {
     // 文件已被删除或移动：从最近列表移除死链，避免反复点击失败
@@ -1350,7 +1352,7 @@ ipcMain.handle('dialog:openFolder', async (event) => {
   const folderPath = result.filePaths[0];
   setLastDialogPath(folderPath);
   addRecent(folderPath, 'folder');
-  approveWorkspaceRoot(folderPath);
+  workspaceAuthorization.approve(folderPath);
   return { path: folderPath };
 });
 
@@ -1435,7 +1437,7 @@ ipcMain.handle('workspace:createDocument', (event, request: unknown) => {
     !isRecord(request) ||
     !isAbsolutePath(request.dirPath) ||
     typeof request.fileName !== 'string' ||
-    !isPathInsideApprovedRoot(request.dirPath)
+    !workspaceAuthorization.isApproved(request.dirPath)
   ) {
     return { error: 'io-error' as const };
   }
@@ -1450,7 +1452,7 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
     !isRecord(request) ||
     !isAbsolutePath(request.path) ||
     typeof request.newName !== 'string' ||
-    !isPathInsideApprovedRoot(request.path)
+    !workspaceAuthorization.isApproved(request.path)
   ) {
     return { error: 'io-error' as const };
   }
@@ -1468,7 +1470,7 @@ ipcMain.handle('workspace:trash', async (event, request: unknown) => {
     !isTrustedRenderer(event) ||
     !isRecord(request) ||
     !isAbsolutePath(request.path) ||
-    !isPathInsideApprovedRoot(request.path)
+    !workspaceAuthorization.isApproved(request.path)
   ) {
     return { ok: false as const };
   }

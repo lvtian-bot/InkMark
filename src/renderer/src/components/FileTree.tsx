@@ -133,6 +133,14 @@ export function FileTree({
   const { t } = useI18n();
   const rootEntries = rootPath ? dirCache.get(rootPath) : undefined;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // 工作区根变化(如跟随活动文档切换文件夹)时作废残留菜单:菜单项闭包
+  // 仍指向旧根的条目,树里已看不见对应文件。渲染期比较上一 props 清空,
+  // 避免 effect 中同步 setState 触发级联渲染。
+  const [menuRootPath, setMenuRootPath] = useState(rootPath);
+  if (rootPath !== menuRootPath) {
+    setMenuRootPath(rootPath);
+    setContextMenu(null);
+  }
 
   const handleOpenFolder = () => void openFolderDialog();
 
