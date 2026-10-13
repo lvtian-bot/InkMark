@@ -3,6 +3,7 @@ import {
   addOrUpdateRecent,
   normalizeRecentItems,
   removeRecent,
+  removeRecentUnderPath,
   removeUnstarredRecent,
   renameRecentItem,
   splitRecentByStar,
@@ -439,5 +440,29 @@ describe('recent-items renameRecentItem', () => {
   it('路径不存在时原样返回原数组', () => {
     const items: RecentItem[] = [{ path: '/a.md', kind: 'file' }];
     expect(renameRecentItem(items, '/ghost.md', '/new.md', 'file')).toBe(items);
+  });
+});
+
+describe('recent-items removeRecentUnderPath', () => {
+  it('移除目标自身及其子路径条目,保留无关条目', () => {
+    const items: RecentItem[] = [
+      { path: 'D:\\笔记\\a.md', kind: 'file', starred: true },
+      { path: 'D:\\笔记\\子\\b.md', kind: 'file' },
+      { path: 'D:\\笔记', kind: 'folder' },
+      { path: 'D:\\其他\\c.md', kind: 'file' },
+    ];
+    expect(removeRecentUnderPath(items, 'D:\\笔记')).toEqual([
+      { path: 'D:\\其他\\c.md', kind: 'file' },
+    ]);
+  });
+
+  it('删除单个文件时只移除该文件', () => {
+    const items: RecentItem[] = [
+      { path: 'D:\\n\\a.md', kind: 'file' },
+      { path: 'D:\\n\\ab.md', kind: 'file' },
+    ];
+    expect(removeRecentUnderPath(items, 'D:\\n\\a.md')).toEqual([
+      { path: 'D:\\n\\ab.md', kind: 'file' },
+    ]);
   });
 });

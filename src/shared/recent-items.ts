@@ -5,6 +5,8 @@
 // 文件与文件夹均可)。normalizeRecentItems 负责把这些格式都解析为标准对象数组:
 // 旧字符串一律按 file 处理(历史数据里没有文件夹)。
 
+import { isPathInside } from './file-tree-follow';
+
 export type RecentKind = 'file' | 'folder';
 
 export interface RecentItem {
@@ -205,6 +207,15 @@ export function toggleRecentStar<T extends RecentItem>(items: T[], path: string)
 /** 删除指定路径的最近项;返回新数组。 */
 export function removeRecent(items: RecentItem[], path: string): RecentItem[] {
   return items.filter((item) => item.path !== path);
+}
+
+/**
+ * 文件树删除到回收站后清理最近项:移除目标自身及落在其内的全部条目
+ * (删除文件夹时其子文档一并清理),避免开始页与原生菜单残留
+ * 需要逐条点击失败才能移除的死条目。
+ */
+export function removeRecentUnderPath(items: RecentItem[], targetPath: string): RecentItem[] {
+  return items.filter((item) => !isPathInside(item.path, targetPath));
 }
 
 /**

@@ -183,11 +183,15 @@ export function useFileTree(activeFilePath: string | null) {
 
   // 基础文件操作:只负责发起请求并刷新受影响目录;名称输入、确认对话框
   // 与打开标签的同步由调用方编排,操作失败时把结构化原因交回调用方提示。
+  // 成功后的目录刷新刻意不等待(不 return 前 await):调用方要先完成打开
+  // 标签的路径同步,大目录/网络目录上列目录可能慢于单文件监听的防抖,
+  // 若等刷新完成才更新标签,旧路径会收到 missing 事件弹出假警报,
+  // 待存的自动保存也可能写向旧路径。
 
   const createDocumentInDir = useCallback(
     async (dirPath: string, fileName: string): Promise<WorkspaceFileOpResult> => {
       const result = await window.inkmark.createWorkspaceDocument(dirPath, fileName);
-      if ('path' in result) await loadDir(dirPath);
+      if ('path' in result) void loadDir(dirPath);
       return result;
     },
     [loadDir],
@@ -196,7 +200,7 @@ export function useFileTree(activeFilePath: string | null) {
   const renameEntry = useCallback(
     async (oldPath: string, parentDir: string, newName: string): Promise<WorkspaceFileOpResult> => {
       const result = await window.inkmark.renameWorkspaceFile(oldPath, newName);
-      if ('path' in result) await loadDir(parentDir);
+      if ('path' in result) void loadDir(parentDir);
       return result;
     },
     [loadDir],
@@ -206,7 +210,6 @@ export function useFileTree(activeFilePath: string | null) {
     async (targetPath: string, parentDir: string): Promise<boolean> => {
       const result = await window.inkmark.trashWorkspaceEntry(targetPath);
       if (result.ok) {
-        await loadDir(parentDir);
         // 清掉目标及其整个子树的展开状态与目录缓存:同路径被恢复或重建时,
         // 若仍命中缓存会显示被删目录的陈旧内容,必须强制重新列目录
         setExpanded((prev) => {
@@ -217,6 +220,7 @@ export function useFileTree(activeFilePath: string | null) {
           const next = new Map([...prev].filter(([p]) => !isPathInside(p, targetPath)));
           return next.size === prev.size ? prev : next;
         });
+        void loadDir(parentDir);
       }
       return result.ok;
     },

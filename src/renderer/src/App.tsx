@@ -251,6 +251,17 @@ function AppContent() {
         { defaultValue: entry.name, confirmLabel: t('fileTree.renameAction') },
       );
       if (newName === null || newName === entry.name) return;
+      // 对话框打开期间磁盘可能已被外部改动,执行前以最新标签状态复核,
+      // 避免重命名沿用旧基线后静默覆盖未见过的外部版本
+      const liveAffected = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
+      if (findTabsWithPendingExternalUpdate(liveAffected).length > 0) {
+        await confirmDialog(
+          t('fileTree.renameTitle'),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
       const issue = validateWorkspaceDocumentName(newName);
       if (issue) {
         await confirmDialog(t('fileTree.renameTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [
@@ -313,6 +324,22 @@ function AppContent() {
         { defaultId: 0, cancelId: 0 },
       );
       if (choice !== 1) return;
+      // 确认框打开期间可能又有外部改动到达;执行删除前以最新状态复核,
+      // 审阅中或待处理外部更新时终止,不连带丢弃未见过的内容
+      const liveWarning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
+      if (liveWarning === 'review-blocked' || liveWarning === 'external-pending') {
+        await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t(
+            liveWarning === 'review-blocked'
+              ? 'fileTree.reviewInProgress'
+              : 'fileTree.pendingExternalUpdate',
+            { name: entry.name },
+          ),
+          [t('common.ok')],
+        );
+        return;
+      }
       const parentDir = parentDirectory(entry.absolutePath);
       if (!parentDir) return;
       const ok = await fileTree.trashEntry(entry.absolutePath, parentDir);
@@ -1117,6 +1144,18 @@ function AppContent() {
     };
   }, [fileOps]);
 
+  // 活动标签的文件身份字段单独订阅:文件树重命名只改 fileName/filePath,
+  // 不触碰 activeTabId/isDirty,标题 effect 必须依赖这些字段才能同步原生标题栏
+  const activeTabFilePath = useStore(
+    (s) => s.tabs.find((tab) => tab.id === s.activeTabId)?.filePath ?? null,
+  );
+  const activeTabFileName = useStore(
+    (s) => s.tabs.find((tab) => tab.id === s.activeTabId)?.fileName ?? '',
+  );
+  const activeTabIsStartPage = useStore(
+    (s) => s.tabs.find((tab) => tab.id === s.activeTabId)?.isStartPage ?? false,
+  );
+
   useEffect(() => {
     const activeTab = useStore
       .getState()
@@ -1124,7 +1163,7 @@ function AppContent() {
     const displayName = activeTab ? tabDisplayName(activeTab, t) : t('tabBar.unnamed');
     const mark = isDirty ? '\u2022 ' : '';
     window.inkmark.setWindowTitle(`${mark}${displayName} - InkMark`);
-  }, [activeTabId, isDirty, t]);
+  }, [activeTabId, isDirty, t, activeTabFilePath, activeTabFileName, activeTabIsStartPage]);
 
   const prevStartPageRef = useRef(isStartPage);
 
