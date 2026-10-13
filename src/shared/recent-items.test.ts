@@ -4,6 +4,7 @@ import {
   normalizeRecentItems,
   removeRecent,
   removeUnstarredRecent,
+  renameRecentItem,
   splitRecentByStar,
   toggleRecentStar,
   type RecentItem,
@@ -408,5 +409,35 @@ describe('recent-items removeUnstarredRecent', () => {
     expect(removeUnstarredRecent(allStarred)).toEqual(allStarred);
     expect(removeUnstarredRecent([{ path: '/a.md', kind: 'file' }])).toEqual([]);
     expect(removeUnstarredRecent([])).toEqual([]);
+  });
+});
+
+describe('recent-items renameRecentItem', () => {
+  it('原位替换路径并保留顺序与星标', () => {
+    const items: RecentItem[] = [
+      { path: '/a.md', kind: 'file', starred: true },
+      { path: '/old.md', kind: 'file' },
+      { path: '/b.md', kind: 'file' },
+    ];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/a.md', kind: 'file', starred: true },
+      { path: '/new.md', kind: 'file' },
+      { path: '/b.md', kind: 'file' },
+    ]);
+  });
+
+  it('新路径已有条目时去重并把星标并入既有条目', () => {
+    const items: RecentItem[] = [
+      { path: '/old.md', kind: 'file', starred: true },
+      { path: '/new.md', kind: 'file' },
+    ];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/new.md', kind: 'file', starred: true },
+    ]);
+  });
+
+  it('路径不存在时原样返回原数组', () => {
+    const items: RecentItem[] = [{ path: '/a.md', kind: 'file' }];
+    expect(renameRecentItem(items, '/ghost.md', '/new.md', 'file')).toBe(items);
   });
 });

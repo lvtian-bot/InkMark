@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ensureUniqueFileName,
   isWorkspaceFileNameTaken,
+  validateWorkspaceDocumentName,
   validateWorkspaceFileName,
 } from './workspace-file-name';
 
@@ -40,6 +41,27 @@ describe('validateWorkspaceFileName', () => {
     expect(validateWorkspaceFileName('COM9')).toBe('reserved-name');
     expect(validateWorkspaceFileName('content.md')).toBeNull();
     expect(validateWorkspaceFileName('null 结果.md')).toBeNull();
+  });
+});
+
+describe('validateWorkspaceDocumentName', () => {
+  it('可见的 Markdown 名称可用，大小写扩展名均可', () => {
+    expect(validateWorkspaceDocumentName('会议记录.md')).toBeNull();
+    expect(validateWorkspaceDocumentName('notes.MARKDOWN')).toBeNull();
+  });
+
+  it('点号开头的隐藏名称不可用', () => {
+    expect(validateWorkspaceDocumentName('.notes.md')).toBe('hidden-name');
+  });
+
+  it('非 Markdown 扩展名或无扩展名不可用', () => {
+    expect(validateWorkspaceDocumentName('notes.txt')).toBe('unsupported-extension');
+    expect(validateWorkspaceDocumentName('notes')).toBe('unsupported-extension');
+  });
+
+  it('基础规则同样生效', () => {
+    expect(validateWorkspaceDocumentName('a|b.md')).toBe('invalid-chars');
+    expect(validateWorkspaceDocumentName('')).toBe('empty');
   });
 });
 

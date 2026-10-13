@@ -44,12 +44,13 @@ import type { MessageKey } from '../../shared/i18n';
 import {
   findTabsUnderPath,
   findTabsWithActiveReview,
+  findTabsWithPendingExternalUpdate,
   decideDeleteWarning,
 } from './file-tree-actions';
 import { parentDirectory } from '../../shared/file-tree-follow';
 import {
   ensureUniqueFileName,
-  validateWorkspaceFileName,
+  validateWorkspaceDocumentName,
   type WorkspaceFileNameIssue,
 } from '../../shared/workspace-file-name';
 import type { WorkspaceFileOpError } from '../../shared/workspace-file-name';
@@ -72,6 +73,8 @@ const FILE_NAME_ISSUE_MESSAGE: Record<WorkspaceFileNameIssue, MessageKey> = {
   'invalid-chars': 'fileTree.errorNameInvalidChars',
   'reserved-name': 'fileTree.errorNameReserved',
   'trailing-dot-or-space': 'fileTree.errorNameTrailing',
+  'hidden-name': 'fileTree.errorNameHidden',
+  'unsupported-extension': 'fileTree.errorNameExtension',
 };
 
 const FILE_OP_ERROR_MESSAGE: Record<WorkspaceFileOpError, MessageKey> = {
@@ -195,7 +198,7 @@ function AppContent() {
         { defaultValue: defaultName, confirmLabel: t('fileTree.createAction') },
       );
       if (name === null) return;
-      const issue = validateWorkspaceFileName(name);
+      const issue = validateWorkspaceDocumentName(name);
       if (issue) {
         await confirmDialog(t('fileTree.createDocumentTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [
           t('common.ok'),
@@ -218,12 +221,26 @@ function AppContent() {
 
   const handleFileTreeRenameFile = useCallback(
     async (entry: WorkspaceEntry): Promise<void> => {
+      // 图片上传已捕获当前文档路径,重命名会让附件写入旧位置,须等待完成
+      if (isImageUploadInProgress()) {
+        await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingFileOps'), [
+          t('common.ok'),
+        ]);
+        return;
+      }
       const affectedTabs = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
-      const reviewTabs = findTabsWithActiveReview(affectedTabs);
-      if (reviewTabs.length > 0) {
+      if (findTabsWithActiveReview(affectedTabs).length > 0) {
         await confirmDialog(
           t('fileTree.renameTitle'),
           t('fileTree.reviewInProgress', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      if (findTabsWithPendingExternalUpdate(affectedTabs).length > 0) {
+        await confirmDialog(
+          t('fileTree.renameTitle'),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
           [t('common.ok')],
         );
         return;
@@ -234,7 +251,7 @@ function AppContent() {
         { defaultValue: entry.name, confirmLabel: t('fileTree.renameAction') },
       );
       if (newName === null || newName === entry.name) return;
-      const issue = validateWorkspaceFileName(newName);
+      const issue = validateWorkspaceDocumentName(newName);
       if (issue) {
         await confirmDialog(t('fileTree.renameTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [
           t('common.ok'),
@@ -257,11 +274,26 @@ function AppContent() {
 
   const handleFileTreeDeleteEntry = useCallback(
     async (entry: WorkspaceEntry): Promise<void> => {
+      // 图片上传依赖目录中的旧路径,删除会中断写入甚至留下空目录,须等待完成
+      if (isImageUploadInProgress()) {
+        await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingFileOps'), [
+          t('common.ok'),
+        ]);
+        return;
+      }
       const warning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
       if (warning === 'review-blocked') {
         await confirmDialog(
           t('fileTree.deleteTitle'),
           t('fileTree.reviewInProgress', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      if (warning === 'external-pending') {
+        await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
           [t('common.ok')],
         );
         return;

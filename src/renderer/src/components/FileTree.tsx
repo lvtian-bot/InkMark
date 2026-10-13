@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import {
   ChevronRight,
   FilePlus,
@@ -36,8 +37,15 @@ interface RowProps {
   onEntryContextMenu: (entry: WorkspaceEntry, position: { x: number; y: number }) => void;
 }
 
+interface ContextMenuItem {
+  key: string;
+  icon: LucideIcon;
+  label: string;
+  action: () => void;
+}
+
 interface ContextMenuState {
-  entry: WorkspaceEntry;
+  items: ContextMenuItem[];
   position: { x: number; y: number };
 }
 
@@ -70,6 +78,7 @@ function FileTreeRow({
         }
         onContextMenu={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           onEntryContextMenu(entry, { x: event.clientX, y: event.clientY });
         }}
         title={entry.name}
@@ -152,6 +161,58 @@ export function FileTree({
     action();
   };
 
+  // 构造条目右键菜单:目录可新建文档与删除,文件可重命名与删除。
+  const openEntryMenu = (entry: WorkspaceEntry, position: { x: number; y: number }): void => {
+    const items: ContextMenuItem[] = entry.isDirectory
+      ? [
+          {
+            key: 'new-document',
+            icon: FilePlus,
+            label: t('fileTree.menu.newDocument'),
+            action: () => onCreateDocument(entry.absolutePath),
+          },
+          {
+            key: 'remove',
+            icon: Trash2,
+            label: t('fileTree.menu.remove'),
+            action: () => onDeleteEntry(entry),
+          },
+        ]
+      : [
+          {
+            key: 'rename',
+            icon: PenLine,
+            label: t('fileTree.menu.rename'),
+            action: () => onRenameFile(entry),
+          },
+          {
+            key: 'remove',
+            icon: Trash2,
+            label: t('fileTree.menu.remove'),
+            action: () => onDeleteEntry(entry),
+          },
+        ];
+    setContextMenu({ items, position });
+  };
+
+  // 空白区域右键:根目录本身没有条目行,提供「新建文档」入口,
+  // 否则空工作区或想直接在根目录新建时无处下手。
+  const openBlankMenu = (event: React.MouseEvent): void => {
+    if (!rootPath) return;
+    event.preventDefault();
+    setContextMenu({
+      items: [
+        {
+          key: 'new-document',
+          icon: FilePlus,
+          label: t('fileTree.menu.newDocument'),
+          action: () => onCreateDocument(rootPath),
+        },
+      ],
+      position: { x: event.clientX, y: event.clientY },
+    });
+  };
+
   return (
     <aside className={`file-tree side-${side}`}>
       <header className="file-tree-header">
@@ -167,7 +228,7 @@ export function FileTree({
           <Folder size={14} />
         </button>
       </header>
-      <div className="file-tree-body">
+      <div className="file-tree-body" onContextMenu={openBlankMenu}>
         {!rootPath ? (
           <div className="file-tree-empty">
             <Folder size={28} className="file-tree-empty-icon" />
@@ -198,26 +259,14 @@ export function FileTree({
                 activeFilePath={activeFilePath}
                 onToggle={toggleExpand}
                 onOpenFile={onOpenFile}
-                onEntryContextMenu={(entry, position) => setContextMenu({ entry, position })}
+                onEntryContextMenu={openEntryMenu}
               />
             ))}
           </ul>
         )}
       </div>
       {contextMenu && (
-        <FileTreeContextMenu
-          menu={contextMenu}
-          labels={{
-            newDocument: t('fileTree.menu.newDocument'),
-            rename: t('fileTree.menu.rename'),
-            remove: t('fileTree.menu.remove'),
-          }}
-          onCreateDocument={() =>
-            runMenuAction(() => onCreateDocument(contextMenu.entry.absolutePath))
-          }
-          onRename={() => runMenuAction(() => onRenameFile(contextMenu.entry))}
-          onDelete={() => runMenuAction(() => onDeleteEntry(contextMenu.entry))}
-        />
+        <FileTreeContextMenu menu={contextMenu} onAction={(action) => runMenuAction(action)} />
       )}
     </aside>
   );
@@ -225,39 +274,15 @@ export function FileTree({
 
 interface ContextMenuProps {
   menu: ContextMenuState;
-  labels: { newDocument: string; rename: string; remove: string };
-  onCreateDocument: () => void;
-  onRename: () => void;
-  onDelete: () => void;
+  onAction: (action: () => void) => void;
 }
 
-function FileTreeContextMenu({
-  menu,
-  labels,
-  onCreateDocument,
-  onRename,
-  onDelete,
-}: ContextMenuProps) {
+function FileTreeContextMenu({ menu, onAction }: ContextMenuProps) {
   // 靠近视口右/下边缘时向内收,避免菜单被裁剪
   const MENU_WIDTH = 168;
-  const MENU_HEIGHT_ESTIMATE = 108;
+  const MENU_HEIGHT_ESTIMATE = menu.items.length * 34 + 8;
   const x = Math.min(menu.position.x, window.innerWidth - MENU_WIDTH - 8);
   const y = Math.min(menu.position.y, window.innerHeight - MENU_HEIGHT_ESTIMATE - 8);
-
-  const items = menu.entry.isDirectory
-    ? [
-        {
-          key: 'new-document',
-          icon: FilePlus,
-          label: labels.newDocument,
-          action: onCreateDocument,
-        },
-        { key: 'remove', icon: Trash2, label: labels.remove, action: onDelete },
-      ]
-    : [
-        { key: 'rename', icon: PenLine, label: labels.rename, action: onRename },
-        { key: 'remove', icon: Trash2, label: labels.remove, action: onDelete },
-      ];
 
   return (
     <div
@@ -266,13 +291,13 @@ function FileTreeContextMenu({
       style={{ left: x, top: y }}
       onContextMenu={(event) => event.preventDefault()}
     >
-      {items.map(({ key, icon: Icon, label, action }) => (
+      {menu.items.map(({ key, icon: Icon, label, action }) => (
         <button
           key={key}
           type="button"
           role="menuitem"
           className="file-tree-context-item"
-          onClick={action}
+          onClick={() => onAction(action)}
         >
           <Icon size={14} />
           <span>{label}</span>

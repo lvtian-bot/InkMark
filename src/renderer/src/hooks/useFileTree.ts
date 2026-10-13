@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceEntry, WorkspaceFileOpResult } from '../types';
 import { confirmDialog } from '../confirm-dialog';
 import { t } from '../i18n';
-import { decideFileTreeFollow, directoryChainFromRoot } from '../../../shared/file-tree-follow';
+import {
+  decideFileTreeFollow,
+  directoryChainFromRoot,
+  isPathInside,
+} from '../../../shared/file-tree-follow';
 
 interface DirListResult {
   path: string;
@@ -203,12 +207,15 @@ export function useFileTree(activeFilePath: string | null) {
       const result = await window.inkmark.trashWorkspaceEntry(targetPath);
       if (result.ok) {
         await loadDir(parentDir);
-        // 目录被删除时清掉其展开状态,避免残留失效条目
+        // 清掉目标及其整个子树的展开状态与目录缓存:同路径被恢复或重建时,
+        // 若仍命中缓存会显示被删目录的陈旧内容,必须强制重新列目录
         setExpanded((prev) => {
-          if (!prev.has(targetPath)) return prev;
-          const next = new Set(prev);
-          next.delete(targetPath);
-          return next;
+          const next = new Set([...prev].filter((p) => !isPathInside(p, targetPath)));
+          return next.size === prev.size ? prev : next;
+        });
+        setDirCache((prev) => {
+          const next = new Map([...prev].filter(([p]) => !isPathInside(p, targetPath)));
+          return next.size === prev.size ? prev : next;
         });
       }
       return result.ok;

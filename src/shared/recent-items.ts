@@ -208,6 +208,31 @@ export function removeRecent(items: RecentItem[], path: string): RecentItem[] {
 }
 
 /**
+ * 文件被重命名后迁移最近项:原位替换路径,保留顺序、类型与星标。
+ * 新路径已有条目时丢弃改名条目并把星标并入既有条目,避免同一文件出现两行;
+ * 路径不存在时原样返回原数组。
+ */
+export function renameRecentItem(
+  items: RecentItem[],
+  oldPath: string,
+  newPath: string,
+  kind: RecentKind,
+): RecentItem[] {
+  const target = items.find((item) => item.path === oldPath);
+  if (!target) return items;
+  const existingAtNewPath = items.find((item) => item.path === newPath && item.path !== oldPath);
+  if (existingAtNewPath) {
+    // 新路径已有条目:移除旧条目避免重复,星标并入既有条目
+    const rest = items.filter((item) => item !== target);
+    if (target.starred !== true) return rest;
+    return rest.map((item) => (item === existingAtNewPath ? { ...item, starred: true } : item));
+  }
+  return items.map((item) =>
+    item === target ? { path: newPath, kind, starred: target.starred } : item,
+  );
+}
+
+/**
  * 按加星状态把最近列表拆成两组,各自保持输入顺序。
  * 开始页的上中下版式据此分区块:已加星项进「加星」区,未加星项进「最近打开」区,
  * 避免同一条目重复出现在两个区块;双栏版式不拆分,维持加星置顶的混排展示。

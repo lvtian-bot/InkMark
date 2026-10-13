@@ -368,10 +368,16 @@ export const messages: Record<MessageKey, string> = {
   'fileTree.errorNameInvalidChars': 'The name cannot contain characters like \\ / : * ? " < > |.',
   'fileTree.errorNameReserved': 'This is a reserved system name. Please choose another.',
   'fileTree.errorNameTrailing': 'The name cannot end with a dot or space.',
+  'fileTree.errorNameHidden':
+    'Names starting with a dot are hidden from the file tree. Remove the leading dot.',
+  'fileTree.errorNameExtension':
+    'The file tree only shows .md or .markdown documents. Use one of these extensions.',
   'fileTree.errorNameExists': 'A file with this name already exists. Please choose another.',
   'fileTree.errorOpFailed': 'The operation failed. Please try again.',
   'fileTree.reviewInProgress':
     '"{name}" is under change review. Finish or discard the review before this operation.',
+  'fileTree.pendingExternalUpdate':
+    '"{name}" has pending external changes. Reload or review them from the banner above before this operation.',
 
   'outline.title': 'Outline',
   'outline.empty': 'No outline',
@@ -419,6 +425,8 @@ export const messages: Record<MessageKey, string> = {
     'Please wait for the image insert to finish before closing the window.',
   'confirm.imageSavingSwitchTab':
     'Please wait for the image insert to finish before switching documents.',
+  'confirm.imageSavingFileOps':
+    'Please wait for the image insert to finish before renaming or deleting files.',
   'confirm.unsavedChanges': 'Unsaved Changes',
   'confirm.unsavedChangesBody': 'Save changes to "{name}"?',
   'confirm.fileGone': 'File Deleted or Moved',

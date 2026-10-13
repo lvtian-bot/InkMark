@@ -18,16 +18,27 @@ export function findTabsWithActiveReview(tabs: Tab[]): Tab[] {
   return tabs.filter((tab) => tab.reviewSession || tab.pendingReviewCount > 0);
 }
 
+/**
+ * 提示条上还有未处理外部更新（等待重新加载或审阅）的标签。
+ * 此时磁盘已是外部新版本，重命名会沿用旧基线让提示条消失，
+ * 后续保存将无冲突提示地覆盖外部版本；删除则会连带丢弃未见过的外部内容。
+ */
+export function findTabsWithPendingExternalUpdate(tabs: Tab[]): Tab[] {
+  return tabs.filter((tab) => tab.externalUpdatePending);
+}
+
 /** 删除前的提示形态。 */
-export type DeleteWarning = 'review-blocked' | 'dirty-open' | 'none';
+export type DeleteWarning = 'review-blocked' | 'external-pending' | 'dirty-open' | 'none';
 
 /**
- * 决定删除 targetPath 前的提示：审阅中一律阻止；否则有未保存修改的
- * 打开标签时警示内容丢失；干净文件直接常规确认。
+ * 决定删除 targetPath 前的提示：审阅中一律阻止；提示条上还有未处理外部
+ * 更新时同样阻止，避免连带丢弃未见过的外部内容；有未保存修改的打开标签
+ * 时警示内容丢失；干净文件直接常规确认。
  */
 export function decideDeleteWarning(tabs: Tab[], targetPath: string): DeleteWarning {
   const affected = findTabsUnderPath(tabs, targetPath);
   if (findTabsWithActiveReview(affected).length > 0) return 'review-blocked';
+  if (findTabsWithPendingExternalUpdate(affected).length > 0) return 'external-pending';
   if (affected.some((tab) => tab.isDirty)) return 'dirty-open';
   return 'none';
 }

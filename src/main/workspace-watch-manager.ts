@@ -10,6 +10,8 @@ export interface WorkspaceWatchManager {
   subscribe: (webContents: WebContents, directoryPath: string) => void;
   unsubscribe: (webContentsId: number) => void;
   recordSelfWrite: (filePath: string) => void;
+  /** 判断路径是否落在任一当前被订阅的工作区根之下，供破坏性 IPC 做边界校验。 */
+  isPathInsideActiveRoot: (targetPath: string) => boolean;
   close: () => void;
 }
 
@@ -94,6 +96,14 @@ class WorkspaceWatchManagerImpl implements WorkspaceWatchManager {
         this.selfWrites.set(this.pathKey(watcher.path), { expiresAt });
       }
     }
+  }
+
+  isPathInsideActiveRoot(targetPath: string): boolean {
+    const absolutePath = resolve(targetPath);
+    for (const watcher of this.watchers.values()) {
+      if (isPathInside(absolutePath, watcher.path)) return true;
+    }
+    return false;
   }
 
   close(): void {

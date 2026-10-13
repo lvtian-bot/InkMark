@@ -352,9 +352,13 @@ export const messages = {
   'fileTree.errorNameInvalidChars': '名称不能包含 \\ / : * ? " < > | 等字符。',
   'fileTree.errorNameReserved': '该名称是系统保留名称，请换一个。',
   'fileTree.errorNameTrailing': '名称不能以点或空格结尾。',
+  'fileTree.errorNameHidden': '以点开头的名称会被文件树忽略，请去掉开头的点。',
+  'fileTree.errorNameExtension': '文件树只显示 .md 或 .markdown 文档，请使用相应扩展名。',
   'fileTree.errorNameExists': '同名文件已存在，请换一个名称。',
   'fileTree.errorOpFailed': '操作未能完成，请重试。',
   'fileTree.reviewInProgress': '「{name}」正在审阅外部改动，请先完成或放弃审阅，再执行此操作。',
+  'fileTree.pendingExternalUpdate':
+    '「{name}」有待处理的外部改动，请先在顶部提示条中选择重新加载或审阅，再执行此操作。',
 
   'outline.title': '大纲',
   'outline.empty': '暂无大纲',
@@ -397,6 +401,7 @@ export const messages = {
   'confirm.imageSavingCloseTab': '请等待图片插入完成后再关闭文档。',
   'confirm.imageSavingCloseWindow': '请等待图片插入完成后再关闭窗口。',
   'confirm.imageSavingSwitchTab': '请等待图片插入完成后再切换文档。',
+  'confirm.imageSavingFileOps': '请等待图片插入完成后再重命名或删除文件。',
   'confirm.unsavedChanges': '未保存的更改',
   'confirm.unsavedChangesBody': '是否保存"{name}"的更改？',
   'confirm.fileGone': '文件已被删除或移动',

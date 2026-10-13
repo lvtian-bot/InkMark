@@ -51,6 +51,7 @@ import {
   normalizeRecentItems,
   removeRecent,
   removeUnstarredRecent,
+  renameRecentItem,
   toggleRecentStar,
   type RecentItem,
   type RecentKind,
@@ -342,6 +343,15 @@ function addRecent(filePath: string, kind: RecentKind): void {
 function removeRecentItem(filePath: string): void {
   const next = removeRecent(getRecentFiles(), filePath);
   if (next.length === recentFilesCache!.length) return;
+  writeRecentFiles(next);
+  createMenu();
+}
+
+// 文件树重命名后同步最近记录:原位替换路径并保留星标,
+// 避免开始页与原生菜单残留指向旧路径的失效条目。
+function renameRecentItemEntry(oldPath: string, newPath: string): void {
+  const next = renameRecentItem(getRecentFiles(), oldPath, newPath, 'file');
+  if (next === getRecentFiles()) return;
   writeRecentFiles(next);
   createMenu();
 }
@@ -1386,13 +1396,16 @@ ipcMain.on('workspace:unwatch', (event) => {
 // 文件树基础操作：新建文档、重命名、删除到回收站。
 // 渲染层在操作成功后主动刷新受影响目录；这里的 recordSelfWrite 抑制
 // 工作区监听对自身操作的广播，避免文件树刚刷新又被事件触发整树重载。
+// 目标一律要求落在当前被订阅的工作区根之下：这些操作具破坏性，
+// 不能因渲染层被攻破而波及用户打开的工作区之外的任意路径。
 
 ipcMain.handle('workspace:createDocument', (event, request: unknown) => {
   if (
     !isTrustedRenderer(event) ||
     !isRecord(request) ||
     !isAbsolutePath(request.dirPath) ||
-    typeof request.fileName !== 'string'
+    typeof request.fileName !== 'string' ||
+    !workspaceWatchManager.isPathInsideActiveRoot(request.dirPath)
   ) {
     return { error: 'io-error' as const };
   }
@@ -1406,7 +1419,8 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
     !isTrustedRenderer(event) ||
     !isRecord(request) ||
     !isAbsolutePath(request.path) ||
-    typeof request.newName !== 'string'
+    typeof request.newName !== 'string' ||
+    !workspaceWatchManager.isPathInsideActiveRoot(request.path)
   ) {
     return { error: 'io-error' as const };
   }
@@ -1414,12 +1428,18 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
   if ('path' in result) {
     workspaceWatchManager.recordSelfWrite(request.path);
     workspaceWatchManager.recordSelfWrite(result.path);
+    renameRecentItemEntry(request.path, result.path);
   }
   return result;
 });
 
 ipcMain.handle('workspace:trash', async (event, request: unknown) => {
-  if (!isTrustedRenderer(event) || !isRecord(request) || !isAbsolutePath(request.path)) {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    !isAbsolutePath(request.path) ||
+    !workspaceWatchManager.isPathInsideActiveRoot(request.path)
+  ) {
     return { ok: false as const };
   }
   const targetPath = request.path;

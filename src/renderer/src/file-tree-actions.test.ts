@@ -3,6 +3,7 @@ import {
   decideDeleteWarning,
   findTabsUnderPath,
   findTabsWithActiveReview,
+  findTabsWithPendingExternalUpdate,
 } from './file-tree-actions';
 import type { Tab } from './stores/useStore';
 
@@ -61,6 +62,11 @@ describe('decideDeleteWarning', () => {
     expect(decideDeleteWarning(tabs, 'D:\\n\\a.md')).toBe('review-blocked');
   });
 
+  it('提示条上有待处理外部更新时阻止删除', () => {
+    const tabs = [makeTab({ filePath: 'D:\\n\\a.md', externalUpdatePending: true })];
+    expect(decideDeleteWarning(tabs, 'D:\\n\\a.md')).toBe('external-pending');
+  });
+
   it('无审阅但有未保存修改时警示丢失', () => {
     const tabs = [
       makeTab({ filePath: 'D:\\n\\a.md', isDirty: false }),
@@ -76,5 +82,12 @@ describe('decideDeleteWarning', () => {
     ];
     expect(decideDeleteWarning(tabs, 'D:\\n\\a.md')).toBe('none');
     expect(decideDeleteWarning([], 'D:\\n\\a.md')).toBe('none');
+  });
+});
+
+describe('findTabsWithPendingExternalUpdate', () => {
+  it('只命中提示条上待处理外部更新的标签', () => {
+    const tabs = [makeTab({ id: 'a', externalUpdatePending: true }), makeTab({ id: 'b' })];
+    expect(findTabsWithPendingExternalUpdate(tabs).map((t) => t.id)).toEqual(['a']);
   });
 });
