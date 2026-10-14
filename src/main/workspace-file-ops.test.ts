@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'fs';
 import { join } from 'path';
 import {
   createTempWorkspaceDir,
@@ -122,5 +130,43 @@ describe('renameWorkspaceFile', () => {
     // Windows 目录大小写不敏感,改名后按任一大小写查询都指向同一文件
     const names = readdirSync(dir);
     expect(names).toEqual(['Note.md']);
+  });
+});
+
+describe('renameWorkspaceFile 基线核对', () => {
+  it('磁盘修改时间与基线不一致（存在外部版本）时报 conflict', () => {
+    const dir = makeTempDir();
+    const oldPath = join(dir, 'a.md');
+    writeFileSync(oldPath, '', 'utf8');
+    const baseline = statSync(oldPath).mtimeMs;
+    // 模拟外部写入使磁盘 mtime 前移
+    const future = new Date(Date.now() + 5000);
+    utimesSync(oldPath, future, future);
+
+    const result = renameWorkspaceFile(oldPath, 'b.md', baseline);
+
+    expect(result).toEqual({ error: 'conflict' });
+    expect(existsSync(oldPath)).toBe(true);
+  });
+
+  it('基线一致时正常重命名', () => {
+    const dir = makeTempDir();
+    const oldPath = join(dir, 'a.md');
+    writeFileSync(oldPath, '', 'utf8');
+    const baseline = statSync(oldPath).mtimeMs;
+
+    const result = renameWorkspaceFile(oldPath, 'b.md', baseline);
+
+    expect(result).toMatchObject({ path: join(dir, 'b.md') });
+  });
+
+  it('不传基线时不做核对，保持既有行为', () => {
+    const dir = makeTempDir();
+    const oldPath = join(dir, 'a.md');
+    writeFileSync(oldPath, '', 'utf8');
+
+    const result = renameWorkspaceFile(oldPath, 'b.md');
+
+    expect(result).toMatchObject({ path: join(dir, 'b.md') });
   });
 });

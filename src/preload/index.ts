@@ -197,8 +197,12 @@ const api = {
       dirPath,
       fileName,
     }) as Promise<WorkspaceFileOpResult>,
-  renameWorkspaceFile: (path: string, newName: string) =>
-    ipcRenderer.invoke('workspace:renameFile', { path, newName }) as Promise<WorkspaceFileOpResult>,
+  renameWorkspaceFile: (path: string, newName: string, expectedMtime?: number | null) =>
+    ipcRenderer.invoke('workspace:renameFile', {
+      path,
+      newName,
+      expectedMtime,
+    }) as Promise<WorkspaceFileOpResult>,
   trashWorkspaceEntry: (path: string) =>
     ipcRenderer.invoke('workspace:trash', { path }) as Promise<{ ok: boolean }>,
   revealInFolder: (path: string) => ipcRenderer.invoke('shell:reveal', { path }),

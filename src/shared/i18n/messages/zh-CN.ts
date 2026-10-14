@@ -359,6 +359,8 @@ export const messages = {
   'fileTree.reviewInProgress': '「{name}」正在审阅外部改动，请先完成或放弃审阅，再执行此操作。',
   'fileTree.pendingExternalUpdate':
     '「{name}」有待处理的外部改动，请先在顶部提示条中选择重新加载或审阅，再执行此操作。',
+  'fileTree.deleteKeptDirty':
+    '文件已移入回收站，但删除期间产生了新的未保存修改，对应标签已保留，可通过「另存为」恢复内容。',
 
   'outline.title': '大纲',
   'outline.empty': '暂无大纲',

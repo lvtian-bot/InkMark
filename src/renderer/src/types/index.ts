@@ -133,7 +133,11 @@ export interface InkMarkAPI {
   exportDocument: (request: ExportDocumentRequest) => Promise<ExportDocumentResult>;
   listDirectory: (path: string) => Promise<{ path: string; entries: WorkspaceEntry[] } | null>;
   createWorkspaceDocument: (dirPath: string, fileName: string) => Promise<WorkspaceFileOpResult>;
-  renameWorkspaceFile: (path: string, newName: string) => Promise<WorkspaceFileOpResult>;
+  renameWorkspaceFile: (
+    path: string,
+    newName: string,
+    expectedMtime?: number | null,
+  ) => Promise<WorkspaceFileOpResult>;
   trashWorkspaceEntry: (path: string) => Promise<{ ok: boolean }>;
   revealInFolder: (path: string) => Promise<void>;
   watchWorkspace: (path: string) => void;

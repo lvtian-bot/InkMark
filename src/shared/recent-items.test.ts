@@ -466,3 +466,37 @@ describe('recent-items removeRecentUnderPath', () => {
     ]);
   });
 });
+
+describe('recent-items trusted 标记', () => {
+  it('可信途径写入的条目带标记', () => {
+    const next = addOrUpdateRecent([], '/a.md', 'file', undefined, { trusted: true });
+    expect(next).toEqual([{ path: '/a.md', kind: 'file', trusted: true }]);
+  });
+
+  it('不可信重新打开不撤销既有可信状态', () => {
+    const items: RecentItem[] = [{ path: '/a.md', kind: 'file', trusted: true }];
+    const next = addOrUpdateRecent(items, '/a.md', 'file');
+    expect(next).toEqual([{ path: '/a.md', kind: 'file', trusted: true }]);
+  });
+
+  it('不可信条目不产生标记', () => {
+    const next = addOrUpdateRecent([], '/a.md', 'file');
+    expect(next).toEqual([{ path: '/a.md', kind: 'file' }]);
+  });
+
+  it('normalize 保留持久化的可信标记,旧格式不标可信', () => {
+    expect(
+      normalizeRecentItems([{ path: '/a.md', kind: 'file', trusted: true }, 'legacy.md']),
+    ).toEqual([
+      { path: '/a.md', kind: 'file', trusted: true },
+      { path: 'legacy.md', kind: 'file' },
+    ]);
+  });
+
+  it('重命名迁移保留可信标记', () => {
+    const items: RecentItem[] = [{ path: '/old.md', kind: 'file', trusted: true }];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/new.md', kind: 'file', trusted: true },
+    ]);
+  });
+});

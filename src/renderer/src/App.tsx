@@ -82,6 +82,8 @@ const FILE_OP_ERROR_MESSAGE: Record<WorkspaceFileOpError, MessageKey> = {
   exists: 'fileTree.errorNameExists',
   'parent-missing': 'fileTree.errorOpFailed',
   'source-missing': 'fileTree.errorOpFailed',
+  // conflict 在重命名入口有带文件名的专门提示，此处仅为类型完备的兜底
+  conflict: 'fileTree.errorOpFailed',
   'io-error': 'fileTree.errorOpFailed',
 };
 
@@ -271,8 +273,25 @@ function AppContent() {
       }
       const parentDir = parentDirectory(entry.absolutePath);
       if (!parentDir) return;
-      const result = await fileTree.renameEntry(entry.absolutePath, parentDir, newName);
+      // 带上打开标签的磁盘基线：编辑过的标签会清掉外部更新标志但故意保留
+      // 旧基线（让下次保存冲突），只有主进程核对磁盘修改时间一致才放行，
+      // 否则存在未处理的外部版本，重命名会把基线洗掉导致静默覆盖
+      const baselineTab = liveAffected.find((tab) => tab.fileMtime != null);
+      const result = await fileTree.renameEntry(
+        entry.absolutePath,
+        parentDir,
+        newName,
+        baselineTab?.fileMtime ?? null,
+      );
       if ('error' in result) {
+        if (result.error === 'conflict') {
+          await confirmDialog(
+            t('fileTree.renameTitle'),
+            t('fileTree.pendingExternalUpdate', { name: entry.name }),
+            [t('common.ok')],
+          );
+          return;
+        }
         await confirmDialog(t('fileTree.renameTitle'), t(FILE_OP_ERROR_MESSAGE[result.error]), [
           t('common.ok'),
         ]);
@@ -352,6 +371,13 @@ function AppContent() {
       }
       const parentDir = parentDirectory(entry.absolutePath);
       if (!parentDir) return;
+      // 记录此刻的脏标签快照:移入回收站期间(网络盘可能数秒)新变脏的标签
+      // 未经过任何警示,删除完成后保留不关,内容可经「另存为」救回
+      const dirtyBefore = new Set(
+        findTabsUnderPath(useStore.getState().tabs, entry.absolutePath)
+          .filter((tab) => tab.isDirty)
+          .map((tab) => tab.id),
+      );
       const ok = await fileTree.trashEntry(entry.absolutePath, parentDir);
       if (!ok) {
         await confirmDialog(t('fileTree.deleteTitle'), t('fileTree.errorOpFailed'), [
@@ -359,7 +385,12 @@ function AppContent() {
         ]);
         return;
       }
-      fileOps.forceCloseTabsUnderPath(entry.absolutePath);
+      const keptTabs = fileOps.forceCloseTabsUnderPath(entry.absolutePath, dirtyBefore);
+      if (keptTabs.length > 0) {
+        await confirmDialog(t('fileTree.deleteTitle'), t('fileTree.deleteKeptDirty'), [
+          t('common.ok'),
+        ]);
+      }
     },
     [fileTree, fileOps, t],
   );

@@ -42,10 +42,28 @@ export function createWorkspaceDocument(dirPath: string, fileName: string): Work
   }
 }
 
-/** 重命名文件；新名针对同目录校验，不覆盖既有文件。 */
-export function renameWorkspaceFile(oldPath: string, newName: string): WorkspaceFileOpResult {
+/**
+ * 重命名文件；新名针对同目录校验，不覆盖既有文件。
+ *
+ * expectedMtime 为调用方已知的磁盘基线（该文件有打开标签时为其 fileMtime）：
+ * 磁盘当前修改时间与基线不一致说明存在尚未处理的外部版本，直接重命名会把
+ * 基线洗成外部版本的修改时间、让下次保存无冲突地覆盖它，因此返回 conflict
+ * 交由渲染层提示。与 file:save 的 knownMtime 检查同一模式。
+ */
+export function renameWorkspaceFile(
+  oldPath: string,
+  newName: string,
+  expectedMtime?: number | null,
+): WorkspaceFileOpResult {
   if (validateWorkspaceDocumentName(newName)) return { error: 'invalid-name' };
   if (!existsSync(oldPath)) return { error: 'source-missing' };
+  if (expectedMtime != null) {
+    try {
+      if (statSync(oldPath).mtimeMs !== expectedMtime) return { error: 'conflict' };
+    } catch {
+      return { error: 'source-missing' };
+    }
+  }
 
   const targetPath = join(dirname(oldPath), newName);
   // Windows 上 rename 会静默替换已存在的目标文件，必须先显式拦截，

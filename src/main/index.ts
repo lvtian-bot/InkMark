@@ -345,11 +345,17 @@ function writeRecentFiles(items: RecentItem[]): void {
   }
 }
 
-function addRecent(filePath: string, kind: RecentKind): void {
-  const next = addOrUpdateRecent(getRecentFiles(), filePath, kind, {
-    maxFiles: MAX_RECENT_FILES,
-    maxFolders: MAX_RECENT_FOLDERS,
-  });
+function addRecent(filePath: string, kind: RecentKind, options?: { trusted?: boolean }): void {
+  const next = addOrUpdateRecent(
+    getRecentFiles(),
+    filePath,
+    kind,
+    {
+      maxFiles: MAX_RECENT_FILES,
+      maxFolders: MAX_RECENT_FOLDERS,
+    },
+    options,
+  );
   if (next === getRecentFiles()) return;
   writeRecentFiles(next);
   createMenu();
@@ -868,10 +874,12 @@ app.whenReady().then(() => {
   });
   applyNativeTheme(currentThemeId);
   createMenu();
-  // 从最近记录播种已批准根：历史条目当初都经可信途径进入（对话框选择、
-  // 文件关联或推送打开），重启后从最近列表恢复打开的文件夹可继续使用
-  // 文件树操作；文件条目登记其所在目录，文件夹条目登记自身。
+  // 从最近记录播种已批准根：只认可信条目（当初经对话框/推送等用户可感知
+  // 途径进入）。渲染层任意读取（file:read）写入的条目不带可信标记，被攻破
+  // 的渲染层无法借持久化的最近记录在重启后扩大可变更范围。文件条目登记其
+  // 所在目录，文件夹条目登记自身。
   for (const item of getRecentFiles()) {
+    if (item.trusted !== true) continue;
     if (item.kind === 'folder') workspaceAuthorization.approve(item.path);
     else approveWorkspaceAroundFile(item.path);
   }
@@ -1022,7 +1030,7 @@ ipcMain.handle('dialog:openFile', async (event) => {
   for (const filePath of result.filePaths) {
     try {
       const { content, mtime } = readStableTextFile(filePath);
-      addRecent(filePath, 'file');
+      addRecent(filePath, 'file', { trusted: true });
       // 原生对话框选择的文件，其所在目录计入授权；否则文件树跟随到
       // 新文件夹后，右键新建/重命名/删除会被误拒
       approveWorkspaceAroundFile(filePath);
@@ -1071,7 +1079,9 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   const mtime = fileWatchManager.performSelfWrite(filePath, () =>
     atomicWriteFile(filePath, content),
   );
-  addRecent(filePath, 'file');
+  addRecent(filePath, 'file', { trusted: true });
+  // 原生另存对话框选择的目标，其所在目录计入授权（文件树会跟随到新位置）
+  approveWorkspaceAroundFile(filePath);
   return { path: filePath, mtime };
 });
 
@@ -1115,7 +1125,8 @@ ipcMain.handle('dialog:saveReviewCopy', async (event, request: unknown) => {
       const mtime = fileWatchManager.performSelfWrite(filePath, () =>
         writeNewReviewCopy(filePath, request.content, sourcePath),
       );
-      addRecent(filePath, 'file');
+      addRecent(filePath, 'file', { trusted: true });
+      approveWorkspaceAroundFile(filePath);
       return { path: filePath, mtime };
     } catch (error) {
       if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
@@ -1351,7 +1362,7 @@ ipcMain.handle('dialog:openFolder', async (event) => {
   if (result.canceled || result.filePaths.length === 0) return null;
   const folderPath = result.filePaths[0];
   setLastDialogPath(folderPath);
-  addRecent(folderPath, 'folder');
+  addRecent(folderPath, 'folder', { trusted: true });
   workspaceAuthorization.approve(folderPath);
   return { path: folderPath };
 });
@@ -1456,7 +1467,10 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
   ) {
     return { error: 'io-error' as const };
   }
-  const result = renameWorkspaceFile(request.path, request.newName);
+  // 渲染层传入打开标签的磁盘基线（有则必校验），防止外部版本未处理时
+  // 重命名洗掉基线、让下次保存静默覆盖
+  const expectedMtime = typeof request.expectedMtime === 'number' ? request.expectedMtime : null;
+  const result = renameWorkspaceFile(request.path, request.newName, expectedMtime);
   if ('path' in result) {
     workspaceWatchManager.recordSelfWrite(request.path);
     workspaceWatchManager.recordSelfWrite(result.path);

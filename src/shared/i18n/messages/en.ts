@@ -378,6 +378,8 @@ export const messages: Record<MessageKey, string> = {
     '"{name}" is under change review. Finish or discard the review before this operation.',
   'fileTree.pendingExternalUpdate':
     '"{name}" has pending external changes. Reload or review them from the banner above before this operation.',
+  'fileTree.deleteKeptDirty':
+    'The file was moved to the Recycle Bin, but new unsaved edits appeared during deletion. Their tabs were kept so the content can be recovered via "Save As".',
 
   'outline.title': 'Outline',
   'outline.empty': 'No outline',

@@ -198,8 +198,13 @@ export function useFileTree(activeFilePath: string | null) {
   );
 
   const renameEntry = useCallback(
-    async (oldPath: string, parentDir: string, newName: string): Promise<WorkspaceFileOpResult> => {
-      const result = await window.inkmark.renameWorkspaceFile(oldPath, newName);
+    async (
+      oldPath: string,
+      parentDir: string,
+      newName: string,
+      expectedMtime?: number | null,
+    ): Promise<WorkspaceFileOpResult> => {
+      const result = await window.inkmark.renameWorkspaceFile(oldPath, newName, expectedMtime);
       if ('path' in result) void loadDir(parentDir);
       return result;
     },

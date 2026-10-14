@@ -17,7 +17,7 @@ export type WorkspaceFileNameIssue =
 
 /** 文件树新建/重命名失败的结构化原因（成功时不携带）。 */
 export type WorkspaceFileOpError =
-  'invalid-name' | 'exists' | 'parent-missing' | 'source-missing' | 'io-error';
+  'invalid-name' | 'exists' | 'parent-missing' | 'source-missing' | 'conflict' | 'io-error';
 
 export interface WorkspaceFileOpSuccess {
   path: string;
