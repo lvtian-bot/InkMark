@@ -1498,11 +1498,18 @@ ipcMain.handle('workspace:trash', async (event, request: unknown) => {
     return { ok: false as const };
   }
   const targetPath = request.path;
-  // 与重命名同型的基线核对:磁盘修改时间与调用方已知基线不一致说明存在
-  // 未处理的外部版本,拒绝删除交由渲染层提示,不连带丢弃未见过的内容
-  if (typeof request.expectedMtime === 'number') {
+  // 与重命名同型的基线核对:逐个核对受影响打开文档的磁盘修改时间,任一
+  // 不一致说明存在未处理的外部版本,拒绝删除交由渲染层提示——目录删除
+  // 时其内打开的文档同样受保护,不只限于单文件目标
+  const baselines = Array.isArray(request.baselines)
+    ? request.baselines.filter(
+        (entry): entry is { path: string; mtime: number } =>
+          isRecord(entry) && isAbsolutePath(entry.path) && typeof entry.mtime === 'number',
+      )
+    : [];
+  for (const baseline of baselines) {
     try {
-      if (statSync(targetPath).mtimeMs !== request.expectedMtime) {
+      if (statSync(baseline.path).mtimeMs !== baseline.mtime) {
         return { ok: false as const, error: 'conflict' as const };
       }
     } catch {

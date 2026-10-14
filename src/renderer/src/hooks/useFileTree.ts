@@ -216,9 +216,9 @@ export function useFileTree(activeFilePath: string | null) {
     async (
       targetPath: string,
       parentDir: string,
-      expectedMtime?: number | null,
+      baselines?: Array<{ path: string; mtime: number }>,
     ): Promise<'ok' | 'conflict' | 'failed'> => {
-      const result = await window.inkmark.trashWorkspaceEntry(targetPath, expectedMtime);
+      const result = await window.inkmark.trashWorkspaceEntry(targetPath, baselines);
       if (result.ok) {
         // 清掉目标及其整个子树的展开状态与目录缓存:同路径被恢复或重建时,
         // 若仍命中缓存会显示被删目录的陈旧内容,必须强制重新列目录

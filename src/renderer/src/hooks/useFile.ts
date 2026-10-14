@@ -43,6 +43,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   const pendingWatchEventsRef = useRef(new Map<string, FileWatchEvent>());
   const watchedPathsRef = useRef(new Map<string, string>());
   const missingNotifiedTabIdsRef = useRef(new Set<string>());
+  // 自动保存抑制中的标签:文件树删除执行期间暂停(取消既有定时器且不再排期),
+  // 删除被拒后恢复并为仍脏的标签重新排期。
+  const autoSaveSuppressedTabIdsRef = useRef(new Set<string>());
   const autoSaveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const reviewRequestsRef = useRef(new Set<string>());
   const reviewSavesRef = useRef(new Set<string>());
@@ -285,6 +288,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     async (tabId: string): Promise<void> => {
       autoSaveTimersRef.current.delete(tabId);
       const isEligible = (): boolean => {
+        // 删除执行中(回收站可能较慢)的标签暂停自动保存,期间的编辑保持
+        // 未保存状态,保留的标签才能经「另存为」救回
+        if (autoSaveSuppressedTabIdsRef.current.has(tabId)) return false;
         const state = useStore.getState();
         const tab = state.tabs.find((t) => t.id === tabId);
         return isAutoSaveEligible({
@@ -306,6 +312,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
   const scheduleAutoSave = useCallback(
     (tabId: string): void => {
+      if (autoSaveSuppressedTabIdsRef.current.has(tabId)) return;
       const timers = autoSaveTimersRef.current;
       const existing = timers.get(tabId);
       if (existing) clearTimeout(existing);
@@ -557,6 +564,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         if (!tab.filePath || !isPathInside(tab.filePath, targetPath)) continue;
         const before = contentBefore?.get(tab.id);
         if (before !== undefined && tab.sourceContent !== before) {
+          // 保留的标签维持自动保存抑制:文件已进回收站,向死路径自动保存
+          // 只会反复弹保存失败;「另存为」成功后由用户继续编辑驱动新排期
           kept.push(tab.fileName);
           continue;
         }
@@ -565,6 +574,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           clearTimeout(timer);
           autoSaveTimersRef.current.delete(tab.id);
         }
+        autoSaveSuppressedTabIdsRef.current.delete(tab.id);
         missingNotifiedTabIdsRef.current.delete(tab.id);
         editorStateCache.dispose(tab.id);
         clearReviewForTab(tab.id);
@@ -575,11 +585,11 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     [closeTabStore],
   );
 
-  // 取消指定标签的待存定时器:文件树删除执行期间(回收站可能较慢)暂停
-  // 自动保存,期间的编辑保持未保存状态,删除完成后保留的标签仍能经
-  // 「另存为」救回;定时器取消后,下次编辑会照常重新排期。
-  const cancelAutoSaveForTabs = useCallback((tabIds: Iterable<string>): void => {
+  // 暂停指定标签的自动保存:取消既有定时器并阻止期间重新排期(删除执行中
+  // 的编辑保持未保存),由调用方在删除 settle 后恢复。
+  const suppressAutoSaveForTabs = useCallback((tabIds: Iterable<string>): void => {
     for (const id of tabIds) {
+      autoSaveSuppressedTabIdsRef.current.add(id);
       const timer = autoSaveTimersRef.current.get(id);
       if (timer) {
         clearTimeout(timer);
@@ -587,6 +597,30 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       }
     }
   }, []);
+
+  // 恢复自动保存并为仍脏、仍符合条件的标签重新排期——被取消的待存不至于
+  // 一直悬空;标签已关闭或已干净的恢复为无操作。
+  const restoreAutoSaveForTabs = useCallback(
+    (tabIds: Iterable<string>): void => {
+      for (const id of tabIds) {
+        autoSaveSuppressedTabIdsRef.current.delete(id);
+        const state = useStore.getState();
+        const tab = state.tabs.find((t) => t.id === id);
+        if (
+          tab?.isDirty &&
+          isAutoSaveEligible({
+            enabled: state.autoSave,
+            filePath: tab.filePath,
+            isDirty: tab.isDirty,
+            hasPendingReview: !!tab.reviewSession || tab.pendingReviewCount > 0,
+          })
+        ) {
+          scheduleAutoSave(id);
+        }
+      }
+    },
+    [scheduleAutoSave],
+  );
 
   const prepareToClose = useCallback(async (): Promise<boolean> => {
     if (isImageUploadInProgress()) {
@@ -1001,7 +1035,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       saveReviewResult,
       renameTabFile,
       forceCloseTabsUnderPath,
-      cancelAutoSaveForTabs,
+      suppressAutoSaveForTabs,
+      restoreAutoSaveForTabs,
     }),
     [
       newFile,
@@ -1021,7 +1056,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       saveReviewResult,
       renameTabFile,
       forceCloseTabsUnderPath,
-      cancelAutoSaveForTabs,
+      suppressAutoSaveForTabs,
+      restoreAutoSaveForTabs,
     ],
   );
 }

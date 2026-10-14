@@ -140,7 +140,7 @@ export interface InkMarkAPI {
   ) => Promise<WorkspaceFileOpResult>;
   trashWorkspaceEntry: (
     path: string,
-    expectedMtime?: number | null,
+    baselines?: Array<{ path: string; mtime: number }>,
   ) => Promise<{ ok: boolean; error?: 'conflict' }>;
   revealInFolder: (path: string) => Promise<void>;
   watchWorkspace: (path: string) => void;

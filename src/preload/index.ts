@@ -203,10 +203,10 @@ const api = {
       newName,
       expectedMtime,
     }) as Promise<WorkspaceFileOpResult>,
-  trashWorkspaceEntry: (path: string, expectedMtime?: number | null) =>
+  trashWorkspaceEntry: (path: string, baselines?: Array<{ path: string; mtime: number }>) =>
     ipcRenderer.invoke('workspace:trash', {
       path,
-      expectedMtime,
+      baselines,
     }) as Promise<{ ok: boolean; error?: 'conflict' }>,
   revealInFolder: (path: string) => ipcRenderer.invoke('shell:reveal', { path }),
   resolveDocumentLink: (request: { sourcePath: string; href: string }) =>
