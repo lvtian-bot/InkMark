@@ -7,6 +7,7 @@ import type {
 import type { DocumentLinkResolution } from '../shared/document-link';
 import type { ExportDocumentRequest, ExportDocumentResult } from '../shared/export-document';
 import type { WorkspaceEntry } from '../shared/workspace-tree';
+import type { WorkspaceFileOpResult } from '../shared/workspace-file-name';
 import type { RecentItem } from '../shared/recent-items';
 import type { ShortcutMap } from '../shared/shortcuts';
 import type { UpdateState } from '../shared/update-state';
@@ -191,6 +192,22 @@ const api = {
       path: string;
       entries: WorkspaceEntry[];
     } | null>,
+  createWorkspaceDocument: (dirPath: string, fileName: string) =>
+    ipcRenderer.invoke('workspace:createDocument', {
+      dirPath,
+      fileName,
+    }) as Promise<WorkspaceFileOpResult>,
+  renameWorkspaceFile: (path: string, newName: string, expectedMtime?: number | null) =>
+    ipcRenderer.invoke('workspace:renameFile', {
+      path,
+      newName,
+      expectedMtime,
+    }) as Promise<WorkspaceFileOpResult>,
+  trashWorkspaceEntry: (path: string, baselines?: Array<{ path: string; mtime: number }>) =>
+    ipcRenderer.invoke('workspace:trash', {
+      path,
+      baselines,
+    }) as Promise<{ ok: boolean; error?: 'conflict' }>,
   revealInFolder: (path: string) => ipcRenderer.invoke('shell:reveal', { path }),
   resolveDocumentLink: (request: { sourcePath: string; href: string }) =>
     ipcRenderer.invoke('link:resolve', request) as Promise<DocumentLinkResolution>,

@@ -19,6 +19,11 @@ export {
 } from '../../../shared/theme';
 export type { WorkspaceEntry } from '../../../shared/workspace-tree';
 import type { WorkspaceEntry } from '../../../shared/workspace-tree';
+export type {
+  WorkspaceFileOpError,
+  WorkspaceFileOpResult,
+} from '../../../shared/workspace-file-name';
+import type { WorkspaceFileOpResult } from '../../../shared/workspace-file-name';
 export type { RecentItem, RecentKind } from '../../../shared/recent-items';
 import type { RecentItem } from '../../../shared/recent-items';
 import type { UpdateState } from '../../../shared/update-state';
@@ -127,6 +132,16 @@ export interface InkMarkAPI {
   openFolderDialog: () => Promise<{ path: string } | null>;
   exportDocument: (request: ExportDocumentRequest) => Promise<ExportDocumentResult>;
   listDirectory: (path: string) => Promise<{ path: string; entries: WorkspaceEntry[] } | null>;
+  createWorkspaceDocument: (dirPath: string, fileName: string) => Promise<WorkspaceFileOpResult>;
+  renameWorkspaceFile: (
+    path: string,
+    newName: string,
+    expectedMtime?: number | null,
+  ) => Promise<WorkspaceFileOpResult>;
+  trashWorkspaceEntry: (
+    path: string,
+    baselines?: Array<{ path: string; mtime: number }>,
+  ) => Promise<{ ok: boolean; error?: 'conflict' }>;
   revealInFolder: (path: string) => Promise<void>;
   watchWorkspace: (path: string) => void;
   unwatchWorkspace: () => void;

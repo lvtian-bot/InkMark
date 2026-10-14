@@ -3,7 +3,9 @@ import {
   addOrUpdateRecent,
   normalizeRecentItems,
   removeRecent,
+  removeRecentUnderPath,
   removeUnstarredRecent,
+  renameRecentItem,
   splitRecentByStar,
   toggleRecentStar,
   type RecentItem,
@@ -408,5 +410,116 @@ describe('recent-items removeUnstarredRecent', () => {
     expect(removeUnstarredRecent(allStarred)).toEqual(allStarred);
     expect(removeUnstarredRecent([{ path: '/a.md', kind: 'file' }])).toEqual([]);
     expect(removeUnstarredRecent([])).toEqual([]);
+  });
+});
+
+describe('recent-items renameRecentItem', () => {
+  it('原位替换路径并保留顺序与星标', () => {
+    const items: RecentItem[] = [
+      { path: '/a.md', kind: 'file', starred: true },
+      { path: '/old.md', kind: 'file' },
+      { path: '/b.md', kind: 'file' },
+    ];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/a.md', kind: 'file', starred: true },
+      { path: '/new.md', kind: 'file' },
+      { path: '/b.md', kind: 'file' },
+    ]);
+  });
+
+  it('新路径已有条目时去重并把星标并入既有条目', () => {
+    const items: RecentItem[] = [
+      { path: '/old.md', kind: 'file', starred: true },
+      { path: '/new.md', kind: 'file' },
+    ];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/new.md', kind: 'file', starred: true },
+    ]);
+  });
+
+  it('路径不存在时原样返回原数组', () => {
+    const items: RecentItem[] = [{ path: '/a.md', kind: 'file' }];
+    expect(renameRecentItem(items, '/ghost.md', '/new.md', 'file')).toBe(items);
+  });
+});
+
+describe('recent-items removeRecentUnderPath', () => {
+  it('移除目标自身及其子路径条目,保留无关条目', () => {
+    const items: RecentItem[] = [
+      { path: 'D:\\笔记\\a.md', kind: 'file', starred: true },
+      { path: 'D:\\笔记\\子\\b.md', kind: 'file' },
+      { path: 'D:\\笔记', kind: 'folder' },
+      { path: 'D:\\其他\\c.md', kind: 'file' },
+    ];
+    expect(removeRecentUnderPath(items, 'D:\\笔记')).toEqual([
+      { path: 'D:\\其他\\c.md', kind: 'file' },
+    ]);
+  });
+
+  it('删除单个文件时只移除该文件', () => {
+    const items: RecentItem[] = [
+      { path: 'D:\\n\\a.md', kind: 'file' },
+      { path: 'D:\\n\\ab.md', kind: 'file' },
+    ];
+    expect(removeRecentUnderPath(items, 'D:\\n\\a.md')).toEqual([
+      { path: 'D:\\n\\ab.md', kind: 'file' },
+    ]);
+  });
+});
+
+describe('recent-items trusted 标记', () => {
+  it('可信途径写入的条目带标记', () => {
+    const next = addOrUpdateRecent([], '/a.md', 'file', undefined, { trusted: true });
+    expect(next).toEqual([{ path: '/a.md', kind: 'file', trusted: true }]);
+  });
+
+  it('不可信重新打开不撤销既有可信状态', () => {
+    const items: RecentItem[] = [{ path: '/a.md', kind: 'file', trusted: true }];
+    const next = addOrUpdateRecent(items, '/a.md', 'file');
+    expect(next).toEqual([{ path: '/a.md', kind: 'file', trusted: true }]);
+  });
+
+  it('不可信条目不产生标记', () => {
+    const next = addOrUpdateRecent([], '/a.md', 'file');
+    expect(next).toEqual([{ path: '/a.md', kind: 'file' }]);
+  });
+
+  it('normalize 保留持久化的可信标记,旧格式不标可信', () => {
+    expect(
+      normalizeRecentItems([{ path: '/a.md', kind: 'file', trusted: true }, 'legacy.md']),
+    ).toEqual([
+      { path: '/a.md', kind: 'file', trusted: true },
+      { path: 'legacy.md', kind: 'file' },
+    ]);
+  });
+
+  it('重命名迁移保留可信标记', () => {
+    const items: RecentItem[] = [{ path: '/old.md', kind: 'file', trusted: true }];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/new.md', kind: 'file', trusted: true },
+    ]);
+  });
+});
+
+describe('recent-items renameRecentItem 平台路径身份', () => {
+  // 仅在 Windows 上验证大小写不敏感匹配,与实现的平台分支一致
+  (process.platform === 'win32' ? it : it.skip)(
+    'Windows 上大小写不一致的历史条目也能命中迁移',
+    () => {
+      const items: RecentItem[] = [{ path: 'D:\\docs\\note.md', kind: 'file', starred: true }];
+      expect(renameRecentItem(items, 'D:\\docs\\Note.md', 'D:\\docs\\新名.md', 'file')).toEqual([
+        { path: 'D:\\docs\\新名.md', kind: 'file', starred: true },
+      ]);
+    },
+  );
+
+  it('新路径已有条目时星标与可信标记都并入既有条目', () => {
+    const items: RecentItem[] = [
+      { path: '/old.md', kind: 'file', starred: true, trusted: true },
+      { path: '/new.md', kind: 'file' },
+    ];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/new.md', kind: 'file', starred: true, trusted: true },
+    ]);
   });
 });
