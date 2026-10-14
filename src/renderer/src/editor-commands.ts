@@ -209,12 +209,35 @@ const SOURCE_MARK_ACTIONS: Partial<Record<EditorShortcutAction, [string, string]
   inlineCode: ['`', '`'],
 };
 
+// 纯 Markdown 格式操作：纯文本/代码文件没有对应语义。插入日期与删除行
+// 有独立的纯文本实现，不受文本标签限制。
+const MARKDOWN_ONLY_ACTIONS = new Set<EditorShortcutAction>([
+  'bold',
+  'italic',
+  'strike',
+  'inlineCode',
+  'heading1',
+  'heading2',
+  'heading3',
+  'bulletList',
+  'taskList',
+  'codeBlock',
+  'link',
+  'table',
+]);
+
 /** 执行一个工具栏格式命令，按当前编辑模式分发。链接命令会弹出地址输入框。 */
 export function runEditorCommand(action: EditorShortcutAction): void {
   const state = useStore.getState();
   const activeTab = state.tabs.find((item) => item.id === state.activeTabId);
   // 纯文本/代码文件没有 Markdown 格式操作：工具栏按钮已隐藏，快捷键在此拦下。
-  if (activeTab && resolveDocumentKind(activeTab.filePath) === 'text') return;
+  if (
+    activeTab &&
+    resolveDocumentKind(activeTab.filePath) === 'text' &&
+    MARKDOWN_ONLY_ACTIONS.has(action)
+  ) {
+    return;
+  }
   const isWysiwyg = selectViewMode(state) === 'wysiwyg';
   const mark = SOURCE_MARK_ACTIONS[action];
 

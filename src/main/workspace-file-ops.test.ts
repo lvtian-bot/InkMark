@@ -58,7 +58,7 @@ describe('createWorkspaceDocument', () => {
   it('白名单内的文本文件可创建', () => {
     const dir = makeTempDir();
     const result = createWorkspaceDocument(dir, 'notes.txt');
-    expect(result.error).toBeUndefined();
+    expect(result).toHaveProperty('path');
   });
 
   it('目标已存在时报 exists 且不覆盖', () => {

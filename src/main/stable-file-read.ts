@@ -45,9 +45,21 @@ export class UnsupportedEncodingError extends Error {
   }
 }
 
+/** 文件超过打开大小上限时抛出。 */
+export class FileTooLargeError extends Error {
+  constructor() {
+    super('File exceeds the open size limit.');
+    this.name = 'FileTooLargeError';
+  }
+}
+
+// ignoreBOM: true 表示保留文件头部的 UTF-8 BOM 原样输出（与旧 Buffer.toString
+// 行为一致），避免打开再保存悄悄丢掉 BOM，影响依赖它识别编码的 Windows 工具。
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
 function decodeUtf8Strict(bytes: Buffer): string | null {
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return utf8Decoder.decode(bytes);
   } catch {
     return null;
   }
@@ -66,9 +78,15 @@ export function readStableTextFile(
   filePath: string,
   io: StableFileReadIO = defaultIO,
   maxAttempts = 5,
+  maxBytes?: number,
 ): { content: string; mtime: number } {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const before = io.stat(filePath);
+    // 在读取该版本字节前核对大小上限：预检 stat 与真正读取之间文件可能被
+    // 原子替换或追加重写，只有落在稳定校验内的检查才能保证读到的大小有界。
+    if (maxBytes !== undefined && before.size > maxBytes) {
+      throw new FileTooLargeError();
+    }
     const bytes = io.read(filePath);
     const after = io.stat(filePath);
     if (isSameVersion(before, after) && bytes.byteLength === after.size) {

@@ -157,6 +157,9 @@ const api = {
   syncSourceMode: (checked: boolean) => {
     ipcRenderer.send('menu:syncSource', checked);
   },
+  syncDocumentKind: (isText: boolean) => {
+    ipcRenderer.send('menu:syncDocumentKind', isText);
+  },
   syncOutlineVisible: (visible: boolean) => {
     ipcRenderer.send('menu:syncOutline', visible);
   },

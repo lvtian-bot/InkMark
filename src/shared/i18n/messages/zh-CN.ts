@@ -395,6 +395,7 @@ export const messages = {
     '下方显示磁盘版本与当前编辑版本的差异。请选择使用哪个版本。',
   'confirm.useDisk': '使用磁盘版本',
   'confirm.keepAndOverride': '保留并在下次保存时覆盖',
+  'dialog.supportedDocuments': '支持的文档',
   'confirm.openFailed': '打开失败',
   'confirm.openDialogFailed': '无法打开文件对话框，请重试。',
   'confirm.openPathFailed': '"{path}" 无法打开。',

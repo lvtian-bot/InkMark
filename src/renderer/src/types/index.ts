@@ -127,6 +127,8 @@ export interface InkMarkAPI {
   toggleAlwaysOnTop: () => Promise<boolean>;
   syncThemeId: (themeId: string) => void;
   syncSourceMode: (checked: boolean) => void;
+  /** 活动标签是否为纯文本/代码文件：主进程据此禁用导出与源码模式菜单项 */
+  syncDocumentKind: (isText: boolean) => void;
   syncOutlineVisible: (visible: boolean) => void;
   syncFileTreeVisible: (visible: boolean) => void;
   syncToolbarVisible: (visible: boolean) => void;

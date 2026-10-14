@@ -26,9 +26,14 @@ import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
 import { createWorkspaceAuthorization } from './workspace-authorization';
 import { createImageStorage } from './image-storage';
-import { readStableTextFile, UnsupportedEncodingError } from './stable-file-read';
+import {
+  readStableTextFile,
+  FileTooLargeError,
+  UnsupportedEncodingError,
+} from './stable-file-read';
 import {
   hasOpenableDocumentExtension,
+  isMarkdownDocumentPath,
   MAX_OPEN_FILE_SIZE_BYTES,
   PLAIN_TEXT_EXTENSIONS,
 } from '../shared/openable-document';
@@ -89,6 +94,9 @@ let currentOutlineVisible = true;
 let currentFileTreeVisible = false;
 let currentToolbarVisible = true;
 let currentAlwaysOnTop = false;
+// 活动标签是否为纯文本/代码文件：由渲染层按标签切换上报，用于禁用
+// 纯文本文件不可用的菜单项（导出、源码模式切换）。
+let currentActiveDocumentIsText = false;
 // 快捷键映射：启动时用默认值，渲染进程加载完用户设置后通过 shortcuts:sync 覆盖。
 let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
 // 语言：启动时跟随系统；渲染进程加载完用户设置后通过 language:sync 覆盖。
@@ -464,7 +472,7 @@ function getFileFromArgs(argv: string[]): string[] {
   const files: string[] = [];
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
-    if (!arg.startsWith('-') && !arg.startsWith('--') && /\.(md|markdown|txt)$/i.test(arg)) {
+    if (!arg.startsWith('-') && !arg.startsWith('--') && hasOpenableDocumentExtension(arg)) {
       files.push(arg);
     }
   }
@@ -695,6 +703,7 @@ function createMenu(): void {
         },
         {
           label: t('menu.export'),
+          enabled: !currentActiveDocumentIsText,
           submenu: [
             {
               label: t('menu.exportHtml'),
@@ -785,6 +794,7 @@ function createMenu(): void {
           accelerator: shortcutAccelerator('toggleSource'),
           type: 'checkbox',
           checked: currentSourceMode,
+          enabled: !currentActiveDocumentIsText,
           click: () => mainWindow?.webContents.send('menu:toggleSource'),
         },
         {
@@ -943,6 +953,13 @@ ipcMain.on('theme:syncThemeId', (event, themeId: unknown) => {
   });
 });
 
+ipcMain.on('menu:syncDocumentKind', (event, isText: unknown) => {
+  if (!isTrustedRenderer(event) || typeof isText !== 'boolean') return;
+  if (currentActiveDocumentIsText === isText) return;
+  currentActiveDocumentIsText = isText;
+  createMenu();
+});
+
 ipcMain.on('menu:syncSource', (event, checked: unknown) => {
   if (!isTrustedRenderer(event) || typeof checked !== 'boolean') return;
   currentSourceMode = checked;
@@ -1047,7 +1064,10 @@ ipcMain.handle('dialog:openFile', async (event) => {
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
     filters: [
-      { name: '支持的文档', extensions: ['md', 'markdown', ...textExtensionNames()] },
+      {
+        name: t('dialog.supportedDocuments'),
+        extensions: ['md', 'markdown', ...textExtensionNames()],
+      },
       { name: 'Markdown', extensions: ['md', 'markdown'] },
     ],
     properties: ['openFile', 'multiSelections'],
@@ -1094,7 +1114,11 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   });
   if (result.canceled || !result.filePath) return null;
   const filePath = result.filePath;
-  imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+  // 附件目录（<名>.assets）是 Markdown 文档的伴生结构；纯文本/代码文件
+  // 不复制，避免同名无关目录被误当附件搬运。
+  if (sourcePath === null || sourcePath === undefined || isMarkdownDocumentPath(sourcePath)) {
+    imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+  }
   workspaceWatchManager.recordSelfWrite(filePath);
   const mtime = fileWatchManager.performSelfWrite(filePath, () =>
     atomicWriteFile(filePath, content),
@@ -1237,7 +1261,7 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
     return null;
   }
   try {
-    const { content, mtime } = readStableTextFile(path);
+    const { content, mtime } = readStableTextFile(path, undefined, 5, MAX_OPEN_FILE_SIZE_BYTES);
     // 所在目录已在已批准范围内时,最近记录按可信持久化:推送打开(文件关联/
     // 命令行/最近菜单)的文档经此读取落档,重启后从开始页重开仍可播种授权。
     // 范围之外的读取依旧不可信——被攻破的渲染层无法借此扩大授权范围,
@@ -1251,6 +1275,9 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
     // 非 UTF-8 编码（如 GBK 的 txt）拒绝打开：以乱码展示、再保存会把坏内容写回。
     if (error instanceof UnsupportedEncodingError) {
       return { status: 'unsupported-encoding' as const };
+    }
+    if (error instanceof FileTooLargeError) {
+      return { status: 'too-large' as const };
     }
     // 文件已被删除或移动：从最近列表移除死链，避免反复点击失败
     removeRecentItem(path);

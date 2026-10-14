@@ -415,6 +415,7 @@ export const messages: Record<MessageKey, string> = {
     'Below shows the differences between the disk version and your current edit. Choose which version to use.',
   'confirm.useDisk': 'Use Disk Version',
   'confirm.keepAndOverride': 'Keep Mine and Overwrite on Next Save',
+  'dialog.supportedDocuments': 'Supported Documents',
   'confirm.openFailed': 'Open Failed',
   'confirm.openDialogFailed': 'Could not open the file dialog, please try again.',
   'confirm.openPathFailed': '"{path}" could not be opened.',

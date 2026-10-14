@@ -39,7 +39,7 @@ import { isImageUploadInProgress } from './image-upload';
 import { followDocumentLinkHref } from './document-link';
 import { comboMatchesEvent } from './shortcut-recorder';
 import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
-import { resolveDocumentKind } from '../../shared/openable-document';
+import { hasOpenableDocumentExtension, resolveDocumentKind } from '../../shared/openable-document';
 import { runEditorCommand } from './editor-commands';
 import { selectViewMode } from './stores/useStore';
 import type { MessageKey } from '../../shared/i18n';
@@ -528,7 +528,12 @@ function AppContent() {
       return;
     }
 
-    const targetMode = viewModeRef.current;
+    // 目标模式按目标标签同步推导：布局 effect 早于 viewModeRef 的被动更新，
+    // 直接读 ref 会拿到旧模式，把纯文本内容先装进所见即所得再经序列化搬运。
+    const targetMode =
+      newTab && resolveDocumentKind(newTab.filePath) === 'text'
+        ? 'source'
+        : useStore.getState().viewMode;
     // 旧标签此前展示用的模式：切到纯文本标签会强制源码，两个模式可能不同，
     // 此时两个编辑器的内容分属新旧两个标签，捕获必须按展示模式取。
     const captureMode = displayedModeRef.current;
@@ -637,7 +642,9 @@ function AppContent() {
       // 序列化结果替换原文，否则换行/格式变化会使待审块失效。
       const md = tab?.reviewSession
         ? tab.sourceContent
-        : (editorHandle.current?.getMarkdown() ?? '');
+        : tab && resolveDocumentKind(tab.filePath) === 'text'
+          ? tab.sourceContent
+          : (editorHandle.current?.getMarkdown() ?? '');
       const state = editorHandle.current?.getEditorState();
       if (state) editorStateCache.capture(tabId, 'wysiwyg', md, state);
       setSourceContent(md);
@@ -700,6 +707,12 @@ function AppContent() {
       window.inkmark.syncSourceMode(viewMode === 'source');
     }
   }, [viewMode]);
+
+  useEffect(() => {
+    if (window.inkmark.syncDocumentKind) {
+      window.inkmark.syncDocumentKind(activeTabIsText);
+    }
+  }, [activeTabIsText]);
 
   // 审阅视图只存在于源码模式（change-review.md）：活动标签出现待决外部改动时
   // 自动切入源码模式；期间 toggleViewMode 被锁定，处理完才能切回。
@@ -1234,7 +1247,7 @@ function AppContent() {
       const file = e.dataTransfer?.files?.[0];
       if (file) {
         const path = (file as File & { path?: string }).path;
-        if (path && /\.(md|markdown|txt)$/i.test(path)) {
+        if (path && hasOpenableDocumentExtension(path)) {
           await fileOps.openFilePath(path);
         }
       }
