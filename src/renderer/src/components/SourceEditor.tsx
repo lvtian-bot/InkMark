@@ -14,6 +14,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
 import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
+import { resolveDocumentKind } from '../../../shared/openable-document';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { useI18n } from '../i18n';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
@@ -163,9 +164,18 @@ export function SourceEditor({
     // 句柄未就绪时会跳过），因此挂载时从当前标签 sourceContent 初始化；急切挂载时该值
     // 恒为空串，行为不变。
     const { tabs, activeTabId: initialTabId } = useStore.getState();
-    const initialDoc = tabs.find((tab) => tab.id === initialTabId)?.sourceContent ?? '';
+    const initialTab = tabs.find((tab) => tab.id === initialTabId);
+    const initialDoc = initialTab?.sourceContent ?? '';
+    // 挂载即可能是文本文件（懒加载晚于打开流程，句柄注入会被跳过）：
+    // 初始化同样按内容保留 CRLF，否则首次编辑保存会把换行改写成 LF。
+    const initialSeparator =
+      initialTab &&
+      resolveDocumentKind(initialTab.filePath) === 'text' &&
+      initialDoc.includes('\r\n')
+        ? '\r\n'
+        : undefined;
 
-    const state = createState(initialDoc);
+    const state = createState(initialDoc, initialSeparator);
 
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;

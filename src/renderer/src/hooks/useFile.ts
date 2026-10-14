@@ -216,7 +216,19 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           return false;
         }
         if (result.status === 'conflict') {
-          const diskVersion = asFileResult(await window.inkmark.openFilePath(tab.filePath));
+          let diskRead: FileResult | OpenFileRejection | null;
+          try {
+            diskRead = await window.inkmark.openFilePath(tab.filePath);
+          } catch {
+            diskRead = null;
+          }
+          if (diskRead && 'status' in diskRead) {
+            // 磁盘版本已过大或非 UTF-8：说明原因并终止；不带差异对比的
+            // 覆盖选项会让用户在不知情下毁掉无法读取的外部新版本。
+            await showOpenRejection(diskRead, tab.filePath);
+            return false;
+          }
+          const diskVersion = diskRead;
           const choice = await confirmDialog(
             t('confirm.externalModified'),
             t('confirm.externalModifiedCoverHint'),
@@ -805,17 +817,20 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       if (!liveTab || liveTab.reviewSession || liveTab.filePath !== tab.filePath) return 'missing';
       editorStateCache.dispose(tabId);
       clearReviewForTab(tabId);
-      suppressDirtyRef.current = true;
+      // 文本/代码文件不装入隐藏的所见即所得编辑器（整篇解析只是开销），
+      // 也没有它的迟到通知需要抑制。
+      const isTextDoc = resolveDocumentKind(tab.filePath) === 'text';
+      if (!isTextDoc) suppressDirtyRef.current = true;
       if (tabId === current.activeTabId) {
-        if (!current.setMarkdown(result.content)) {
+        if (!isTextDoc && !current.setMarkdown(result.content)) {
           suppressDirtyRef.current = false;
         }
         if (current.viewMode === 'source') {
           sourceEditorHandle.current?.setValue(result.content, {
-            preserveLineSeparator: resolveDocumentKind(tab.filePath) === 'text',
+            preserveLineSeparator: isTextDoc,
           });
         }
-      } else {
+      } else if (!isTextDoc) {
         suppressDirtyRef.current = false;
       }
       updateTab(tabId, {

@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'fs';
+import { closeSync, fstatSync, openSync, readFileSync, readSync, statSync } from 'fs';
 
 export interface FileVersion {
   dev: number;
@@ -10,7 +10,8 @@ export interface FileVersion {
 
 interface StableFileReadIO {
   stat: (filePath: string) => FileVersion;
-  read: (filePath: string) => Buffer;
+  /** maxBytes 传入时读取最多 maxBytes + 1 字节，限制竞态下的单次内存占用。 */
+  read: (filePath: string, maxBytes?: number) => Buffer;
 }
 
 const defaultIO: StableFileReadIO = {
@@ -24,7 +25,25 @@ const defaultIO: StableFileReadIO = {
       ctimeMs: stat.ctimeMs,
     };
   },
-  read: (filePath) => readFileSync(filePath),
+  read: (filePath, maxBytes) => {
+    if (maxBytes === undefined) return readFileSync(filePath);
+    // 通过同一文件描述符 fstat + 读取：即使路径在此期间被原子替换，
+    // 读到的也是同一个 inode 的连续内容，且字节数有硬上限。
+    const fd = openSync(filePath, 'r');
+    try {
+      const size = fstatSync(fd).size;
+      const buffer = Buffer.alloc(Math.min(size, maxBytes + 1));
+      let read = 0;
+      while (read < buffer.length) {
+        const n = readSync(fd, buffer, read, buffer.length - read, read);
+        if (n <= 0) break;
+        read += n;
+      }
+      return read === buffer.length ? buffer : buffer.subarray(0, read);
+    } finally {
+      closeSync(fd);
+    }
+  },
 };
 
 function isSameVersion(before: FileVersion, after: FileVersion): boolean {
@@ -87,7 +106,7 @@ export function readStableTextFile(
     if (maxBytes !== undefined && before.size > maxBytes) {
       throw new FileTooLargeError();
     }
-    const bytes = io.read(filePath);
+    const bytes = io.read(filePath, maxBytes);
     const after = io.stat(filePath);
     if (isSameVersion(before, after) && bytes.byteLength === after.size) {
       const content = decodeUtf8Strict(bytes);

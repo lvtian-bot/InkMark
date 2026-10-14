@@ -646,13 +646,16 @@ function AppContent() {
       const tab = useStore.getState().tabs.find((item) => item.id === tabId);
       // 审阅块按 sourceContent 定位。进入审阅不得用所见即所得的重新
       // 序列化结果替换原文，否则换行/格式变化会使待审块失效。
+      const tabIsText = !!tab && resolveDocumentKind(tab.filePath) === 'text';
       const md = tab?.reviewSession
         ? tab.sourceContent
-        : tab && resolveDocumentKind(tab.filePath) === 'text'
+        : tabIsText
           ? tab.sourceContent
           : (editorHandle.current?.getMarkdown() ?? '');
       const state = editorHandle.current?.getEditorState();
-      if (state) editorStateCache.capture(tabId, 'wysiwyg', md, state);
+      // 文本文档从未装载所见即所得编辑器：其当前状态（可能为空白）不代表正文，
+      // 缓存它会在类型切回 Markdown 时被当作有效状态恢复出空白编辑器。
+      if (state && !tabIsText) editorStateCache.capture(tabId, 'wysiwyg', md, state);
       setSourceContent(md);
       const sourceState = editorStateCache.restore(tabId, 'source', md);
       if (sourceState) {
