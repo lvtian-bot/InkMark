@@ -36,6 +36,20 @@ export function resolveConflictChoice(choice: number): ConflictChoiceAction {
   return 'cancel';
 }
 
+// 纯文本/代码文件没有 Markdown 审阅能力：冲突弹窗不提供「逐项审阅」，
+// 按钮为 0=使用磁盘版，1=保留并覆盖，2/其他=取消。
+export function resolveConflictChoiceForKind(
+  kind: 'markdown' | 'text',
+  choice: number,
+): ConflictChoiceAction {
+  if (kind === 'text') {
+    if (choice === 0) return 'reload';
+    if (choice === 1) return 'keep-and-override';
+    return 'cancel';
+  }
+  return resolveConflictChoice(choice);
+}
+
 export type CloseDirtyDecision = 'proceed' | 'save' | 'discard' | 'cancel';
 
 export interface CloseDirtyInput {

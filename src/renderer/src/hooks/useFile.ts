@@ -18,9 +18,16 @@ import {
 import {
   decideCloseDirty,
   decideExternalChange,
-  resolveConflictChoice,
+  resolveConflictChoiceForKind,
 } from '../file-conflict-decision';
-import type { FileResult, FileWatchEvent, ViewMode } from '../types';
+import { resolveDocumentKind } from '../../../shared/openable-document';
+import type { FileResult, FileWatchEvent, OpenFileRejection, ViewMode } from '../types';
+
+// 内部流程（重载、冲突比对、审阅基线）只关心拿不拿得到正文；文件被外部
+// 换成过大或非 UTF-8 时按读取失败处理，走既有的缺失/外部改动提示。
+function asFileResult(result: FileResult | OpenFileRejection | null): FileResult | null {
+  return result && !('status' in result) ? result : null;
+}
 
 function filePathKey(path: string): string {
   return window.inkmark.platform === 'win32' ? path.toLowerCase() : path;
@@ -113,7 +120,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         if (options.copyOnly) return await saveCopy();
         let diskVersion: FileResult | null;
         try {
-          diskVersion = await window.inkmark.openFilePath(originalPath);
+          diskVersion = asFileResult(await window.inkmark.openFilePath(originalPath));
         } catch {
           diskVersion = null;
         }
@@ -196,7 +203,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           return false;
         }
         if (result.status === 'conflict') {
-          const diskVersion = await window.inkmark.openFilePath(tab.filePath);
+          const diskVersion = asFileResult(await window.inkmark.openFilePath(tab.filePath));
           const choice = await confirmDialog(
             t('confirm.externalModified'),
             t('confirm.externalModifiedCoverHint'),
@@ -372,20 +379,6 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     [addTab, setActiveTab, updateTab],
   );
 
-  const openFile = useCallback(async () => {
-    let results;
-    try {
-      results = await window.inkmark.openFileDialog();
-    } catch {
-      await confirmDialog(t('confirm.openFailed'), t('confirm.openDialogFailed'), [t('common.ok')]);
-      return;
-    }
-    if (!results || results.length === 0) return;
-    for (const result of results) {
-      await openFileResult(result);
-    }
-  }, [openFileResult]);
-
   const openFilePath = useCallback(
     async (path: string): Promise<boolean> => {
       let result;
@@ -403,11 +396,34 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         ]);
         return false;
       }
+      // 主进程的守卫结论：文件过大或编码不是 UTF-8，拒绝打开并说明原因。
+      if ('status' in result) {
+        const reason =
+          result.status === 'too-large'
+            ? t('confirm.openPathTooLarge', { path })
+            : t('confirm.openPathUnsupportedEncoding', { path });
+        await confirmDialog(t('confirm.openFailed'), reason, [t('common.ok')]);
+        return false;
+      }
       await openFileResult(result);
       return true;
     },
     [openFileResult],
   );
+
+  const openFile = useCallback(async () => {
+    let paths;
+    try {
+      paths = await window.inkmark.openFileDialog();
+    } catch {
+      await confirmDialog(t('confirm.openFailed'), t('confirm.openDialogFailed'), [t('common.ok')]);
+      return;
+    }
+    if (!paths || paths.length === 0) return;
+    for (const path of paths) {
+      await openFilePath(path);
+    }
+  }, [openFilePath]);
 
   const save = useCallback(async () => {
     await saveTab(useStore.getState().activeTabId);
@@ -654,7 +670,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       if (!tab?.filePath) return false;
       let result;
       try {
-        result = await window.inkmark.openFilePath(tab.filePath);
+        result = asFileResult(await window.inkmark.openFilePath(tab.filePath));
       } catch {
         return false;
       }
@@ -763,7 +779,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
             }
 
             if (changeDecision === 'conflict') {
-              const diskVersion = await window.inkmark.openFilePath(currentTab.filePath);
+              const diskVersion = asFileResult(
+                await window.inkmark.openFilePath(currentTab.filePath),
+              );
               if (!diskVersion) {
                 await notifyMissingFile(currentTab.id, currentTab.fileName);
                 continue;
@@ -774,18 +792,23 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                 ingestReviewChunks(currentTab.id, diskVersion.content, diskVersion.mtime);
                 continue;
               }
+              // 纯文本/代码文件没有逐项审阅能力，冲突弹窗只给磁盘版/保留覆盖/取消。
+              const isTextDoc = resolveDocumentKind(currentTab.filePath) === 'text';
+              const choices = isTextDoc
+                ? [t('confirm.useDisk'), t('confirm.keepAndOverride'), t('common.cancel')]
+                : [
+                    t('confirm.useDisk'),
+                    t('review.enterReview'),
+                    t('confirm.keepAndOverride'),
+                    t('common.cancel'),
+                  ];
               const choice = await confirmDialog(
                 t('confirm.externalModified'),
                 t('confirm.externalModifiedChooseHint'),
-                [
-                  t('confirm.useDisk'),
-                  t('review.enterReview'),
-                  t('confirm.keepAndOverride'),
-                  t('common.cancel'),
-                ],
+                choices,
                 {
-                  defaultId: 3,
-                  cancelId: 3,
+                  defaultId: choices.length - 1,
+                  cancelId: choices.length - 1,
                   diff: buildConflictDiff(diskVersion.content, getTabMarkdown(currentTab.id)),
                 },
               );
@@ -795,7 +818,10 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                 ingestReviewChunks(currentTab.id, diskVersion.content, diskVersion.mtime);
                 continue;
               }
-              const conflictAction = resolveConflictChoice(choice);
+              const conflictAction = resolveConflictChoiceForKind(
+                isTextDoc ? 'text' : 'markdown',
+                choice,
+              );
               if (conflictAction === 'reload') {
                 const reloaded = await reloadTab(currentTab.id);
                 if (!reloaded) {
@@ -849,13 +875,15 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     const state = useStore.getState();
     const tab = state.tabs.find((t) => t.id === state.activeTabId);
     if (!tab?.filePath) return;
+    // 纯文本/代码文件没有 Markdown 审阅能力（提示条也不展示该入口）。
+    if (resolveDocumentKind(tab.filePath) === 'text') return;
     if (tab.reviewSession) return;
     if (reviewRequestsRef.current.has(tab.id)) return;
     reviewRequestsRef.current.add(tab.id);
     try {
       let diskVersion;
       try {
-        diskVersion = await window.inkmark.openFilePath(tab.filePath);
+        diskVersion = asFileResult(await window.inkmark.openFilePath(tab.filePath));
       } catch {
         diskVersion = null;
       }

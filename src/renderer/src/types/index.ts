@@ -38,6 +38,9 @@ export interface FileResult {
   mtime: number;
 }
 
+/** file:read 拒绝打开的原因：文件超过大小上限，或不是合法 UTF-8 编码。 */
+export type OpenFileRejection = { status: 'too-large' } | { status: 'unsupported-encoding' };
+
 export type SaveResult = { status: 'ok'; mtime: number } | { status: 'conflict' };
 
 export type MtimeResult = { status: 'ok'; mtime: number } | { status: 'error' };
@@ -59,7 +62,7 @@ export interface AppInfo {
 }
 
 export interface InkMarkAPI {
-  openFileDialog: () => Promise<FileResult[] | null>;
+  openFileDialog: () => Promise<string[] | null>;
   saveFile: (
     content: string,
     path: string,
@@ -74,7 +77,7 @@ export interface InkMarkAPI {
     expectedMtime: number,
   ) => Promise<SaveResult>;
   saveReviewCopy: (content: string, sourcePath: string) => Promise<SaveAsResult | null>;
-  openFilePath: (path: string) => Promise<FileResult | null>;
+  openFilePath: (path: string) => Promise<FileResult | OpenFileRejection | null>;
   getRecentFiles: () => Promise<RecentItem[]>;
   removeRecentFile: (path: string) => Promise<void>;
   toggleStarRecentFile: (path: string) => Promise<void>;

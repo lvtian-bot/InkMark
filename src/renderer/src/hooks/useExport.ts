@@ -4,6 +4,7 @@ import { confirmDialog } from '../confirm-dialog';
 import { showExportProgress, hideExportProgress } from '../export-progress';
 import { t } from '../i18n';
 import { tabDisplayName } from '../tab-name';
+import { resolveDocumentKind } from '../../../shared/openable-document';
 import type { ExportKind, ExportDocumentResult } from '../../../shared/export-document';
 
 // 模块级并发防护：导出期间再次触发（如点击原生菜单）直接忽略。
@@ -23,6 +24,14 @@ export function useExport() {
     const state = useStore.getState();
     const tab = state.tabs.find((item) => item.id === state.activeTabId);
     if (!tab || tab.isStartPage) return;
+
+    // 纯文本/代码文件不参与 Markdown 导出链路，导出结果是错误的 HTML/PDF。
+    if (resolveDocumentKind(tab.filePath) === 'text') {
+      await confirmDialog(t('confirm.exportUnsupportedTitle'), t('confirm.exportUnsupportedBody'), [
+        t('common.ok'),
+      ]);
+      return;
+    }
 
     if (tab.pendingReviewCount > 0) {
       await confirmDialog(

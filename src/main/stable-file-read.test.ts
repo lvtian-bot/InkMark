@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readStableTextFile, type FileVersion } from './stable-file-read';
+import { readStableTextFile, UnsupportedEncodingError, type FileVersion } from './stable-file-read';
 
 function version(overrides: Partial<FileVersion> = {}): FileVersion {
   return {
@@ -39,5 +39,24 @@ describe('readStableTextFile', () => {
         2,
       ),
     ).toThrow('File changed repeatedly while being read.');
+  });
+});
+
+describe('readStableTextFile 编码校验', () => {
+  it('非 UTF-8 字节流抛出 UnsupportedEncodingError，不返回乱码', () => {
+    expect(() =>
+      readStableTextFile('gbk.txt', {
+        stat: () => version({ size: 4 }),
+        read: () => Buffer.from([0xd6, 0xd0, 0xce, 0xc4]),
+      }),
+    ).toThrow(UnsupportedEncodingError);
+  });
+
+  it('合法 UTF-8 内容（含多字节字符）正常返回', () => {
+    const result = readStableTextFile('utf8.md', {
+      stat: () => version({ size: 8 }),
+      read: () => Buffer.from('中文ok', 'utf-8'),
+    });
+    expect(result.content).toBe('中文ok');
   });
 });

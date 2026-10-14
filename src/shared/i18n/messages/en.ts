@@ -275,6 +275,7 @@ export const messages: Record<MessageKey, string> = {
   'statusBar.showFileTree': 'Show File Tree ({shortcut})',
   'statusBar.hideFileTree': 'Hide File Tree ({shortcut})',
   'statusBar.sourceMode': 'Source Mode ({shortcut})',
+  'statusBar.sourceModeLocked': 'Plain-text files always open in source mode',
   'statusBar.autoSaveOn': 'Auto-save: on, click to turn off',
   'statusBar.autoSaveOff': 'Auto-save: off, click to turn on',
   'statusBar.settings': 'Settings ({shortcut})',
@@ -384,6 +385,10 @@ export const messages: Record<MessageKey, string> = {
   'confirm.openDialogFailed': 'Could not open the file dialog, please try again.',
   'confirm.openPathFailed': '"{path}" could not be opened.',
   'confirm.openPathMissing': '"{path}" may have been deleted or moved.',
+  'confirm.openPathTooLarge': '"{path}" is larger than 10 MB and cannot be opened yet.',
+  'confirm.openPathUnsupportedEncoding': '"{path}" is not UTF-8 encoded and cannot be opened yet.',
+  'confirm.exportUnsupportedTitle': 'Export Not Supported',
+  'confirm.exportUnsupportedBody': 'Plain-text and code files cannot be exported to HTML or PDF.',
   'confirm.imageSaving': 'Saving Image',
   'confirm.imageSavingSaveAs':
     'Please wait for the image insert to finish before saving as another document.',

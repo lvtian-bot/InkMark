@@ -81,6 +81,15 @@
   background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
+/* 纯文本标签下模式切换被禁用:降低透明度并去掉悬停反馈 */
+.status-mode-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.status-mode-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-tertiary);
+}
 /* 源码模式激活态:图标保持原有灰色,垫一块带投影的圆角小底框,与预览/阅读模式区分 */
 .status-mode-btn.active::before {
   content: '';

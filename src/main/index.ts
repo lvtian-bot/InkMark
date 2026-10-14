@@ -24,7 +24,12 @@ import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createImageStorage } from './image-storage';
-import { readStableTextFile } from './stable-file-read';
+import { readStableTextFile, UnsupportedEncodingError } from './stable-file-read';
+import {
+  hasOpenableDocumentExtension,
+  MAX_OPEN_FILE_SIZE_BYTES,
+  PLAIN_TEXT_EXTENSIONS,
+} from '../shared/openable-document';
 import {
   saveReviewedFileVersion,
   writeNewReviewCopy,
@@ -187,7 +192,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isDocumentPath(value: unknown): value is string {
-  return typeof value === 'string' && isAbsolute(value) && /\.(md|markdown|txt)$/i.test(value);
+  return typeof value === 'string' && isAbsolute(value) && hasOpenableDocumentExtension(value);
+}
+
+/** 文件对话框 filters 用的扩展名清单（不含点、小写）。 */
+function textExtensionNames(): string[] {
+  return PLAIN_TEXT_EXTENSIONS.map((ext) => ext.slice(1));
+}
+
+/** 另存为对话框的过滤器：纯文本文件保持原扩展名，其余默认 Markdown。 */
+function saveDialogFilters(sourcePath: string | null): { name: string; extensions: string[] }[] {
+  if (sourcePath) {
+    const lower = sourcePath.toLowerCase();
+    const match = PLAIN_TEXT_EXTENSIONS.find((ext) => lower.endsWith(ext));
+    if (match) {
+      const name = match.slice(1).toUpperCase();
+      return [{ name, extensions: [match.slice(1)] }];
+    }
+  }
+  return [{ name: 'Markdown', extensions: ['md'] }];
 }
 
 function isAbsolutePath(value: unknown): value is string {
@@ -970,27 +993,22 @@ ipcMain.handle('clipboard:writeText', (event, request: unknown) => {
   return true;
 });
 
+// 打开对话框只负责选路径；内容读取、大小/编码校验与最近列表登记统一走
+// file:read，保证对话框打开与文件树、链接跳转走同一套守卫和失败提示。
 ipcMain.handle('dialog:openFile', async (event) => {
   if (!isTrustedRenderer(event)) return null;
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+    filters: [
+      { name: '支持的文档', extensions: ['md', 'markdown', ...textExtensionNames()] },
+      { name: 'Markdown', extensions: ['md', 'markdown'] },
+    ],
     properties: ['openFile', 'multiSelections'],
     defaultPath: getLastDialogPath(),
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  const files: { path: string; content: string; mtime: number }[] = [];
-  for (const filePath of result.filePaths) {
-    try {
-      const { content, mtime } = readStableTextFile(filePath);
-      addRecent(filePath, 'file');
-      files.push({ path: filePath, content, mtime });
-    } catch {
-      /* skip unreadable files */
-    }
-  }
-  if (files.length > 0) setLastDialogPath(files[0].path);
-  return files.length > 0 ? files : null;
+  setLastDialogPath(result.filePaths[0]);
+  return result.filePaths;
 });
 
 ipcMain.handle('file:save', async (event, request: unknown) => {
@@ -1020,7 +1038,7 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   const { content, sourcePath } = request;
   if (!mainWindow) return null;
   const result = await dialog.showSaveDialog(mainWindow, {
-    filters: [{ name: 'Markdown', extensions: ['md'] }],
+    filters: saveDialogFilters(sourcePath ?? null),
   });
   if (result.canceled || !result.filePath) return null;
   const filePath = result.filePath;
@@ -1154,11 +1172,24 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
     return null;
   }
   const { path } = request;
+  // 超大文件（常见于日志、数据导出）直接拒绝，避免打开时卡死界面。
+  try {
+    if (statSync(path).size > MAX_OPEN_FILE_SIZE_BYTES) {
+      return { status: 'too-large' as const };
+    }
+  } catch {
+    removeRecentItem(path);
+    return null;
+  }
   try {
     const { content, mtime } = readStableTextFile(path);
     addRecent(path, 'file');
     return { path, content, mtime };
-  } catch {
+  } catch (error) {
+    // 非 UTF-8 编码（如 GBK 的 txt）拒绝打开：以乱码展示、再保存会把坏内容写回。
+    if (error instanceof UnsupportedEncodingError) {
+      return { status: 'unsupported-encoding' as const };
+    }
     // 文件已被删除或移动：从最近列表移除死链，避免反复点击失败
     removeRecentItem(path);
     return null;

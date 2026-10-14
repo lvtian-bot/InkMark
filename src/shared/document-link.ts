@@ -3,8 +3,7 @@
  * 渲染进程用它决定点击后的行为，两侧共用同一份判定逻辑。
  */
 
-/** 应用内可打开的文档扩展名，与主进程 file:read 的白名单一致。 */
-export const DOCUMENT_EXTENSION_PATTERN = /\.(md|markdown|txt)$/i;
+import { hasOpenableDocumentExtension } from './openable-document';
 
 /** 外部链接白名单，与主进程 will-navigate 放行的协议一致。 */
 const EXTERNAL_URL_PATTERN = /^(https?:|mailto:)/i;
@@ -51,6 +50,6 @@ export function classifyDocumentLinkHref(href: string): DocumentLinkHref {
   const hash = hashIndex === -1 ? '' : trimmed.slice(hashIndex + 1);
   const decoded = decodeHref(rawPath);
   if (decoded === '') return { kind: 'none' };
-  if (!DOCUMENT_EXTENSION_PATTERN.test(decoded)) return { kind: 'none' };
+  if (!hasOpenableDocumentExtension(decoded)) return { kind: 'none' };
   return { kind: 'document', path: decoded, hash };
 }

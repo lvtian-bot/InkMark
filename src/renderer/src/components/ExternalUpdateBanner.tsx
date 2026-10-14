@@ -4,7 +4,8 @@ import '../styles/external-update-banner.css';
 
 interface ExternalUpdateBannerProps {
   onReload: () => Promise<void>;
-  onReview: () => Promise<void>;
+  /** 纯文本/代码文件没有逐项审阅能力，缺省时只显示「重新加载」。 */
+  onReview?: () => Promise<void>;
 }
 
 // 编辑区顶部的「文件已被外部更新」提示条（change-review.md 默认状态）：
@@ -36,14 +37,16 @@ export function ExternalUpdateBanner({ onReload, onReview }: ExternalUpdateBanne
         >
           {t('review.replaceNow')}
         </button>
-        <button
-          type="button"
-          className="external-update-banner-btn is-primary"
-          disabled={busy}
-          onClick={() => void run(onReview)}
-        >
-          {t('review.enterReview')}
-        </button>
+        {onReview && (
+          <button
+            type="button"
+            className="external-update-banner-btn is-primary"
+            disabled={busy}
+            onClick={() => void run(onReview)}
+          >
+            {t('review.enterReview')}
+          </button>
+        )}
       </span>
     </div>
   );

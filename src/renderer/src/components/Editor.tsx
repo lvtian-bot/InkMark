@@ -60,7 +60,7 @@ import { linkGesture } from '../plugins/link-gesture';
 import { pickLinkHrefFromClick, isFollowLinkCombo, shouldHintFollowLink } from '../document-link';
 import { expandToLinkBounds } from '../link-selection';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
-import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
+import { selectAppTheme, selectContentTheme, selectViewMode, useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import '../styles/editor.css';
 import '../styles/prism.css';
@@ -361,7 +361,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         .config((ctx) => {
           const manager = ctx.get(listenerCtx);
           manager.updated((ctx, doc) => {
-            if (!armedRef.current || useStore.getState().viewMode !== 'wysiwyg') return;
+            if (!armedRef.current || selectViewMode(useStore.getState()) !== 'wysiwyg') return;
             // listener 会延迟 200ms 上报。切换/加载后的旧事务不能反写当前正文，
             // 已程序加载或上报过的正文也无需再次序列化。
             const currentDoc = ctx.get(editorViewCtx).state.doc;
