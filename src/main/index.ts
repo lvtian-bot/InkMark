@@ -23,6 +23,8 @@ import {
 import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
+import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
+import { createWorkspaceAuthorization } from './workspace-authorization';
 import { createImageStorage } from './image-storage';
 import { readStableTextFile, UnsupportedEncodingError } from './stable-file-read';
 import {
@@ -54,7 +56,9 @@ import {
   addOrUpdateRecent,
   normalizeRecentItems,
   removeRecent,
+  removeRecentUnderPath,
   removeUnstarredRecent,
+  renameRecentItem,
   toggleRecentStar,
   type RecentItem,
   type RecentKind,
@@ -125,6 +129,19 @@ const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`;
 const fileWatchManager = createFileWatchManager();
 const workspaceWatchManager = createWorkspaceWatchManager();
 const imageStorage = createImageStorage({ t });
+// 已批准工作区根：文件树新建/重命名/删除的边界授权。来源只限四类用户
+// 可感知的可信途径——文件夹对话框、打开文件对话框、应用主动推送的打开
+// （最近菜单 / 文件关联 / 命令行参数）以及启动时从最近记录播种；渲染层
+// 任意可控的 IPC（如 file:read、workspace:watch）不产生授权，被攻破的
+// 渲染层无法自行扩大可变更范围。判定与登记前先解析路径并拒绝盘符根，
+// 见 workspace-authorization.ts。
+const workspaceAuthorization = createWorkspaceAuthorization();
+
+/** 登记某文档所在目录为已批准根（盘符根等会被模块内部忽略）。 */
+function approveWorkspaceAroundFile(filePath: string): void {
+  const parentDir = dirname(filePath);
+  if (parentDir) workspaceAuthorization.approve(parentDir);
+}
 // electron-updater 依赖图较大，推迟到首次访问更新功能时再动态加载，
 // 避免在 app ready 前评估整棵模块、拖慢窗口创建。
 let updateServicePromise: Promise<UpdateService> | null = null;
@@ -351,11 +368,17 @@ function writeRecentFiles(items: RecentItem[]): void {
   }
 }
 
-function addRecent(filePath: string, kind: RecentKind): void {
-  const next = addOrUpdateRecent(getRecentFiles(), filePath, kind, {
-    maxFiles: MAX_RECENT_FILES,
-    maxFolders: MAX_RECENT_FOLDERS,
-  });
+function addRecent(filePath: string, kind: RecentKind, options?: { trusted?: boolean }): void {
+  const next = addOrUpdateRecent(
+    getRecentFiles(),
+    filePath,
+    kind,
+    {
+      maxFiles: MAX_RECENT_FILES,
+      maxFolders: MAX_RECENT_FOLDERS,
+    },
+    options,
+  );
   if (next === getRecentFiles()) return;
   writeRecentFiles(next);
   createMenu();
@@ -364,6 +387,15 @@ function addRecent(filePath: string, kind: RecentKind): void {
 function removeRecentItem(filePath: string): void {
   const next = removeRecent(getRecentFiles(), filePath);
   if (next.length === recentFilesCache!.length) return;
+  writeRecentFiles(next);
+  createMenu();
+}
+
+// 文件树重命名后同步最近记录:原位替换路径并保留星标,
+// 避免开始页与原生菜单残留指向旧路径的失效条目。
+function renameRecentItemEntry(oldPath: string, newPath: string): void {
+  const next = renameRecentItem(getRecentFiles(), oldPath, newPath, 'file');
+  if (next === getRecentFiles()) return;
   writeRecentFiles(next);
   createMenu();
 }
@@ -466,6 +498,8 @@ if (!gotLock) {
     const filePaths = getFileFromArgs(argv);
     if (mainWindow) {
       for (const fp of filePaths) {
+        // 命令行/文件关联打开属于系统级用户动作，其所在目录计入授权
+        approveWorkspaceAroundFile(fp);
         mainWindow.webContents.send('file:open-path', fp);
       }
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -514,6 +548,8 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     if (pendingFilePaths.length > 0) {
       for (const fp of pendingFilePaths) {
+        // 启动参数携带的文件（文件关联/命令行），同 second-instance 处理授权
+        approveWorkspaceAroundFile(fp);
         mainWindow?.webContents.send('file:open-path', fp);
       }
       pendingFilePaths = [];
@@ -601,6 +637,8 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
     label: basename(path) || path,
     sublabel: path,
     click: () => {
+      // 原生菜单点击是用户动作，其所在目录计入授权
+      approveWorkspaceAroundFile(path);
       mainWindow?.webContents.send('file:open-path', path);
     },
   }));
@@ -859,6 +897,15 @@ app.whenReady().then(() => {
   });
   applyNativeTheme(currentThemeId);
   createMenu();
+  // 从最近记录播种已批准根：只认可信条目（当初经对话框/推送等用户可感知
+  // 途径进入）。渲染层任意读取（file:read）写入的条目不带可信标记，被攻破
+  // 的渲染层无法借持久化的最近记录在重启后扩大可变更范围。文件条目登记其
+  // 所在目录，文件夹条目登记自身。
+  for (const item of getRecentFiles()) {
+    if (item.trusted !== true) continue;
+    if (item.kind === 'folder') workspaceAuthorization.approve(item.path);
+    else approveWorkspaceAroundFile(item.path);
+  }
 
   protocol.handle('inkmark-local', (request) => {
     const filePath = imageStorage.getProtocolFilePath(request.url);
@@ -1007,6 +1054,11 @@ ipcMain.handle('dialog:openFile', async (event) => {
     defaultPath: getLastDialogPath(),
   });
   if (result.canceled || result.filePaths.length === 0) return null;
+  // 原生对话框选择的文件，其所在目录计入授权；否则文件树跟随到
+  // 新文件夹后，右键新建/重命名/删除会被误拒
+  for (const filePath of result.filePaths) {
+    approveWorkspaceAroundFile(filePath);
+  }
   setLastDialogPath(result.filePaths[0]);
   return result.filePaths;
 });
@@ -1047,7 +1099,9 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   const mtime = fileWatchManager.performSelfWrite(filePath, () =>
     atomicWriteFile(filePath, content),
   );
-  addRecent(filePath, 'file');
+  addRecent(filePath, 'file', { trusted: true });
+  // 原生另存对话框选择的目标，其所在目录计入授权（文件树会跟随到新位置）
+  approveWorkspaceAroundFile(filePath);
   return { path: filePath, mtime };
 });
 
@@ -1091,7 +1145,8 @@ ipcMain.handle('dialog:saveReviewCopy', async (event, request: unknown) => {
       const mtime = fileWatchManager.performSelfWrite(filePath, () =>
         writeNewReviewCopy(filePath, request.content, sourcePath),
       );
-      addRecent(filePath, 'file');
+      addRecent(filePath, 'file', { trusted: true });
+      approveWorkspaceAroundFile(filePath);
       return { path: filePath, mtime };
     } catch (error) {
       if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
@@ -1183,7 +1238,14 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
   }
   try {
     const { content, mtime } = readStableTextFile(path);
-    addRecent(path, 'file');
+    // 所在目录已在已批准范围内时,最近记录按可信持久化:推送打开(文件关联/
+    // 命令行/最近菜单)的文档经此读取落档,重启后从开始页重开仍可播种授权。
+    // 范围之外的读取依旧不可信——被攻破的渲染层无法借此扩大授权范围,
+    // 因为只有已批准目录内的文件能获得标记。
+    const parentDir = dirname(path);
+    addRecent(path, 'file', {
+      trusted: parentDir ? workspaceAuthorization.isApproved(parentDir) : false,
+    });
     return { path, content, mtime };
   } catch (error) {
     // 非 UTF-8 编码（如 GBK 的 txt）拒绝打开：以乱码展示、再保存会把坏内容写回。
@@ -1340,7 +1402,8 @@ ipcMain.handle('dialog:openFolder', async (event) => {
   if (result.canceled || result.filePaths.length === 0) return null;
   const folderPath = result.filePaths[0];
   setLastDialogPath(folderPath);
-  addRecent(folderPath, 'folder');
+  addRecent(folderPath, 'folder', { trusted: true });
+  workspaceAuthorization.approve(folderPath);
   return { path: folderPath };
 });
 
@@ -1411,4 +1474,94 @@ ipcMain.on('workspace:watch', (event, request: unknown) => {
 ipcMain.on('workspace:unwatch', (event) => {
   if (!isTrustedRenderer(event)) return;
   workspaceWatchManager.unsubscribe(event.sender.id);
+});
+
+// 文件树基础操作：新建文档、重命名、删除到回收站。
+// 渲染层在操作成功后主动刷新受影响目录；这里的 recordSelfWrite 抑制
+// 工作区监听对自身操作的广播，避免文件树刚刷新又被事件触发整树重载。
+// 目标一律要求落在已批准的工作区根之下：这些操作具破坏性，
+// 不能因渲染层被攻破而波及用户触及范围之外的任意路径。
+
+ipcMain.handle('workspace:createDocument', (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    !isAbsolutePath(request.dirPath) ||
+    typeof request.fileName !== 'string' ||
+    !workspaceAuthorization.isApproved(request.dirPath)
+  ) {
+    return { error: 'io-error' as const };
+  }
+  const result = createWorkspaceDocument(request.dirPath, request.fileName);
+  if ('path' in result) workspaceWatchManager.recordSelfWrite(result.path);
+  return result;
+});
+
+ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    !isAbsolutePath(request.path) ||
+    typeof request.newName !== 'string' ||
+    // 与删除同用严格子级判定:提交路径与解析目标须同落批准根内,
+    // 根外别名即使指向根内文件也不得对其改名
+    !workspaceAuthorization.isApprovedDescendant(request.path)
+  ) {
+    return { error: 'io-error' as const };
+  }
+  // 渲染层传入打开标签的磁盘基线（有则必校验），防止外部版本未处理时
+  // 重命名洗掉基线、让下次保存静默覆盖
+  const expectedMtime = typeof request.expectedMtime === 'number' ? request.expectedMtime : null;
+  const result = renameWorkspaceFile(request.path, request.newName, expectedMtime);
+  if ('path' in result) {
+    workspaceWatchManager.recordSelfWrite(request.path);
+    workspaceWatchManager.recordSelfWrite(result.path);
+    renameRecentItemEntry(request.path, result.path);
+  }
+  return result;
+});
+
+ipcMain.handle('workspace:trash', async (event, request: unknown) => {
+  if (
+    !isTrustedRenderer(event) ||
+    !isRecord(request) ||
+    !isAbsolutePath(request.path) ||
+    // 严格子级:批准的根本身不可删——界面不为根提供删除入口,整工作区
+    // 一次性进回收站不属于产品语义
+    !workspaceAuthorization.isApprovedDescendant(request.path)
+  ) {
+    return { ok: false as const };
+  }
+  const targetPath = request.path;
+  // 与重命名同型的基线核对:逐个核对受影响打开文档的磁盘修改时间,任一
+  // 不一致说明存在未处理的外部版本,拒绝删除交由渲染层提示——目录删除
+  // 时其内打开的文档同样受保护,不只限于单文件目标
+  const baselines = Array.isArray(request.baselines)
+    ? request.baselines.filter(
+        (entry): entry is { path: string; mtime: number } =>
+          isRecord(entry) && isAbsolutePath(entry.path) && typeof entry.mtime === 'number',
+      )
+    : [];
+  for (const baseline of baselines) {
+    try {
+      if (statSync(baseline.path).mtimeMs !== baseline.mtime) {
+        return { ok: false as const, error: 'conflict' as const };
+      }
+    } catch {
+      return { ok: false as const };
+    }
+  }
+  workspaceWatchManager.recordSelfWrite(targetPath);
+  try {
+    await shell.trashItem(targetPath);
+    // 清掉目标及其子路径的最近记录,避免开始页与菜单残留死条目
+    const next = removeRecentUnderPath(getRecentFiles(), targetPath);
+    if (next !== getRecentFiles()) {
+      writeRecentFiles(next);
+      createMenu();
+    }
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const };
+  }
 });

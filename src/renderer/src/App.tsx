@@ -27,13 +27,14 @@ import { useStore } from './stores/useStore';
 import { I18nProvider, t as tt, useI18n } from './i18n';
 import { tabDisplayName } from './tab-name';
 import { isThemeId } from './types';
+import type { WorkspaceEntry } from './types';
 import { editorHandle } from './editor-ref';
 import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
 import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
 import { drainQueuedReviewChunks } from './review/review-store';
 import { resolveAllReviewChunks } from './review/review-resolution';
-import { confirmDialog } from './confirm-dialog';
+import { confirmDialog, promptDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { followDocumentLinkHref } from './document-link';
 import { comboMatchesEvent } from './shortcut-recorder';
@@ -41,6 +42,20 @@ import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/sho
 import { resolveDocumentKind } from '../../shared/openable-document';
 import { runEditorCommand } from './editor-commands';
 import { selectViewMode } from './stores/useStore';
+import type { MessageKey } from '../../shared/i18n';
+import {
+  findTabsUnderPath,
+  findTabsWithActiveReview,
+  findTabsWithPendingExternalUpdate,
+  decideDeleteWarning,
+} from './file-tree-actions';
+import { parentDirectory } from '../../shared/file-tree-follow';
+import {
+  ensureUniqueFileName,
+  validateWorkspaceDocumentName,
+  type WorkspaceFileNameIssue,
+} from '../../shared/workspace-file-name';
+import type { WorkspaceFileOpError } from '../../shared/workspace-file-name';
 
 // 源码模式与低频对话框拆成独立 chunk，避免它们的代码（CodeMirror 全家桶等）
 // 拖慢启动首帧；首次使用时按需加载。查找替换等高频路径不懒加载。
@@ -53,6 +68,26 @@ const SettingsDialog = lazy(() =>
 const UpdateDialog = lazy(() =>
   import('./components/UpdateDialog').then((m) => ({ default: m.UpdateDialog })),
 );
+
+// 文件树操作失败原因 → 提示文案键
+const FILE_NAME_ISSUE_MESSAGE: Record<WorkspaceFileNameIssue, MessageKey> = {
+  empty: 'fileTree.errorNameEmpty',
+  'invalid-chars': 'fileTree.errorNameInvalidChars',
+  'reserved-name': 'fileTree.errorNameReserved',
+  'trailing-dot-or-space': 'fileTree.errorNameTrailing',
+  'hidden-name': 'fileTree.errorNameHidden',
+  'unsupported-extension': 'fileTree.errorNameExtension',
+};
+
+const FILE_OP_ERROR_MESSAGE: Record<WorkspaceFileOpError, MessageKey> = {
+  'invalid-name': 'fileTree.errorNameInvalidChars',
+  exists: 'fileTree.errorNameExists',
+  'parent-missing': 'fileTree.errorOpFailed',
+  'source-missing': 'fileTree.errorOpFailed',
+  // conflict 在重命名入口有带文件名的专门提示，此处仅为类型完备的兜底
+  conflict: 'fileTree.errorOpFailed',
+  'io-error': 'fileTree.errorOpFailed',
+};
 
 function AppContent() {
   const { themeId, setThemeId } = useTheme();
@@ -108,6 +143,8 @@ function AppContent() {
   const setStartPage = useStore((s) => s.setStartPage);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // 文件树重命名/删除改动主进程最近记录后递增,通知挂载中的开始页重拉列表
+  const [recentRefreshKey, setRecentRefreshKey] = useState(0);
 
   const switchingRef = useRef(false);
   const prevTabIdRef = useRef(activeTabId);
@@ -162,6 +199,263 @@ function AppContent() {
       });
     },
     [fileOps],
+  );
+
+  // 文件树基础操作：名称输入与删除确认在此编排，目录刷新由 useFileTree
+  // 的操作方法负责；操作成功后同步已打开标签并打开新建的文档。
+  const handleFileTreeCreateDocument = useCallback(
+    async (dirPath: string): Promise<void> => {
+      const folderName = dirPath.split(/[/\\]/).pop() ?? dirPath;
+      const siblingNames = (fileTree.dirCache.get(dirPath) ?? []).map((entry) => entry.name);
+      const defaultName = ensureUniqueFileName(t('fileTree.newDocumentDefaultName'), siblingNames);
+      const name = await promptDialog(
+        t('fileTree.createDocumentTitle'),
+        t('fileTree.createDocumentPrompt', { folder: folderName }),
+        { defaultValue: defaultName, confirmLabel: t('fileTree.createAction') },
+      );
+      if (name === null) return;
+      // 对话框打开期间用户可能已切换到其他文件夹(跟随换根),在已看不见的
+      // 目录里创建还会把用户拽回去;静默中止
+      if (!fileTree.isPathInCurrentRoot(dirPath)) return;
+      const issue = validateWorkspaceDocumentName(name);
+      if (issue) {
+        await confirmDialog(t('fileTree.createDocumentTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      const result = await fileTree.createDocumentInDir(dirPath, name);
+      if ('error' in result) {
+        await confirmDialog(
+          t('fileTree.createDocumentTitle'),
+          t(FILE_OP_ERROR_MESSAGE[result.error]),
+          [t('common.ok')],
+        );
+        return;
+      }
+      await fileOps.openFilePath(result.path);
+    },
+    [fileTree, fileOps, t],
+  );
+
+  const handleFileTreeRenameFile = useCallback(
+    async (entry: WorkspaceEntry): Promise<void> => {
+      // 图片上传已捕获当前文档路径,重命名会让附件写入旧位置,须等待完成
+      if (isImageUploadInProgress()) {
+        await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingFileOps'), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      const affectedTabs = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
+      if (findTabsWithActiveReview(affectedTabs).length > 0) {
+        await confirmDialog(
+          t('fileTree.renameTitle'),
+          t('fileTree.reviewInProgress', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      if (findTabsWithPendingExternalUpdate(affectedTabs).length > 0) {
+        await confirmDialog(
+          t('fileTree.renameTitle'),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      const newName = await promptDialog(
+        t('fileTree.renameTitle'),
+        t('fileTree.renamePrompt', { name: entry.name }),
+        { defaultValue: entry.name, confirmLabel: t('fileTree.renameAction') },
+      );
+      if (newName === null || newName === entry.name) return;
+      // 对话框打开期间用户可能已切换到其他文件夹(跟随换根),目标就此从树中
+      // 消失;静默中止,不再作用于不可见目标
+      if (!fileTree.isPathInCurrentRoot(entry.absolutePath)) return;
+      // 对话框打开期间磁盘可能已被外部改动,执行前以最新标签状态复核,
+      // 避免重命名沿用旧基线后静默覆盖未见过的外部版本;期间用户也可能
+      // 在弹出的冲突选择中进入了审阅,需一并拦截
+      const liveAffected = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
+      if (findTabsWithActiveReview(liveAffected).length > 0) {
+        await confirmDialog(
+          t('fileTree.renameTitle'),
+          t('fileTree.reviewInProgress', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      if (findTabsWithPendingExternalUpdate(liveAffected).length > 0) {
+        await confirmDialog(
+          t('fileTree.renameTitle'),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      const issue = validateWorkspaceDocumentName(newName);
+      if (issue) {
+        await confirmDialog(t('fileTree.renameTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      const parentDir = parentDirectory(entry.absolutePath);
+      if (!parentDir) return;
+      // 带上打开标签的磁盘基线：编辑过的标签会清掉外部更新标志但故意保留
+      // 旧基线（让下次保存冲突），只有主进程核对磁盘修改时间一致才放行，
+      // 否则存在未处理的外部版本，重命名会把基线洗掉导致静默覆盖
+      const baselineTab = liveAffected.find((tab) => tab.fileMtime != null);
+      const renameTabIds = liveAffected.map((tab) => tab.id);
+      // 重命名执行期间抑制自动保存:主进程已移动文件而标签路径尚未更新时,
+      // 待存定时器若触发会把内容写回旧路径、重新创建旧文件
+      fileOps.suppressAutoSaveForTabs(renameTabIds);
+      const result = await fileTree.renameEntry(
+        entry.absolutePath,
+        parentDir,
+        newName,
+        baselineTab?.fileMtime ?? null,
+      );
+      if ('error' in result) {
+        // 未发生重命名,恢复排期继续按原路径自动保存
+        fileOps.restoreAutoSaveForTabs(renameTabIds);
+        if (result.error === 'conflict') {
+          await confirmDialog(
+            t('fileTree.renameTitle'),
+            t('fileTree.pendingExternalUpdate', { name: entry.name }),
+            [t('common.ok')],
+          );
+          return;
+        }
+        await confirmDialog(t('fileTree.renameTitle'), t(FILE_OP_ERROR_MESSAGE[result.error]), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      fileOps.renameTabFile(entry.absolutePath, result.path, result.mtime);
+      // 标签已指向新路径,解除抑制——仍脏的标签恢复排期后按新路径自动保存
+      fileOps.restoreAutoSaveForTabs(renameTabIds);
+      // 主进程最近记录已迁移,挂载中的开始页重拉列表
+      setRecentRefreshKey((key) => key + 1);
+    },
+    [fileTree, fileOps, t],
+  );
+
+  const handleFileTreeDeleteEntry = useCallback(
+    async (entry: WorkspaceEntry): Promise<void> => {
+      // 图片上传依赖目录中的旧路径,删除会中断写入甚至留下空目录,须等待完成
+      if (isImageUploadInProgress()) {
+        await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingFileOps'), [
+          t('common.ok'),
+        ]);
+        return;
+      }
+      const warning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
+      if (warning === 'review-blocked') {
+        await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t('fileTree.reviewInProgress', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      if (warning === 'external-pending') {
+        await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      const body =
+        warning === 'dirty-open'
+          ? t('fileTree.deleteDirtyConfirm', { name: entry.name })
+          : t('fileTree.deleteConfirm', { name: entry.name });
+      // 危险操作默认聚焦取消，确认键统一放在第二位
+      const choice = await confirmDialog(
+        t('fileTree.deleteTitle'),
+        body,
+        [
+          t('common.cancel'),
+          warning === 'dirty-open' ? t('fileTree.deleteAnyway') : t('fileTree.deleteAction'),
+        ],
+        { defaultId: 0, cancelId: 0 },
+      );
+      if (choice !== 1) return;
+      // 确认框打开期间状态可能已变化，执行删除前以最新标签状态复核:
+      // 外部改动/审阅到达时终止;刚输入的编辑延迟上报把标签变为未保存时,
+      // 原确认没有警示内容丢失，必须补一次强确认
+      const liveWarning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
+      if (liveWarning === 'review-blocked' || liveWarning === 'external-pending') {
+        await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t(
+            liveWarning === 'review-blocked'
+              ? 'fileTree.reviewInProgress'
+              : 'fileTree.pendingExternalUpdate',
+            { name: entry.name },
+          ),
+          [t('common.ok')],
+        );
+        return;
+      }
+      if (liveWarning === 'dirty-open' && warning !== 'dirty-open') {
+        const reconfirm = await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t('fileTree.deleteDirtyConfirm', { name: entry.name }),
+          [t('common.cancel'), t('fileTree.deleteAnyway')],
+          { defaultId: 0, cancelId: 0 },
+        );
+        if (reconfirm !== 1) return;
+      }
+      // 切根核验放在全部确认框之后、执行之前:任一对话框打开期间用户都可
+      // 能经 Ctrl+Tab 切换活动文档使跟随换根,目标就此从树中消失,静默中止
+      if (!fileTree.isPathInCurrentRoot(entry.absolutePath)) return;
+      const parentDir = parentDirectory(entry.absolutePath);
+      if (!parentDir) return;
+      const affectedTabs = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
+      const affectedIds = affectedTabs.map((tab) => tab.id);
+      // 暂停受影响标签的自动保存(取消既有定时器且期间不再排期):移入回收站
+      // 期间(网络盘可能数秒)的编辑保持未保存状态,保留的标签才能经「另存为」救回
+      fileOps.suppressAutoSaveForTabs(affectedIds);
+      // 记录此刻受影响标签的正文快照:期间正文发生变化的部分未经过警示,
+      // 删除完成后保留不关
+      const contentBefore = new Map(
+        affectedTabs.map((tab) => [tab.id, tab.sourceContent] as const),
+      );
+      // 携带全部受影响打开文档的磁盘基线(目录删除时其内文档同样受保护):
+      // 任一存在未处理的外部版本即拒绝,不让"只警示了用户自己修改"的确认
+      // 连带丢弃未见过的外部内容
+      const baselines = affectedTabs
+        .filter((tab) => tab.filePath !== null && tab.fileMtime !== null)
+        .map((tab) => ({ path: tab.filePath!, mtime: tab.fileMtime! }));
+      const outcome = await fileTree.trashEntry(entry.absolutePath, parentDir, baselines);
+      if (outcome !== 'ok') {
+        // 删除未发生,恢复自动保存并为仍脏的标签重新排期
+        fileOps.restoreAutoSaveForTabs(affectedIds);
+        if (outcome === 'conflict') {
+          await confirmDialog(
+            t('fileTree.deleteTitle'),
+            t('fileTree.pendingExternalUpdate', { name: entry.name }),
+            [t('common.ok')],
+          );
+        } else {
+          await confirmDialog(t('fileTree.deleteTitle'), t('fileTree.errorOpFailed'), [
+            t('common.ok'),
+          ]);
+        }
+        return;
+      }
+      const keptTabs = fileOps.forceCloseTabsUnderPath(entry.absolutePath, contentBefore);
+      if (keptTabs.length > 0) {
+        await confirmDialog(t('fileTree.deleteTitle'), t('fileTree.deleteKeptDirty'), [
+          t('common.ok'),
+        ]);
+      }
+      // 主进程最近记录已清理,挂载中的开始页重拉列表
+      setRecentRefreshKey((key) => key + 1);
+    },
+    [fileTree, fileOps, t],
   );
 
   const { closeRoot: closeFileTreeRoot } = fileTree;
@@ -969,6 +1263,18 @@ function AppContent() {
     };
   }, [fileOps]);
 
+  // 活动标签的文件身份字段单独订阅:文件树重命名只改 fileName/filePath,
+  // 不触碰 activeTabId/isDirty,标题 effect 必须依赖这些字段才能同步原生标题栏
+  const activeTabFilePath = useStore(
+    (s) => s.tabs.find((tab) => tab.id === s.activeTabId)?.filePath ?? null,
+  );
+  const activeTabFileName = useStore(
+    (s) => s.tabs.find((tab) => tab.id === s.activeTabId)?.fileName ?? '',
+  );
+  const activeTabIsStartPage = useStore(
+    (s) => s.tabs.find((tab) => tab.id === s.activeTabId)?.isStartPage ?? false,
+  );
+
   useEffect(() => {
     const activeTab = useStore
       .getState()
@@ -976,7 +1282,7 @@ function AppContent() {
     const displayName = activeTab ? tabDisplayName(activeTab, t) : t('tabBar.unnamed');
     const mark = isDirty ? '\u2022 ' : '';
     window.inkmark.setWindowTitle(`${mark}${displayName} - InkMark`);
-  }, [activeTabId, isDirty, t]);
+  }, [activeTabId, isDirty, t, activeTabFilePath, activeTabFileName, activeTabIsStartPage]);
 
   const prevStartPageRef = useRef(isStartPage);
 
@@ -1042,6 +1348,9 @@ function AppContent() {
                 side="left"
                 activeFilePath={activeFilePath}
                 onOpenFile={(path) => void fileOps.openFilePath(path)}
+                onCreateDocument={(dirPath) => void handleFileTreeCreateDocument(dirPath)}
+                onRenameFile={(entry) => void handleFileTreeRenameFile(entry)}
+                onDeleteEntry={(entry) => void handleFileTreeDeleteEntry(entry)}
               />
             </div>
             <div
@@ -1075,6 +1384,7 @@ function AppContent() {
                 });
               }}
               onOpenPath={(path) => fileOps.openFilePath(path)}
+              recentRefreshKey={recentRefreshKey}
             />
           )}
           {!isStartPage && toolbarVisible && <Toolbar onSave={() => void fileOps.save()} />}
@@ -1141,6 +1451,9 @@ function AppContent() {
                 side="right"
                 activeFilePath={activeFilePath}
                 onOpenFile={(path) => void fileOps.openFilePath(path)}
+                onCreateDocument={(dirPath) => void handleFileTreeCreateDocument(dirPath)}
+                onRenameFile={(entry) => void handleFileTreeRenameFile(entry)}
+                onDeleteEntry={(entry) => void handleFileTreeDeleteEntry(entry)}
               />
             </div>
           </>

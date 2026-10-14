@@ -13,6 +13,8 @@ interface StartPageProps {
   onOpenPath: (path: string) => Promise<boolean>;
   /** 打开文件夹到文件树。不传路径时弹出选择框;传路径时直接打开该文件夹。 */
   onOpenFolder?: (path?: string) => Promise<boolean>;
+  /** 主进程最近记录变化(文件树重命名/删除等)后递增,挂载中的开始页据此重拉列表。 */
+  recentRefreshKey?: number;
 }
 
 interface RecentRow extends RecentItem {
@@ -87,7 +89,13 @@ function RecentRowItem({ item, onOpen, onToggleStar, onRemove }: RecentRowItemPr
   );
 }
 
-export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder }: StartPageProps) {
+export function StartPage({
+  onCreateBlank,
+  onOpenFile,
+  onOpenPath,
+  onOpenFolder,
+  recentRefreshKey = 0,
+}: StartPageProps) {
   const { t } = useI18n();
   const recentListWidth = useStore((s) => s.recentListWidth);
   const startPageLayout = useStore((s) => s.startPageLayout);
@@ -101,7 +109,7 @@ export function StartPage({ onCreateBlank, onOpenFile, onOpenPath, onOpenFolder 
     void window.inkmark.getAppInfo().then((info) => {
       if (info.name) setAppName(info.name);
     });
-  }, []);
+  }, [recentRefreshKey]);
 
   const handleRemove = async (path: string) => {
     await window.inkmark.removeRecentFile(path);

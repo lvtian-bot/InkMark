@@ -5,6 +5,8 @@
 // 文件与文件夹均可)。normalizeRecentItems 负责把这些格式都解析为标准对象数组:
 // 旧字符串一律按 file 处理(历史数据里没有文件夹)。
 
+import { isPathInside } from './file-tree-follow';
+
 export type RecentKind = 'file' | 'folder';
 
 export interface RecentItem {
@@ -12,6 +14,12 @@ export interface RecentItem {
   kind: RecentKind;
   /** 加星项:常驻列表最上方、不占所在 kind 的配额。星标是唯一的置顶机制。 */
   starred?: boolean;
+  /**
+   * 可信条目:经用户可感知途径进入(原生对话框、应用推送的打开),重启后
+   * 其目录可播种为文件树操作授权。渲染层任意读取(file:read)写入的条目
+   * 不带此标记,防止被攻破的渲染层借最近记录在重启后扩大可变更范围。
+   */
+  trusted?: boolean;
 }
 
 export interface RecentLimits {
@@ -36,7 +44,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function isSameRecentItem(a: RecentItem, b: RecentItem): boolean {
-  return a.path === b.path && a.kind === b.kind && (a.starred === true) === (b.starred === true);
+  return (
+    a.path === b.path &&
+    a.kind === b.kind &&
+    (a.starred === true) === (b.starred === true) &&
+    (a.trusted === true) === (b.trusted === true)
+  );
 }
 
 /**
@@ -59,14 +72,16 @@ export function normalizeRecentItems(data: unknown): RecentItem[] {
     if (isObject(entry) && typeof entry.path === 'string') {
       const kind: RecentKind = isRecentKind(entry.kind) ? entry.kind : 'file';
       const starred = entry.starred === true;
+      // 可信标记按持久化数据原样保留;旧格式字符串与缺失字段一律按不可信处理
+      const trusted = entry.trusted === true ? { trusted: true } : {};
       if (kind === 'folder' && starred) {
-        starredFolders.push({ path: entry.path, kind: 'folder', starred: true });
+        starredFolders.push({ path: entry.path, kind: 'folder', starred: true, ...trusted });
       } else if (kind === 'folder') {
-        folders.push({ path: entry.path, kind: 'folder' });
+        folders.push({ path: entry.path, kind: 'folder', ...trusted });
       } else if (starred) {
-        starredFiles.push({ path: entry.path, kind: 'file', starred: true });
+        starredFiles.push({ path: entry.path, kind: 'file', starred: true, ...trusted });
       } else {
-        files.push({ path: entry.path, kind: 'file' });
+        files.push({ path: entry.path, kind: 'file', ...trusted });
       }
     }
   }
@@ -87,6 +102,7 @@ export function addOrUpdateRecent(
   path: string,
   kind: RecentKind,
   limits: Partial<RecentLimits> | number = DEFAULT_RECENT_LIMITS,
+  options?: { trusted?: boolean },
 ): RecentItem[] {
   const resolvedLimits: RecentLimits =
     typeof limits === 'number'
@@ -99,6 +115,9 @@ export function addOrUpdateRecent(
   const existing = items.find((item) => item.path === path);
   // 星标跟随路径:同路径以另一 kind 重新打开时保留加星状态
   const carryStarred = existing?.starred === true;
+  // 可信标记只增不减:不可信途径重新打开不撤销既有可信状态
+  const carryTrusted = existing?.trusted === true || options?.trusted === true;
+  const trustedMark = carryTrusted ? { trusted: true as const } : {};
 
   const existingStarredFolders = items.filter(
     (item) => item.path !== path && item.kind === 'folder' && item.starred === true,
@@ -116,23 +135,29 @@ export function addOrUpdateRecent(
   // 加星项重新打开时保留星标并回到对应加星分组顶部,不做配额裁剪
   const starredFolders =
     kind === 'folder' && carryStarred
-      ? [{ path, kind: 'folder' as const, starred: true }, ...existingStarredFolders]
+      ? [
+          { path, kind: 'folder' as const, starred: true, ...trustedMark },
+          ...existingStarredFolders,
+        ]
       : existingStarredFolders;
   const starredFiles =
     kind === 'file' && carryStarred
-      ? [{ path, kind: 'file' as const, starred: true }, ...existingStarredFiles]
+      ? [{ path, kind: 'file' as const, starred: true, ...trustedMark }, ...existingStarredFiles]
       : existingStarredFiles;
 
   const normalFolders =
     kind === 'folder' && !carryStarred
-      ? [{ path, kind: 'folder' as const }, ...existingNormalFolders].slice(
+      ? [{ path, kind: 'folder' as const, ...trustedMark }, ...existingNormalFolders].slice(
           0,
           resolvedLimits.maxFolders,
         )
       : existingNormalFolders;
   const normalFiles =
     kind === 'file' && !carryStarred
-      ? [{ path, kind: 'file' as const }, ...existingNormalFiles].slice(0, resolvedLimits.maxFiles)
+      ? [{ path, kind: 'file' as const, ...trustedMark }, ...existingNormalFiles].slice(
+          0,
+          resolvedLimits.maxFiles,
+        )
       : existingNormalFiles;
 
   const next: RecentItem[] = [...starredFolders, ...starredFiles, ...normalFolders, ...normalFiles];
@@ -205,6 +230,58 @@ export function toggleRecentStar<T extends RecentItem>(items: T[], path: string)
 /** 删除指定路径的最近项;返回新数组。 */
 export function removeRecent(items: RecentItem[], path: string): RecentItem[] {
   return items.filter((item) => item.path !== path);
+}
+
+/**
+ * 文件树删除到回收站后清理最近项:移除目标自身及落在其内的全部条目
+ * (删除文件夹时其子文档一并清理),避免开始页与原生菜单残留
+ * 需要逐条点击失败才能移除的死条目。
+ */
+export function removeRecentUnderPath(items: RecentItem[], targetPath: string): RecentItem[] {
+  return items.filter((item) => !isPathInside(item.path, targetPath));
+}
+
+/** 最近项路径匹配键:Windows 路径不区分大小写,其余平台精确比较。 */
+function recentPathKey(path: string): string {
+  return process.platform === 'win32' ? path.toLowerCase() : path;
+}
+
+/**
+ * 文件被重命名后迁移最近项:原位替换路径,保留顺序、类型、星标与可信标记。
+ * 匹配按平台路径身份进行(Windows 不区分大小写,历史条目可能与文件树
+ * 给出的实际大小写不一致);新路径已有条目时丢弃改名条目并把星标与可信
+ * 标记并入既有条目,避免同一文件出现两行;路径不存在时原样返回原数组。
+ */
+export function renameRecentItem(
+  items: RecentItem[],
+  oldPath: string,
+  newPath: string,
+  kind: RecentKind,
+): RecentItem[] {
+  const oldKey = recentPathKey(oldPath);
+  const target = items.find((item) => recentPathKey(item.path) === oldKey);
+  if (!target) return items;
+  const newKey = recentPathKey(newPath);
+  const existingAtNewPath = items.find(
+    (item) => recentPathKey(item.path) === newKey && recentPathKey(item.path) !== oldKey,
+  );
+  if (existingAtNewPath) {
+    // 新路径已有条目:移除旧条目避免重复,星标与可信标记并入既有条目
+    const rest = items.filter((item) => item !== target);
+    if (target.starred !== true && target.trusted !== true) return rest;
+    return rest.map((item) => {
+      if (item !== existingAtNewPath) return item;
+      const merged = { ...item };
+      if (target.starred === true) merged.starred = true;
+      if (target.trusted === true) merged.trusted = true;
+      return merged;
+    });
+  }
+  return items.map((item) =>
+    item === target
+      ? { path: newPath, kind, starred: target.starred, trusted: target.trusted }
+      : item,
+  );
 }
 
 /**

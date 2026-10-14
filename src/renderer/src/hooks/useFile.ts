@@ -20,6 +20,7 @@ import {
   decideExternalChange,
   resolveConflictChoiceForKind,
 } from '../file-conflict-decision';
+import { isPathInside } from '../../../shared/file-tree-follow';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import type { FileResult, FileWatchEvent, OpenFileRejection, ViewMode } from '../types';
 
@@ -49,6 +50,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   const pendingWatchEventsRef = useRef(new Map<string, FileWatchEvent>());
   const watchedPathsRef = useRef(new Map<string, string>());
   const missingNotifiedTabIdsRef = useRef(new Set<string>());
+  // 自动保存抑制中的标签:文件树删除执行期间暂停(取消既有定时器且不再排期),
+  // 删除被拒后恢复并为仍脏的标签重新排期。
+  const autoSaveSuppressedTabIdsRef = useRef(new Set<string>());
   const autoSaveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const reviewRequestsRef = useRef(new Set<string>());
   const reviewSavesRef = useRef(new Set<string>());
@@ -291,6 +295,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     async (tabId: string): Promise<void> => {
       autoSaveTimersRef.current.delete(tabId);
       const isEligible = (): boolean => {
+        // 删除执行中(回收站可能较慢)的标签暂停自动保存,期间的编辑保持
+        // 未保存状态,保留的标签才能经「另存为」救回
+        if (autoSaveSuppressedTabIdsRef.current.has(tabId)) return false;
         const state = useStore.getState();
         const tab = state.tabs.find((t) => t.id === tabId);
         return isAutoSaveEligible({
@@ -312,6 +319,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
   const scheduleAutoSave = useCallback(
     (tabId: string): void => {
+      if (autoSaveSuppressedTabIdsRef.current.has(tabId)) return;
       const timers = autoSaveTimersRef.current;
       const existing = timers.get(tabId);
       if (existing) clearTimeout(existing);
@@ -465,6 +473,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     }
     if (result) {
       missingNotifiedTabIdsRef.current.delete(currentState.activeTabId);
+      // 另存为换了新路径,解除删除流程留下的自动保存抑制——救回的文档
+      // 恢复正常自动保存,否则该标签在本会话内永远不再排期
+      autoSaveSuppressedTabIdsRef.current.delete(currentState.activeTabId);
       updateTab(currentState.activeTabId, {
         filePath: result.path,
         fileName: result.path.split(/[/\\]/).pop()!,
@@ -534,6 +545,100 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       return true;
     },
     [saveTab, closeTabStore, flushAutoSave],
+  );
+
+  // 文件树重命名后同步标签身份：路径、文件名与磁盘基线一起切换，未保存
+  // 修改保留，后续保存写入新路径。磁盘内容不因重命名变化，快照沿用原内容
+  // 只更新修改时间；审阅中的文件由调用方先行阻止，不在此处理。
+  // 待触发的自动保存定时器保留：回调按标签 id 触发并重新读取标签状态，
+  // 会按新路径正常保存，提前取消反而让重命名瞬间的待存修改延后。
+  const renameTabFile = useCallback(
+    (oldPath: string, newPath: string, mtime: number): void => {
+      const key = filePathKey(oldPath);
+      for (const tab of useStore.getState().tabs) {
+        if (!tab.filePath || filePathKey(tab.filePath) !== key) continue;
+        const snapshot = getDiskSnapshot(tab.id);
+        if (snapshot) setDiskSnapshot(tab.id, snapshot.content, mtime);
+        missingNotifiedTabIdsRef.current.delete(tab.id);
+        updateTab(tab.id, {
+          filePath: newPath,
+          fileName: newPath.split(/[/\\]/).pop()!,
+          fileMtime: mtime,
+          externalUpdatePending: false,
+        });
+      }
+    },
+    [updateTab],
+  );
+
+  // 文件树删除后静默关闭落在目标（文件或目录）之内的标签：磁盘文件已进
+  // 回收站，不再走保存询问。调用方已在删除确认中警示过未保存修改的丢失。
+  // contentBefore 为发起删除时的正文快照：删除执行期间（回收站可能较慢）
+  // 正文发生变化的标签——无论是新编辑还是已脏标签上的追加输入——都不随
+  // 删除静默关闭，内容可经「另存为」救回；返回保留的标签名供调用方提示。
+  const forceCloseTabsUnderPath = useCallback(
+    (targetPath: string, contentBefore?: ReadonlyMap<string, string>): string[] => {
+      const kept: string[] = [];
+      for (const tab of useStore.getState().tabs) {
+        if (!tab.filePath || !isPathInside(tab.filePath, targetPath)) continue;
+        const before = contentBefore?.get(tab.id);
+        if (before !== undefined && tab.sourceContent !== before) {
+          // 保留的标签维持自动保存抑制:文件已进回收站,向死路径自动保存
+          // 只会反复弹保存失败;「另存为」成功后由用户继续编辑驱动新排期
+          kept.push(tab.fileName);
+          continue;
+        }
+        const timer = autoSaveTimersRef.current.get(tab.id);
+        if (timer) {
+          clearTimeout(timer);
+          autoSaveTimersRef.current.delete(tab.id);
+        }
+        autoSaveSuppressedTabIdsRef.current.delete(tab.id);
+        missingNotifiedTabIdsRef.current.delete(tab.id);
+        editorStateCache.dispose(tab.id);
+        clearReviewForTab(tab.id);
+        closeTabStore(tab.id);
+      }
+      return kept;
+    },
+    [closeTabStore],
+  );
+
+  // 暂停指定标签的自动保存:取消既有定时器并阻止期间重新排期(删除执行中
+  // 的编辑保持未保存),由调用方在删除 settle 后恢复。
+  const suppressAutoSaveForTabs = useCallback((tabIds: Iterable<string>): void => {
+    for (const id of tabIds) {
+      autoSaveSuppressedTabIdsRef.current.add(id);
+      const timer = autoSaveTimersRef.current.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        autoSaveTimersRef.current.delete(id);
+      }
+    }
+  }, []);
+
+  // 恢复自动保存并为仍脏、仍符合条件的标签重新排期——被取消的待存不至于
+  // 一直悬空;标签已关闭或已干净的恢复为无操作。
+  const restoreAutoSaveForTabs = useCallback(
+    (tabIds: Iterable<string>): void => {
+      for (const id of tabIds) {
+        autoSaveSuppressedTabIdsRef.current.delete(id);
+        const state = useStore.getState();
+        const tab = state.tabs.find((t) => t.id === id);
+        if (
+          tab?.isDirty &&
+          isAutoSaveEligible({
+            enabled: state.autoSave,
+            filePath: tab.filePath,
+            isDirty: tab.isDirty,
+            hasPendingReview: !!tab.reviewSession || tab.pendingReviewCount > 0,
+          })
+        ) {
+          scheduleAutoSave(id);
+        }
+      }
+    },
+    [scheduleAutoSave],
   );
 
   const prepareToClose = useCallback(async (): Promise<boolean> => {
@@ -959,6 +1064,10 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       reviewActiveTab,
       finishReview,
       saveReviewResult,
+      renameTabFile,
+      forceCloseTabsUnderPath,
+      suppressAutoSaveForTabs,
+      restoreAutoSaveForTabs,
     }),
     [
       newFile,
@@ -976,6 +1085,10 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       reviewActiveTab,
       finishReview,
       saveReviewResult,
+      renameTabFile,
+      forceCloseTabsUnderPath,
+      suppressAutoSaveForTabs,
+      restoreAutoSaveForTabs,
     ],
   );
 }

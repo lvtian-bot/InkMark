@@ -348,6 +348,40 @@ export const messages: Record<MessageKey, string> = {
   'fileTree.loading': 'Loading...',
   'fileTree.folderEmpty': 'This folder is empty',
 
+  'fileTree.menu.newDocument': 'New Document',
+  'fileTree.menu.rename': 'Rename',
+  'fileTree.menu.remove': 'Delete',
+  'fileTree.newDocumentDefaultName': 'Untitled.md',
+  'fileTree.createDocumentTitle': 'New Document',
+  'fileTree.createDocumentPrompt':
+    'Create a new Markdown document in "{folder}". Leave empty to cancel.',
+  'fileTree.renameTitle': 'Rename',
+  'fileTree.renamePrompt': 'Enter a new name for "{name}". Leave empty to cancel.',
+  'fileTree.deleteTitle': 'Delete',
+  'fileTree.deleteConfirm': 'Move "{name}" to the Recycle Bin?',
+  'fileTree.deleteDirtyConfirm':
+    '"{name}" is open with unsaved changes. Deleting it will lose those changes. Delete anyway?',
+  'fileTree.createAction': 'Create',
+  'fileTree.renameAction': 'Rename',
+  'fileTree.deleteAction': 'Move to Recycle Bin',
+  'fileTree.deleteAnyway': 'Delete Anyway',
+  'fileTree.errorNameEmpty': 'The name cannot be empty.',
+  'fileTree.errorNameInvalidChars': 'The name cannot contain characters like \\ / : * ? " < > |.',
+  'fileTree.errorNameReserved': 'This is a reserved system name. Please choose another.',
+  'fileTree.errorNameTrailing': 'The name cannot end with a dot or space.',
+  'fileTree.errorNameHidden':
+    'Names starting with a dot are hidden from the file tree. Remove the leading dot.',
+  'fileTree.errorNameExtension':
+    'The file tree only shows .md or .markdown documents. Use one of these extensions.',
+  'fileTree.errorNameExists': 'A file with this name already exists. Please choose another.',
+  'fileTree.errorOpFailed': 'The operation failed. Please try again.',
+  'fileTree.reviewInProgress':
+    '"{name}" is under change review. Finish or discard the review before this operation.',
+  'fileTree.pendingExternalUpdate':
+    '"{name}" has pending external changes. Reload or review them from the banner above before this operation.',
+  'fileTree.deleteKeptDirty':
+    'The file was moved to the Recycle Bin, but new unsaved edits appeared during deletion. Their tabs were kept so the content can be recovered via "Save As".',
+
   'outline.title': 'Outline',
   'outline.empty': 'No outline',
 
@@ -398,6 +432,8 @@ export const messages: Record<MessageKey, string> = {
     'Please wait for the image insert to finish before closing the window.',
   'confirm.imageSavingSwitchTab':
     'Please wait for the image insert to finish before switching documents.',
+  'confirm.imageSavingFileOps':
+    'Please wait for the image insert to finish before renaming or deleting files.',
   'confirm.unsavedChanges': 'Unsaved Changes',
   'confirm.unsavedChangesBody': 'Save changes to "{name}"?',
   'confirm.fileGone': 'File Deleted or Moved',
