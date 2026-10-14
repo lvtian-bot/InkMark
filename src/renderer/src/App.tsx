@@ -137,6 +137,8 @@ function AppContent() {
   const setStartPage = useStore((s) => s.setStartPage);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // 文件树重命名/删除改动主进程最近记录后递增,通知挂载中的开始页重拉列表
+  const [recentRefreshKey, setRecentRefreshKey] = useState(0);
 
   const switchingRef = useRef(false);
   const prevTabIdRef = useRef(activeTabId);
@@ -321,6 +323,8 @@ function AppContent() {
       fileOps.renameTabFile(entry.absolutePath, result.path, result.mtime);
       // 标签已指向新路径,解除抑制——仍脏的标签恢复排期后按新路径自动保存
       fileOps.restoreAutoSaveForTabs(renameTabIds);
+      // 主进程最近记录已迁移,挂载中的开始页重拉列表
+      setRecentRefreshKey((key) => key + 1);
     },
     [fileTree, fileOps, t],
   );
@@ -436,6 +440,8 @@ function AppContent() {
           t('common.ok'),
         ]);
       }
+      // 主进程最近记录已清理,挂载中的开始页重拉列表
+      setRecentRefreshKey((key) => key + 1);
     },
     [fileTree, fileOps, t],
   );
@@ -1351,6 +1357,7 @@ function AppContent() {
                 });
               }}
               onOpenPath={(path) => fileOps.openFilePath(path)}
+              recentRefreshKey={recentRefreshKey}
             />
           )}
           {!isStartPage && toolbarVisible && <Toolbar onSave={() => void fileOps.save()} />}

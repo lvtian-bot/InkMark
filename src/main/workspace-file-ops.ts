@@ -98,11 +98,18 @@ export function renameWorkspaceFile(
   }
   try {
     renameSync(oldPath, targetPath);
-    return { path: resolve(targetPath), mtime: statSync(targetPath).mtimeMs };
   } catch (error) {
     if (isAlreadyExistsError(error)) return { error: 'exists' };
     if (isNoSuchEntryError(error)) return { error: 'source-missing' };
     return { error: 'io-error' };
+  }
+  // rename 已完成即视为成功:网络盘上紧随的元数据读取可能瞬时失败,若按
+  // 失败返回,渲染层会把标签与最近记录留在已不存在的旧路径、自动保存还
+  // 会重建旧文件——读取失败时用源文件的 mtime 兜底(内容未变,基线可信)。
+  try {
+    return { path: resolve(targetPath), mtime: statSync(targetPath).mtimeMs };
+  } catch {
+    return { path: resolve(targetPath), mtime: sourceMtime };
   }
 }
 
