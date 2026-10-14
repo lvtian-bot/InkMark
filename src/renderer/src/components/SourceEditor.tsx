@@ -126,10 +126,13 @@ export function SourceEditor({
       }
     });
 
-    const createState = (doc: string) =>
+    const createState = (doc: string, lineSeparator?: string) =>
       EditorState.create({
         doc,
         extensions: [
+          // 保留 CRLF：CodeMirror 默认按 LF 序列化，编辑文本文件后再保存
+          // 会把整篇换行改写；显式声明分隔符后 toString 按原样还原。
+          ...(lineSeparator ? [EditorState.lineSeparator.of(lineSeparator)] : []),
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
           markdown({ base: markdownLanguage, codeLanguages: languages }),
@@ -171,9 +174,12 @@ export function SourceEditor({
       getValue: () => view.state.doc.toString(),
       getEditorState: () => view.state,
       setEditorState: (state) => view.setState(state),
-      setValue: (value) => {
+      setValue: (value, options) => {
+        // 按需保留原文件换行符；仅在内容确为 CRLF 时声明，避免 LF 被反向改写。
+        const lineSeparator =
+          options?.preserveLineSeparator && value.includes('\r\n') ? '\r\n' : undefined;
         suppressRef.current = true;
-        view.setState(createState(value));
+        view.setState(createState(value, lineSeparator));
         suppressRef.current = false;
       },
       focus: () => view.focus(),

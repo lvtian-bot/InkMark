@@ -559,20 +559,26 @@ function AppContent() {
 
     switchingRef.current = true;
 
-    const savedState = editorStateCache.restore(newTabId, 'wysiwyg', newTab.sourceContent);
-    if (savedState) {
-      editorHandle.current.setEditorState(savedState);
-    } else {
-      editorHandle.current.setMarkdown(newTab.sourceContent);
+    // 文本/代码目标不装载隐藏的所见即所得编辑器：内容不会被展示，
+    // 整篇 Markdown 解析只是开销，接近上限的大文件会拖慢切换。
+    if (resolveDocumentKind(newTab.filePath) !== 'text') {
+      const savedState = editorStateCache.restore(newTabId, 'wysiwyg', newTab.sourceContent);
+      if (savedState) {
+        editorHandle.current.setEditorState(savedState);
+      } else {
+        editorHandle.current.setMarkdown(newTab.sourceContent);
+      }
+      editorHandle.current.skipFrontmatterIfSelected();
     }
-    editorHandle.current.skipFrontmatterIfSelected();
 
     if (targetMode === 'source') {
       const savedSourceState = editorStateCache.restore(newTabId, 'source', newTab.sourceContent);
       if (savedSourceState) {
         sourceEditorHandle.current?.setEditorState(savedSourceState);
       } else {
-        sourceEditorHandle.current?.setValue(newTab.sourceContent);
+        sourceEditorHandle.current?.setValue(newTab.sourceContent, {
+          preserveLineSeparator: resolveDocumentKind(newTab.filePath) === 'text',
+        });
       }
     }
 
@@ -652,7 +658,9 @@ function AppContent() {
       if (sourceState) {
         sourceEditorHandle.current?.setEditorState(sourceState);
       } else {
-        sourceEditorHandle.current?.setValue(md);
+        sourceEditorHandle.current?.setValue(md, {
+          preserveLineSeparator: tab ? resolveDocumentKind(tab.filePath) === 'text' : false,
+        });
       }
     } else {
       const md = sourceEditorHandle.current?.getValue() ?? '';

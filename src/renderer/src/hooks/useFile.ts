@@ -368,17 +368,22 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         activeTab.sourceContent === ''
       ) {
         editorStateCache.dispose(activeTab.id);
+        const isTextDoc = resolveDocumentKind(result.path) === 'text';
         // 纯文本/代码文件不装入所见即所得编辑器（序列化可能改动内容），
-        // 也不依赖其迟到通知清除抑制标志；生效模式翻转为源码后，
-        // 由模式切换 effect 直接把 sourceContent 装入源码编辑器。
-        if (resolveDocumentKind(result.path) !== 'text') {
+        // 也不依赖其迟到通知清除抑制标志。
+        if (!isTextDoc) {
           suppressDirtyRef.current = true;
           if (!s.setMarkdown(result.content)) {
             suppressDirtyRef.current = false;
           }
-          if (s.viewMode === 'source') {
-            sourceEditorHandle.current?.setValue(result.content);
-          }
+        }
+        // 偏好已是源码模式时必须在此处直接装载：复用标签不改变活动标签，
+        // 生效模式不会翻转，模式切换 effect 不会运行，错过装载会展示空正文，
+        // 首次编辑会把空内容当成原文覆盖保存。
+        if (s.viewMode === 'source') {
+          sourceEditorHandle.current?.setValue(result.content, {
+            preserveLineSeparator: isTextDoc,
+          });
         }
         updateTab(activeTab.id, {
           filePath: result.path,
@@ -806,7 +811,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           suppressDirtyRef.current = false;
         }
         if (current.viewMode === 'source') {
-          sourceEditorHandle.current?.setValue(result.content);
+          sourceEditorHandle.current?.setValue(result.content, {
+            preserveLineSeparator: resolveDocumentKind(tab.filePath) === 'text',
+          });
         }
       } else {
         suppressDirtyRef.current = false;

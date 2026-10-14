@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { EditorState } from '@codemirror/state';
 import { useStore } from '../stores/useStore';
+import { resolveDocumentKind } from '../../../shared/openable-document';
 import type { Heading } from '../types';
 import { extractSourceHeadings } from '../source-document';
 
@@ -59,9 +60,17 @@ export function useOutline() {
     [setOutline],
   );
 
+  // 纯文本/代码文件没有 Markdown 标题结构：# 注释等不应出现在大纲里。
+  const activeTabIsText = (): boolean => {
+    const tab = useStore
+      .getState()
+      .tabs.find((item) => item.id === useStore.getState().activeTabId);
+    return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+  };
+
   const updateSourceOutline = useCallback(
     (state: EditorState) => {
-      setOutline(extractSourceHeadings(state));
+      setOutline(activeTabIsText() ? [] : extractSourceHeadings(state));
     },
     [setOutline],
   );
