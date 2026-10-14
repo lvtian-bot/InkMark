@@ -4,7 +4,7 @@
 // 禁止字符、保留名与结尾点/空格在 NTFS 上都会造成创建失败或名称被
 // 静默改写；跨平台部署时这套规则同样安全（只更严，不更松）。
 
-import { WORKSPACE_DOC_EXTENSIONS } from './workspace-tree';
+import { hasOpenableDocumentExtension } from './openable-document';
 
 /** 文件名不合法的具体原因，供界面给出可操作的提示。 */
 export type WorkspaceFileNameIssue =
@@ -55,15 +55,15 @@ export function validateWorkspaceFileName(name: string): WorkspaceFileNameIssue 
 
 /**
  * 校验可作为文件树文档创建/重命名的名称：在基础规则之上，还要求名称能被
- * 文件树显示（非点号开头的隐藏项）且是受支持的 Markdown 扩展名，否则创建
- * 成功后文档会从树里"消失"。
+ * 文件树显示（非点号开头的隐藏项）且属于可打开文档的扩展名白名单
+ * （openable-document：Markdown 与常见纯文本/代码），否则创建成功后
+ * 文档会从树里"消失"。
  */
 export function validateWorkspaceDocumentName(name: string): WorkspaceFileNameIssue | null {
   const base = validateWorkspaceFileName(name);
   if (base) return base;
   if (name.startsWith('.')) return 'hidden-name';
-  const lower = name.toLowerCase();
-  if (!WORKSPACE_DOC_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+  if (!hasOpenableDocumentExtension(name)) {
     return 'unsupported-extension';
   }
   return null;
