@@ -57,6 +57,26 @@ describe('workspace-authorization', () => {
     expect(auth.isApproved(join(base, 'work', 'x.md'))).toBe(false);
   });
 
+  it('严格子级判定:批准根本身不算,子路径算', () => {
+    const dir = makeTempDir();
+    const auth = createWorkspaceAuthorization();
+    auth.approve(dir);
+    expect(auth.isApproved(dir)).toBe(true);
+    expect(auth.isApprovedDescendant(dir)).toBe(false);
+    expect(auth.isApprovedDescendant(join(dir, 'a.md'))).toBe(true);
+    expect(auth.isApprovedDescendant(join(dir, 'sub'))).toBe(true);
+  });
+
+  it('指向批准根的链接别名按根本身拒绝,不当作后代', () => {
+    const real = makeTempDir();
+    const holder = makeTempDir();
+    symlinkSync(real, join(holder, 'alias'), 'junction');
+    const auth = createWorkspaceAuthorization();
+    auth.approve(real);
+    expect(auth.isApprovedDescendant(join(holder, 'alias'))).toBe(false);
+    expect(auth.isApprovedDescendant(join(holder, 'alias', 'a.md'))).toBe(true);
+  });
+
   it('盘符根与文件系统根不授权', () => {
     const auth = createWorkspaceAuthorization();
     auth.approve('C:\\');

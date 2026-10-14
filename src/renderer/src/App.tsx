@@ -377,16 +377,34 @@ function AppContent() {
       }
       const parentDir = parentDirectory(entry.absolutePath);
       if (!parentDir) return;
-      // 记录此刻受影响标签的正文快照:移入回收站期间(网络盘可能数秒)正文
-      // 发生变化的部分未经过警示,删除完成后保留不关,内容可经「另存为」救回
+      const affectedTabs = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
+      // 暂停受影响标签的自动保存:移入回收站期间(网络盘可能数秒)的编辑保持
+      // 未保存状态,删除完成后保留的标签才能经「另存为」救回
+      fileOps.cancelAutoSaveForTabs(affectedTabs.map((tab) => tab.id));
+      // 记录此刻受影响标签的正文快照:期间正文发生变化的部分未经过警示,
+      // 删除完成后保留不关
       const contentBefore = new Map(
-        findTabsUnderPath(useStore.getState().tabs, entry.absolutePath).map((tab) => [
-          tab.id,
-          tab.sourceContent,
-        ]),
+        affectedTabs.map((tab) => [tab.id, tab.sourceContent] as const),
       );
-      const ok = await fileTree.trashEntry(entry.absolutePath, parentDir);
-      if (!ok) {
+      // 文件删除携带打开标签的磁盘基线:存在未处理的外部版本时拒绝,
+      // 不让"只警示了用户自己修改"的确认连带丢弃未见过的外部内容
+      const baselineTab = entry.isDirectory
+        ? undefined
+        : affectedTabs.find((t) => t.fileMtime != null);
+      const outcome = await fileTree.trashEntry(
+        entry.absolutePath,
+        parentDir,
+        baselineTab?.fileMtime ?? null,
+      );
+      if (outcome === 'conflict') {
+        await confirmDialog(
+          t('fileTree.deleteTitle'),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
+          [t('common.ok')],
+        );
+        return;
+      }
+      if (outcome === 'failed') {
         await confirmDialog(t('fileTree.deleteTitle'), t('fileTree.errorOpFailed'), [
           t('common.ok'),
         ]);

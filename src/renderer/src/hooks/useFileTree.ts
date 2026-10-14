@@ -211,9 +211,14 @@ export function useFileTree(activeFilePath: string | null) {
     [loadDir],
   );
 
+  /** 删除结果:成功 / 基线不一致(存在未处理的外部版本) / 失败。 */
   const trashEntry = useCallback(
-    async (targetPath: string, parentDir: string): Promise<boolean> => {
-      const result = await window.inkmark.trashWorkspaceEntry(targetPath);
+    async (
+      targetPath: string,
+      parentDir: string,
+      expectedMtime?: number | null,
+    ): Promise<'ok' | 'conflict' | 'failed'> => {
+      const result = await window.inkmark.trashWorkspaceEntry(targetPath, expectedMtime);
       if (result.ok) {
         // 清掉目标及其整个子树的展开状态与目录缓存:同路径被恢复或重建时,
         // 若仍命中缓存会显示被删目录的陈旧内容,必须强制重新列目录
@@ -226,8 +231,9 @@ export function useFileTree(activeFilePath: string | null) {
           return next.size === prev.size ? prev : next;
         });
         void loadDir(parentDir);
+        return 'ok';
       }
-      return result.ok;
+      return result.error === 'conflict' ? 'conflict' : 'failed';
     },
     [loadDir],
   );

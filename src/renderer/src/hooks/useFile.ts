@@ -575,6 +575,19 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     [closeTabStore],
   );
 
+  // 取消指定标签的待存定时器:文件树删除执行期间(回收站可能较慢)暂停
+  // 自动保存,期间的编辑保持未保存状态,删除完成后保留的标签仍能经
+  // 「另存为」救回;定时器取消后,下次编辑会照常重新排期。
+  const cancelAutoSaveForTabs = useCallback((tabIds: Iterable<string>): void => {
+    for (const id of tabIds) {
+      const timer = autoSaveTimersRef.current.get(id);
+      if (timer) {
+        clearTimeout(timer);
+        autoSaveTimersRef.current.delete(id);
+      }
+    }
+  }, []);
+
   const prepareToClose = useCallback(async (): Promise<boolean> => {
     if (isImageUploadInProgress()) {
       await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingCloseWindow'), [
@@ -988,6 +1001,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       saveReviewResult,
       renameTabFile,
       forceCloseTabsUnderPath,
+      cancelAutoSaveForTabs,
     }),
     [
       newFile,
@@ -1007,6 +1021,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       saveReviewResult,
       renameTabFile,
       forceCloseTabsUnderPath,
+      cancelAutoSaveForTabs,
     ],
   );
 }

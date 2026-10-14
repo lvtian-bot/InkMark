@@ -4,6 +4,7 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   statSync,
   utimesSync,
   writeFileSync,
@@ -117,6 +118,17 @@ describe('renameWorkspaceFile', () => {
     const result = renameWorkspaceFile(join(sub, 'a.md'), 'b.md');
 
     expect(result).toMatchObject({ path: join(sub, 'b.md') });
+  });
+
+  it('悬空符号链接占用目标名时按条目级判定报 exists', () => {
+    const dir = makeTempDir();
+    writeFileSync(join(dir, 'a.md'), '', 'utf8');
+    // 指向不存在目标的链接:existsSync 跟随链接返回 false,lstat 才能看到条目
+    symlinkSync(join(dir, 'missing-target'), join(dir, 'link.md'), 'junction');
+
+    const result = renameWorkspaceFile(join(dir, 'a.md'), 'link.md');
+
+    expect(result).toEqual({ error: 'exists' });
   });
 
   it('目录作为重命名源时被拒绝,不能改名整个工作区目录', () => {

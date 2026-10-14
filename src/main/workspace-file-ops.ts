@@ -4,7 +4,15 @@
 // 删除到回收站依赖 electron shell，同样留在 index.ts 内联。所有失败都以
 // 结构化原因返回，不抛出异常，便于渲染层按原因给出可操作的提示。
 
-import { existsSync, mkdirSync, mkdtempSync, renameSync, statSync, writeFileSync } from 'fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import {
@@ -69,8 +77,10 @@ export function renameWorkspaceFile(
   if (expectedMtime != null && sourceMtime !== expectedMtime) return { error: 'conflict' };
 
   const targetPath = join(dirname(oldPath), newName);
-  // Windows 上 rename 会静默替换已存在的目标文件，必须先显式拦截，
+  // Windows 上 rename 会静默替换已存在的目标条目，必须先显式拦截，
   // 不能依赖 rename 自身报错，否则重命名会覆盖同名文件造成数据丢失。
+  // 存在性按目录条目判定（lstat）：悬空符号链接会让 existsSync（跟随链接
+  // 找目标）误判为可用，rename 却会顶掉该条目。
   // 仅大小写差异的改名（note.md → Note.md）是同一文件的合法重命名，放行。
   // 显式检查与 rename 之间存在极小竞态窗口（另一进程恰好先创建同名目标），
   // Node 未提供原子的不覆盖 rename，此窗口与项目「保存依赖 mtime 检查、
@@ -78,7 +88,14 @@ export function renameWorkspaceFile(
   const isCaseOnlyRename =
     process.platform === 'win32' &&
     resolve(oldPath).toLowerCase() === resolve(targetPath).toLowerCase();
-  if (!isCaseOnlyRename && existsSync(targetPath)) return { error: 'exists' };
+  if (!isCaseOnlyRename) {
+    try {
+      lstatSync(targetPath);
+      return { error: 'exists' };
+    } catch (error) {
+      if (!isNoSuchEntryError(error)) return { error: 'io-error' };
+    }
+  }
   try {
     renameSync(oldPath, targetPath);
     return { path: resolve(targetPath), mtime: statSync(targetPath).mtimeMs };

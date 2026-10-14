@@ -1491,11 +1491,24 @@ ipcMain.handle('workspace:trash', async (event, request: unknown) => {
     !isTrustedRenderer(event) ||
     !isRecord(request) ||
     !isAbsolutePath(request.path) ||
-    !workspaceAuthorization.isApproved(request.path)
+    // 严格子级:批准的根本身不可删——界面不为根提供删除入口,整工作区
+    // 一次性进回收站不属于产品语义
+    !workspaceAuthorization.isApprovedDescendant(request.path)
   ) {
     return { ok: false as const };
   }
   const targetPath = request.path;
+  // 与重命名同型的基线核对:磁盘修改时间与调用方已知基线不一致说明存在
+  // 未处理的外部版本,拒绝删除交由渲染层提示,不连带丢弃未见过的内容
+  if (typeof request.expectedMtime === 'number') {
+    try {
+      if (statSync(targetPath).mtimeMs !== request.expectedMtime) {
+        return { ok: false as const, error: 'conflict' as const };
+      }
+    } catch {
+      return { ok: false as const };
+    }
+  }
   workspaceWatchManager.recordSelfWrite(targetPath);
   try {
     await shell.trashItem(targetPath);
