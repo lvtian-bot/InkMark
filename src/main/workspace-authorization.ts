@@ -81,6 +81,9 @@ export function createWorkspaceAuthorization(): WorkspaceAuthorization {
     const canonical = canonicalizeNearestExisting(targetPath);
     for (const root of approvedRoots) {
       if (pathEqualsKey(resolved) === pathEqualsKey(root)) continue;
+      // 提交的条目本身必须落在同一根内:根外别名即使指向根内条目,
+      // 对它改名/删除作用的是根外的链接条目,不因目标在根内而放行
+      if (!isPathInside(resolved, root)) continue;
       if (isPathInside(canonical, root)) {
         // 规范化恰好折叠到根:目标自身存在说明是经链接别名指向根本身
         //(按根拒绝),不存在则是根下尚不存在的路径(按后代放行)

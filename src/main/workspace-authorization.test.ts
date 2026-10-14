@@ -74,7 +74,10 @@ describe('workspace-authorization', () => {
     const auth = createWorkspaceAuthorization();
     auth.approve(real);
     expect(auth.isApprovedDescendant(join(holder, 'alias'))).toBe(false);
-    expect(auth.isApprovedDescendant(join(holder, 'alias', 'a.md'))).toBe(true);
+    // 反向别名:根外别名即使指向根内条目,对它操作的是根外的链接条目,拒绝
+    expect(auth.isApprovedDescendant(join(holder, 'alias', 'a.md'))).toBe(false);
+    // 直接路径不受影响
+    expect(auth.isApprovedDescendant(join(real, 'a.md'))).toBe(true);
   });
 
   it('盘符根与文件系统根不授权', () => {

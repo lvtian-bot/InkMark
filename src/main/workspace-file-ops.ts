@@ -9,6 +9,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  realpathSync,
   renameSync,
   statSync,
   writeFileSync,
@@ -41,12 +42,17 @@ export function createWorkspaceDocument(dirPath: string, fileName: string): Work
   const targetPath = join(dirPath, fileName);
   try {
     writeFileSync(targetPath, '', { flag: 'wx' });
-    return { path: resolve(targetPath), mtime: statSync(targetPath).mtimeMs };
   } catch (error) {
     if (isAlreadyExistsError(error)) return { error: 'exists' };
-    // 写入成功但读取元数据失败时同样返回结构化错误，不让 IPC Promise 拒绝;
-    // 文件可能已创建,由渲染层刷新目录后可见。
     return { error: 'io-error' };
+  }
+  // 文件已创建即视为成功:紧随的元数据读取在网络盘上可能瞬时失败,按失败
+  // 返回会让用户先看到失败、重试又报"已存在"。读取失败时用当前时间兜底,
+  // 调用方随后的打开流程会重新读取磁盘并覆盖基线。
+  try {
+    return { path: resolve(targetPath), mtime: statSync(targetPath).mtimeMs };
+  } catch {
+    return { path: resolve(targetPath), mtime: Date.now() };
   }
 }
 
@@ -87,7 +93,8 @@ export function renameWorkspaceFile(
   // 不提供文件锁」的并发保护立场一致，不承诺绝对无冲突。
   const isCaseOnlyRename =
     process.platform === 'win32' &&
-    resolve(oldPath).toLowerCase() === resolve(targetPath).toLowerCase();
+    resolve(oldPath).toLowerCase() === resolve(targetPath).toLowerCase() &&
+    refersToSameEntry(oldPath, targetPath);
   if (!isCaseOnlyRename) {
     try {
       lstatSync(targetPath);
@@ -120,6 +127,22 @@ function isAlreadyExistsError(error: unknown): boolean {
     'code' in error &&
     (error as { code?: unknown }).code === 'EEXIST'
   );
+}
+
+/**
+ * 判断两条路径是否指向同一磁盘条目（比较设备号与 inode）。
+ * 目录未启用大小写敏感时，同一文件的不同大小写路径指向同一 inode；
+ * 启用了大小写敏感（WSL 挂载等）时，不同大小写的同名条目是两个不同文件，
+ * 其 inode 不同，不会被误判为"同一文件改名"而跳过占用检查。
+ */
+function refersToSameEntry(oldPath: string, targetPath: string): boolean {
+  try {
+    const s1 = statSync(oldPath);
+    const s2 = statSync(targetPath);
+    return s1.dev === s2.dev && s1.ino === s2.ino;
+  } catch {
+    return false;
+  }
 }
 
 function isNoSuchEntryError(error: unknown): boolean {

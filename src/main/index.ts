@@ -1470,7 +1470,9 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
     !isRecord(request) ||
     !isAbsolutePath(request.path) ||
     typeof request.newName !== 'string' ||
-    !workspaceAuthorization.isApproved(request.path)
+    // 与删除同用严格子级判定:提交路径与解析目标须同落批准根内,
+    // 根外别名即使指向根内文件也不得对其改名
+    !workspaceAuthorization.isApprovedDescendant(request.path)
   ) {
     return { error: 'io-error' as const };
   }
