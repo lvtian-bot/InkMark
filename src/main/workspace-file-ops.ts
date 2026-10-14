@@ -56,14 +56,17 @@ export function renameWorkspaceFile(
   expectedMtime?: number | null,
 ): WorkspaceFileOpResult {
   if (validateWorkspaceDocumentName(newName)) return { error: 'invalid-name' };
-  if (!existsSync(oldPath)) return { error: 'source-missing' };
-  if (expectedMtime != null) {
-    try {
-      if (statSync(oldPath).mtimeMs !== expectedMtime) return { error: 'conflict' };
-    } catch {
-      return { error: 'source-missing' };
-    }
+  // 源必须是普通文件:目录(含批准的工作区根本身)一律拒绝,否则整个工作区
+  // 目录可被改名搬到批准边界之外;基线核对合并到同一次 stat
+  let sourceMtime: number;
+  try {
+    const stat = statSync(oldPath);
+    if (!stat.isFile()) return { error: 'source-missing' };
+    sourceMtime = stat.mtimeMs;
+  } catch {
+    return { error: 'source-missing' };
   }
+  if (expectedMtime != null && sourceMtime !== expectedMtime) return { error: 'conflict' };
 
   const targetPath = join(dirname(oldPath), newName);
   // Windows 上 rename 会静默替换已存在的目标文件，必须先显式拦截，

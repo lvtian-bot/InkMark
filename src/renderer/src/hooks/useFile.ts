@@ -547,14 +547,16 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
 
   // 文件树删除后静默关闭落在目标（文件或目录）之内的标签：磁盘文件已进
   // 回收站，不再走保存询问。调用方已在删除确认中警示过未保存修改的丢失。
-  // dirtyBefore 为发起删除时的脏标签快照：期间新变脏（尚未经过任何警示）
-  // 的标签保留不关，内容可经「另存为」救回；返回保留的标签名供调用方提示。
+  // contentBefore 为发起删除时的正文快照：删除执行期间（回收站可能较慢）
+  // 正文发生变化的标签——无论是新编辑还是已脏标签上的追加输入——都不随
+  // 删除静默关闭，内容可经「另存为」救回；返回保留的标签名供调用方提示。
   const forceCloseTabsUnderPath = useCallback(
-    (targetPath: string, dirtyBefore?: ReadonlySet<string>): string[] => {
+    (targetPath: string, contentBefore?: ReadonlyMap<string, string>): string[] => {
       const kept: string[] = [];
       for (const tab of useStore.getState().tabs) {
         if (!tab.filePath || !isPathInside(tab.filePath, targetPath)) continue;
-        if (dirtyBefore && tab.isDirty && !dirtyBefore.has(tab.id)) {
+        const before = contentBefore?.get(tab.id);
+        if (before !== undefined && tab.sourceContent !== before) {
           kept.push(tab.fileName);
           continue;
         }

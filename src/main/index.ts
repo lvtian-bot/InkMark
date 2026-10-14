@@ -1209,7 +1209,14 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
   const { path } = request;
   try {
     const { content, mtime } = readStableTextFile(path);
-    addRecent(path, 'file');
+    // 所在目录已在已批准范围内时,最近记录按可信持久化:推送打开(文件关联/
+    // 命令行/最近菜单)的文档经此读取落档,重启后从开始页重开仍可播种授权。
+    // 范围之外的读取依旧不可信——被攻破的渲染层无法借此扩大授权范围,
+    // 因为只有已批准目录内的文件能获得标记。
+    const parentDir = dirname(path);
+    addRecent(path, 'file', {
+      trusted: parentDir ? workspaceAuthorization.isApproved(parentDir) : false,
+    });
     return { path, content, mtime };
   } catch {
     // 文件已被删除或移动：从最近列表移除死链，避免反复点击失败

@@ -253,6 +253,9 @@ function AppContent() {
         { defaultValue: entry.name, confirmLabel: t('fileTree.renameAction') },
       );
       if (newName === null || newName === entry.name) return;
+      // 对话框打开期间用户可能已切换到其他文件夹(跟随换根),目标就此从树中
+      // 消失;静默中止,不再作用于不可见目标
+      if (!fileTree.isPathInCurrentRoot(entry.absolutePath)) return;
       // 对话框打开期间磁盘可能已被外部改动,执行前以最新标签状态复核,
       // 避免重命名沿用旧基线后静默覆盖未见过的外部版本
       const liveAffected = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
@@ -343,6 +346,9 @@ function AppContent() {
         { defaultId: 0, cancelId: 0 },
       );
       if (choice !== 1) return;
+      // 确认框打开期间用户可能已切换到其他文件夹(跟随换根),目标就此从树中
+      // 消失;静默中止,不再删除不可见目标
+      if (!fileTree.isPathInCurrentRoot(entry.absolutePath)) return;
       // 确认框打开期间状态可能已变化，执行删除前以最新标签状态复核:
       // 外部改动/审阅到达时终止;刚输入的编辑延迟上报把标签变为未保存时,
       // 原确认没有警示内容丢失，必须补一次强确认
@@ -371,12 +377,13 @@ function AppContent() {
       }
       const parentDir = parentDirectory(entry.absolutePath);
       if (!parentDir) return;
-      // 记录此刻的脏标签快照:移入回收站期间(网络盘可能数秒)新变脏的标签
-      // 未经过任何警示,删除完成后保留不关,内容可经「另存为」救回
-      const dirtyBefore = new Set(
-        findTabsUnderPath(useStore.getState().tabs, entry.absolutePath)
-          .filter((tab) => tab.isDirty)
-          .map((tab) => tab.id),
+      // 记录此刻受影响标签的正文快照:移入回收站期间(网络盘可能数秒)正文
+      // 发生变化的部分未经过警示,删除完成后保留不关,内容可经「另存为」救回
+      const contentBefore = new Map(
+        findTabsUnderPath(useStore.getState().tabs, entry.absolutePath).map((tab) => [
+          tab.id,
+          tab.sourceContent,
+        ]),
       );
       const ok = await fileTree.trashEntry(entry.absolutePath, parentDir);
       if (!ok) {
@@ -385,7 +392,7 @@ function AppContent() {
         ]);
         return;
       }
-      const keptTabs = fileOps.forceCloseTabsUnderPath(entry.absolutePath, dirtyBefore);
+      const keptTabs = fileOps.forceCloseTabsUnderPath(entry.absolutePath, contentBefore);
       if (keptTabs.length > 0) {
         await confirmDialog(t('fileTree.deleteTitle'), t('fileTree.deleteKeptDirty'), [
           t('common.ok'),

@@ -275,6 +275,14 @@ export function useFileTree(activeFilePath: string | null) {
     }
   }, [activeFilePath, switchRoot, revealFileInTree]);
 
+  // 以 ref 读取最新根目录的实时判断:名称/确认对话框打开期间用户可经
+  // Ctrl+Tab 切换活动文档使跟随逻辑换根,对话框闭包里捕获的条目就此从
+  // 树中消失;操作发起前据此核验,避免作用于不可见目标。
+  const isPathInCurrentRoot = useCallback((targetPath: string): boolean => {
+    const root = rootPathRef.current;
+    return root !== null && isPathInside(targetPath, root);
+  }, []);
+
   return {
     rootPath,
     dirCache,
@@ -287,5 +295,6 @@ export function useFileTree(activeFilePath: string | null) {
     createDocumentInDir,
     renameEntry,
     trashEntry,
+    isPathInCurrentRoot,
   };
 }

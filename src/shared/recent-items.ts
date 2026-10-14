@@ -241,10 +241,16 @@ export function removeRecentUnderPath(items: RecentItem[], targetPath: string): 
   return items.filter((item) => !isPathInside(item.path, targetPath));
 }
 
+/** 最近项路径匹配键:Windows 路径不区分大小写,其余平台精确比较。 */
+function recentPathKey(path: string): string {
+  return process.platform === 'win32' ? path.toLowerCase() : path;
+}
+
 /**
- * 文件被重命名后迁移最近项:原位替换路径,保留顺序、类型与星标。
- * 新路径已有条目时丢弃改名条目并把星标并入既有条目,避免同一文件出现两行;
- * 路径不存在时原样返回原数组。
+ * 文件被重命名后迁移最近项:原位替换路径,保留顺序、类型、星标与可信标记。
+ * 匹配按平台路径身份进行(Windows 不区分大小写,历史条目可能与文件树
+ * 给出的实际大小写不一致);新路径已有条目时丢弃改名条目并把星标与可信
+ * 标记并入既有条目,避免同一文件出现两行;路径不存在时原样返回原数组。
  */
 export function renameRecentItem(
   items: RecentItem[],
@@ -252,14 +258,24 @@ export function renameRecentItem(
   newPath: string,
   kind: RecentKind,
 ): RecentItem[] {
-  const target = items.find((item) => item.path === oldPath);
+  const oldKey = recentPathKey(oldPath);
+  const target = items.find((item) => recentPathKey(item.path) === oldKey);
   if (!target) return items;
-  const existingAtNewPath = items.find((item) => item.path === newPath && item.path !== oldPath);
+  const newKey = recentPathKey(newPath);
+  const existingAtNewPath = items.find(
+    (item) => recentPathKey(item.path) === newKey && recentPathKey(item.path) !== oldKey,
+  );
   if (existingAtNewPath) {
-    // 新路径已有条目:移除旧条目避免重复,星标并入既有条目
+    // 新路径已有条目:移除旧条目避免重复,星标与可信标记并入既有条目
     const rest = items.filter((item) => item !== target);
-    if (target.starred !== true) return rest;
-    return rest.map((item) => (item === existingAtNewPath ? { ...item, starred: true } : item));
+    if (target.starred !== true && target.trusted !== true) return rest;
+    return rest.map((item) => {
+      if (item !== existingAtNewPath) return item;
+      const merged = { ...item };
+      if (target.starred === true) merged.starred = true;
+      if (target.trusted === true) merged.trusted = true;
+      return merged;
+    });
   }
   return items.map((item) =>
     item === target

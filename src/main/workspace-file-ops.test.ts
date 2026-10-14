@@ -119,6 +119,18 @@ describe('renameWorkspaceFile', () => {
     expect(result).toMatchObject({ path: join(sub, 'b.md') });
   });
 
+  it('目录作为重命名源时被拒绝,不能改名整个工作区目录', () => {
+    const dir = makeTempDir();
+    const sub = join(dir, '子目录');
+    mkdirSync(sub);
+
+    const result = renameWorkspaceFile(sub, '改名.md');
+
+    expect(result).toEqual({ error: 'source-missing' });
+    expect(existsSync(sub)).toBe(true);
+    expect(existsSync(join(dir, '改名.md'))).toBe(false);
+  });
+
   it('Windows 上仅大小写差异的改名视为同一文件，允许执行', () => {
     const dir = makeTempDir();
     const oldPath = join(dir, 'note.md');

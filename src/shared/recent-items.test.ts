@@ -500,3 +500,26 @@ describe('recent-items trusted 标记', () => {
     ]);
   });
 });
+
+describe('recent-items renameRecentItem 平台路径身份', () => {
+  // 仅在 Windows 上验证大小写不敏感匹配,与实现的平台分支一致
+  (process.platform === 'win32' ? it : it.skip)(
+    'Windows 上大小写不一致的历史条目也能命中迁移',
+    () => {
+      const items: RecentItem[] = [{ path: 'D:\\docs\\note.md', kind: 'file', starred: true }];
+      expect(renameRecentItem(items, 'D:\\docs\\Note.md', 'D:\\docs\\新名.md', 'file')).toEqual([
+        { path: 'D:\\docs\\新名.md', kind: 'file', starred: true },
+      ]);
+    },
+  );
+
+  it('新路径已有条目时星标与可信标记都并入既有条目', () => {
+    const items: RecentItem[] = [
+      { path: '/old.md', kind: 'file', starred: true, trusted: true },
+      { path: '/new.md', kind: 'file' },
+    ];
+    expect(renameRecentItem(items, '/old.md', '/new.md', 'file')).toEqual([
+      { path: '/new.md', kind: 'file', starred: true, trusted: true },
+    ]);
+  });
+});
