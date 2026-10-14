@@ -457,6 +457,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     }
     if (result) {
       missingNotifiedTabIdsRef.current.delete(currentState.activeTabId);
+      // 另存为换了新路径,解除删除流程留下的自动保存抑制——救回的文档
+      // 恢复正常自动保存,否则该标签在本会话内永远不再排期
+      autoSaveSuppressedTabIdsRef.current.delete(currentState.activeTabId);
       updateTab(currentState.activeTabId, {
         filePath: result.path,
         fileName: result.path.split(/[/\\]/).pop()!,

@@ -292,6 +292,10 @@ function AppContent() {
       // 旧基线（让下次保存冲突），只有主进程核对磁盘修改时间一致才放行，
       // 否则存在未处理的外部版本，重命名会把基线洗掉导致静默覆盖
       const baselineTab = liveAffected.find((tab) => tab.fileMtime != null);
+      const renameTabIds = liveAffected.map((tab) => tab.id);
+      // 重命名执行期间抑制自动保存:主进程已移动文件而标签路径尚未更新时,
+      // 待存定时器若触发会把内容写回旧路径、重新创建旧文件
+      fileOps.suppressAutoSaveForTabs(renameTabIds);
       const result = await fileTree.renameEntry(
         entry.absolutePath,
         parentDir,
@@ -299,6 +303,8 @@ function AppContent() {
         baselineTab?.fileMtime ?? null,
       );
       if ('error' in result) {
+        // 未发生重命名,恢复排期继续按原路径自动保存
+        fileOps.restoreAutoSaveForTabs(renameTabIds);
         if (result.error === 'conflict') {
           await confirmDialog(
             t('fileTree.renameTitle'),
@@ -313,6 +319,8 @@ function AppContent() {
         return;
       }
       fileOps.renameTabFile(entry.absolutePath, result.path, result.mtime);
+      // 标签已指向新路径,解除抑制——仍脏的标签恢复排期后按新路径自动保存
+      fileOps.restoreAutoSaveForTabs(renameTabIds);
     },
     [fileTree, fileOps, t],
   );
@@ -358,9 +366,6 @@ function AppContent() {
         { defaultId: 0, cancelId: 0 },
       );
       if (choice !== 1) return;
-      // 确认框打开期间用户可能已切换到其他文件夹(跟随换根),目标就此从树中
-      // 消失;静默中止,不再删除不可见目标
-      if (!fileTree.isPathInCurrentRoot(entry.absolutePath)) return;
       // 确认框打开期间状态可能已变化，执行删除前以最新标签状态复核:
       // 外部改动/审阅到达时终止;刚输入的编辑延迟上报把标签变为未保存时,
       // 原确认没有警示内容丢失，必须补一次强确认
@@ -387,6 +392,9 @@ function AppContent() {
         );
         if (reconfirm !== 1) return;
       }
+      // 切根核验放在全部确认框之后、执行之前:任一对话框打开期间用户都可
+      // 能经 Ctrl+Tab 切换活动文档使跟随换根,目标就此从树中消失,静默中止
+      if (!fileTree.isPathInCurrentRoot(entry.absolutePath)) return;
       const parentDir = parentDirectory(entry.absolutePath);
       if (!parentDir) return;
       const affectedTabs = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
