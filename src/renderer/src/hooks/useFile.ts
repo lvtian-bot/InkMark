@@ -36,7 +36,9 @@ async function showOpenRejection(result: OpenFileRejection, path: string): Promi
   const reason =
     result.status === 'too-large'
       ? t('confirm.openPathTooLarge', { path })
-      : t('confirm.openPathUnsupportedEncoding', { path });
+      : result.status === 'unsupported-encoding'
+        ? t('confirm.openPathUnsupportedEncoding', { path })
+        : t('confirm.openPathSymlink', { path });
   await confirmDialog(t('confirm.openFailed'), reason, [t('common.ok')]);
 }
 

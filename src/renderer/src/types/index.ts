@@ -43,8 +43,9 @@ export interface FileResult {
   mtime: number;
 }
 
-/** file:read 拒绝打开的原因：文件超过大小上限，或不是合法 UTF-8 编码。 */
-export type OpenFileRejection = { status: 'too-large' } | { status: 'unsupported-encoding' };
+/** file:read 拒绝打开的原因：文件超过大小上限、不是合法 UTF-8 编码，或是符号链接。 */
+export type OpenFileRejection =
+  { status: 'too-large' } | { status: 'unsupported-encoding' } | { status: 'symlink' };
 
 export type SaveResult = { status: 'ok'; mtime: number } | { status: 'conflict' };
 
