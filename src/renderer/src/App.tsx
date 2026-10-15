@@ -38,8 +38,11 @@ import { confirmDialog, promptDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { followDocumentLinkHref } from './document-link';
 import { comboMatchesEvent } from './shortcut-recorder';
+import { serializeDoc } from './source-document';
 import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
+import { hasOpenableDocumentExtension, resolveDocumentKind } from '../../shared/openable-document';
 import { runEditorCommand } from './editor-commands';
+import { selectViewMode } from './stores/useStore';
 import type { MessageKey } from '../../shared/i18n';
 import {
   findTabsUnderPath,
@@ -121,7 +124,11 @@ function AppContent() {
   const externalUpdatePending = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.externalUpdatePending ?? false,
   );
-  const viewMode = useStore((s) => s.viewMode);
+  const viewMode = useStore(selectViewMode);
+  const activeTabIsText = useStore((s) => {
+    const tab = s.tabs.find((item) => item.id === s.activeTabId);
+    return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+  });
   const setViewMode = useStore((s) => s.setViewMode);
   const activeReviewSession = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.reviewSession ?? false,
@@ -146,6 +153,12 @@ function AppContent() {
   useEffect(() => {
     viewModeRef.current = viewMode;
   }, [viewMode]);
+  // 当前标签实际展示用的模式。切换标签时新旧标签的展示模式可能不同
+  // （纯文本标签强制源码），捕获旧标签状态必须按它展示过的模式取编辑器。
+  const displayedModeRef = useRef(viewMode);
+  // 标签切换引起的有效模式翻转已由标签切换 effect 完成编辑器同步，
+  // 模式切换 effect 对新标签是冗余且会拿错内容，置位跳过一次。
+  const suppressModeEffectRef = useRef(false);
 
   useEffect(() => {
     // 首帧后空闲时预取源码模式 chunk：与上面的 lazy() 同一 import 说明符，
@@ -161,10 +174,17 @@ function AppContent() {
     editorHandle.current.setMarkdown(md);
     // useFile 以返回值判断加载通知是否已消费 suppressDirty。隐藏模式的
     // 通知被拦下时返回 false，不能让下一次真实源码输入被误当成加载事件。
-    return useStore.getState().viewMode === 'wysiwyg' && !switchingRef.current;
+    return selectViewMode(useStore.getState()) === 'wysiwyg' && !switchingRef.current;
   }, []);
 
-  const fileOps = useFile(setMarkdown, viewMode);
+  const refreshSourceMetadata = useCallback(
+    (state: SourceEditorState) => {
+      updateSourceOutline(state);
+      updateSourceWordCount(state, true);
+    },
+    [updateSourceOutline, updateSourceWordCount],
+  );
+  const fileOps = useFile(setMarkdown, viewMode, refreshSourceMetadata);
   const { finishReview } = fileOps;
   const { exportDocument: runExport } = useExport();
   const fileTree = useFileTree(activeFilePath);
@@ -295,6 +315,24 @@ function AppContent() {
       // 否则存在未处理的外部版本，重命名会把基线洗掉导致静默覆盖
       const baselineTab = liveAffected.find((tab) => tab.fileMtime != null);
       const renameTabIds = liveAffected.map((tab) => tab.id);
+      // 重命名会改变文档类型并触发模式翻转：先把可见编辑器里尚未上报的
+      // 最新内容刷进标签正文，避免类型翻转后迟到通知被拒而丢失键入。
+      const state0 = useStore.getState();
+      const activeTab0 = state0.tabs.find((tab) => tab.id === state0.activeTabId);
+      if (
+        activeTab0 &&
+        renameTabIds.includes(activeTab0.id) &&
+        selectViewMode(state0) === 'wysiwyg'
+      ) {
+        // 刷新的正文可能包含 Milkdown 尚未上报的键入：类型翻转后迟到通知
+        // 会被拒绝，因此刷新后必须标记未保存并交给自动保存，否则关闭时
+        // 静默丢失。内容与已存正文一致（干净文档重命名）时不标脏。
+        const flushed = editorHandle.current?.getMarkdown() ?? activeTab0.sourceContent;
+        updateTab(activeTab0.id, {
+          sourceContent: flushed,
+          isDirty: flushed !== activeTab0.sourceContent ? true : activeTab0.isDirty,
+        });
+      }
       // 重命名执行期间抑制自动保存:主进程已移动文件而标签路径尚未更新时,
       // 待存定时器若触发会把内容写回旧路径、重新创建旧文件
       fileOps.suppressAutoSaveForTabs(renameTabIds);
@@ -326,7 +364,7 @@ function AppContent() {
       // 主进程最近记录已迁移,挂载中的开始页重拉列表
       setRecentRefreshKey((key) => key + 1);
     },
-    [fileTree, fileOps, t],
+    [fileTree, fileOps, t, updateTab],
   );
 
   const handleFileTreeDeleteEntry = useCallback(
@@ -458,7 +496,7 @@ function AppContent() {
   const handleDocChange = useCallback(
     (doc: unknown) => {
       // 所见即所得编辑器隐藏后，延迟到达的旧通知不能覆盖源码审阅正文。
-      if (useStore.getState().viewMode !== 'wysiwyg') return;
+      if (selectViewMode(useStore.getState()) !== 'wysiwyg') return;
       notifyFindContentChanged();
       if (switchingRef.current) return;
       setSourceContent(editorHandle.current?.getMarkdown() ?? '');
@@ -479,7 +517,7 @@ function AppContent() {
 
   const handleSourceChange = useCallback(
     (state: SourceEditorState) => {
-      setSourceContent(state.doc.toString());
+      setSourceContent(serializeDoc(state));
       fileOps.markDirty();
       notifyFindContentChanged();
       updateSourceOutline(state);
@@ -516,43 +554,69 @@ function AppContent() {
       return;
     }
 
-    const targetMode = viewModeRef.current;
+    // 目标模式按目标标签同步推导：布局 effect 早于 viewModeRef 的被动更新，
+    // 直接读 ref 会拿到旧模式，把纯文本内容先装进所见即所得再经序列化搬运。
+    const targetMode =
+      newTab && resolveDocumentKind(newTab.filePath) === 'text'
+        ? 'source'
+        : useStore.getState().viewMode;
+    // 旧标签此前展示用的模式：切到纯文本标签会强制源码，两个模式可能不同，
+    // 此时两个编辑器的内容分属新旧两个标签，捕获必须按展示模式取。
+    const captureMode = displayedModeRef.current;
 
     if (oldTabId) {
+      const oldTab = useStore.getState().tabs.find((item) => item.id === oldTabId);
       const scrollTop =
-        targetMode === 'source'
+        captureMode === 'source'
           ? (sourceEditorHandle.current?.getScrollTop() ?? 0)
           : editorHandle.current.getScrollTop();
+      // 句柄未就绪（懒加载未完成）不等于正文为空：回退用标签已存的正文，
+      // 否则启动连开多个文件会把尚未展示标签的正文清空。
       const sourceContent =
-        targetMode === 'source'
-          ? (sourceEditorHandle.current?.getValue() ?? '')
-          : editorHandle.current.getMarkdown();
-      if (targetMode === 'source') {
+        captureMode === 'source'
+          ? (sourceEditorHandle.current?.getValue() ?? oldTab?.sourceContent ?? '')
+          : oldTab && resolveDocumentKind(oldTab.filePath) === 'text'
+            ? // 文本旧标签的内容从未装入所见即所得编辑器（批量打开时展示
+              // 模式也可能尚未切换）：其中的空白不代表正文，回退用已存正文。
+              (oldTab.sourceContent ?? '')
+            : editorHandle.current.getMarkdown();
+      if (captureMode === 'source') {
         const state = sourceEditorHandle.current?.getEditorState();
         if (state) editorStateCache.capture(oldTabId, 'source', sourceContent, state);
       } else {
         const state = editorHandle.current.getEditorState();
-        if (state) editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
+        // 文本旧标签不同步所见即所得缓存：其中的空白状态会在类型切回时
+        // 被误恢复成编辑器内容。
+        if (state && oldTab && resolveDocumentKind(oldTab.filePath) !== 'text') {
+          editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
+        }
       }
-      updateTab(oldTabId, { sourceContent, ...scrollPositionUpdate(targetMode, scrollTop) });
+      updateTab(oldTabId, { sourceContent, ...scrollPositionUpdate(captureMode, scrollTop) });
     }
 
     switchingRef.current = true;
 
-    const savedState = editorStateCache.restore(newTabId, 'wysiwyg', newTab.sourceContent);
-    if (savedState) {
-      editorHandle.current.setEditorState(savedState);
-    } else {
-      editorHandle.current.setMarkdown(newTab.sourceContent);
+    // 文本/代码目标不装载隐藏的所见即所得编辑器：内容不会被展示，
+    // 整篇 Markdown 解析只是开销，接近上限的大文件会拖慢切换。
+    if (resolveDocumentKind(newTab.filePath) !== 'text') {
+      const savedState = editorStateCache.restore(newTabId, 'wysiwyg', newTab.sourceContent);
+      if (savedState) {
+        editorHandle.current.setEditorState(savedState);
+      } else {
+        editorHandle.current.setMarkdown(newTab.sourceContent);
+      }
+      editorHandle.current.skipFrontmatterIfSelected();
     }
-    editorHandle.current.skipFrontmatterIfSelected();
 
     if (targetMode === 'source') {
       const savedSourceState = editorStateCache.restore(newTabId, 'source', newTab.sourceContent);
       if (savedSourceState) {
         sourceEditorHandle.current?.setEditorState(savedSourceState);
       } else {
-        sourceEditorHandle.current?.setValue(newTab.sourceContent);
+        sourceEditorHandle.current?.setValue(newTab.sourceContent, {
+          preserveLineSeparator: resolveDocumentKind(newTab.filePath) === 'text',
+          plainText: resolveDocumentKind(newTab.filePath) === 'text',
+        });
       }
     }
 
@@ -582,6 +646,9 @@ function AppContent() {
       }
     });
 
+    displayedModeRef.current = targetMode;
+    if (captureMode !== targetMode) suppressModeEffectRef.current = true;
+
     prevTabIdRef.current = newTabId;
   }, [
     activeTabId,
@@ -596,6 +663,14 @@ function AppContent() {
   const prevModeRef = useRef(viewMode);
   useEffect(() => {
     const prev = prevModeRef.current;
+    // 有效模式因标签切换而翻转时，编辑器同步已由标签切换 effect 完成；
+    // 此时源码编辑器还持有上一个标签的内容，再跑一遍会把它的正文写进新标签。
+    if (suppressModeEffectRef.current) {
+      suppressModeEffectRef.current = false;
+      prevModeRef.current = viewMode;
+      displayedModeRef.current = viewMode;
+      return;
+    }
     if (prev === viewMode) return;
     prevModeRef.current = viewMode;
     const tabId = useStore.getState().activeTabId;
@@ -609,17 +684,25 @@ function AppContent() {
       const tab = useStore.getState().tabs.find((item) => item.id === tabId);
       // 审阅块按 sourceContent 定位。进入审阅不得用所见即所得的重新
       // 序列化结果替换原文，否则换行/格式变化会使待审块失效。
+      const tabIsText = !!tab && resolveDocumentKind(tab.filePath) === 'text';
       const md = tab?.reviewSession
         ? tab.sourceContent
-        : (editorHandle.current?.getMarkdown() ?? '');
+        : tabIsText
+          ? tab.sourceContent
+          : (editorHandle.current?.getMarkdown() ?? '');
       const state = editorHandle.current?.getEditorState();
-      if (state) editorStateCache.capture(tabId, 'wysiwyg', md, state);
+      // 文本文档从未装载所见即所得编辑器：其当前状态（可能为空白）不代表正文，
+      // 缓存它会在类型切回 Markdown 时被当作有效状态恢复出空白编辑器。
+      if (state && !tabIsText) editorStateCache.capture(tabId, 'wysiwyg', md, state);
       setSourceContent(md);
       const sourceState = editorStateCache.restore(tabId, 'source', md);
       if (sourceState) {
         sourceEditorHandle.current?.setEditorState(sourceState);
       } else {
-        sourceEditorHandle.current?.setValue(md);
+        sourceEditorHandle.current?.setValue(md, {
+          preserveLineSeparator: tab ? resolveDocumentKind(tab.filePath) === 'text' : false,
+          plainText: tab ? resolveDocumentKind(tab.filePath) === 'text' : false,
+        });
       }
     } else {
       const md = sourceEditorHandle.current?.getValue() ?? '';
@@ -658,6 +741,7 @@ function AppContent() {
         editorHandle.current?.setScrollTop(targetScrollTop);
       }
     });
+    displayedModeRef.current = viewMode;
   }, [
     setSourceContent,
     updateTab,
@@ -674,10 +758,45 @@ function AppContent() {
     }
   }, [viewMode]);
 
+  useEffect(() => {
+    if (window.inkmark.syncDocumentKind) {
+      window.inkmark.syncDocumentKind(activeTabIsText);
+    }
+  }, [activeTabIsText]);
+
+  // 源码偏好下重命名导致文档类型变化时，生效模式不变、各同步 effect 都不
+  // 运行：此处重建源码编辑器状态（扩展随类型更换），并清掉旧类型的缓存。
+  const prevKindRef = useRef<{ tabId: string; isText: boolean } | null>(null);
+  useEffect(() => {
+    const state = useStore.getState();
+    const tab = state.tabs.find((item) => item.id === state.activeTabId);
+    if (!tab) return;
+    const isText = resolveDocumentKind(tab.filePath) === 'text';
+    const prev = prevKindRef.current;
+    prevKindRef.current = { tabId: tab.id, isText };
+    // 仅同一标签的类型变化（重命名）需要重建：跨标签切换由标签切换
+    // effect 完成装载，此处不再处理，避免清掉目标标签的撤销历史。
+    if (!prev || prev.tabId !== tab.id || prev.isText === isText) return;
+    // 类型变化先无条件作废该标签的编辑器状态缓存：缓存快照不含类型维度，
+    // 无论当前生效模式是哪个，残留都会在之后装载源码时恢复成旧类型的配置
+    // （Markdown 文件丢高亮/大纲，文本文件丢 CRLF 分隔符）。先前的作废放在
+    // 模式判断之后，所见即所得偏好的「文本→Markdown」方向会漏掉。
+    editorStateCache.dispose(tab.id);
+    if (selectViewMode(state) !== 'source') return;
+    sourceEditorHandle.current?.setValue(tab.sourceContent, {
+      preserveLineSeparator: isText,
+      plainText: isText,
+    });
+    const loaded = sourceEditorHandle.current?.getEditorState();
+    if (loaded) refreshSourceMetadata(loaded);
+    // 依赖纳入活动标签：同类型标签切换也要更新记录，否则后续重命名
+    // 会被误判为跨标签切换而跳过重建。
+  }, [activeTabId, activeTabIsText, refreshSourceMetadata]);
+
   // 审阅视图只存在于源码模式（change-review.md）：活动标签出现待决外部改动时
   // 自动切入源码模式；期间 toggleViewMode 被锁定，处理完才能切回。
   useEffect(() => {
-    if (pendingReviewCount > 0 && useStore.getState().viewMode === 'wysiwyg') {
+    if (pendingReviewCount > 0 && selectViewMode(useStore.getState()) === 'wysiwyg') {
       setViewMode('source');
     }
   }, [pendingReviewCount, setViewMode]);
@@ -1204,10 +1323,13 @@ function AppContent() {
   useEffect(() => {
     const handleDrop = async (e: DragEvent): Promise<void> => {
       e.preventDefault();
+      // SVG 等内容编辑器会作为图片插入：上传进行中时窗口级打开处理
+      // 不再重复接管，否则会新建标签并打断插入。
+      if (isImageUploadInProgress()) return;
       const file = e.dataTransfer?.files?.[0];
       if (file) {
         const path = (file as File & { path?: string }).path;
-        if (path && /\.(md|markdown|txt)$/i.test(path)) {
+        if (path && hasOpenableDocumentExtension(path)) {
           await fileOps.openFilePath(path);
         }
       }
@@ -1364,7 +1486,7 @@ function AppContent() {
           {!isStartPage && externalUpdatePending && !activeReviewSession && (
             <ExternalUpdateBanner
               onReload={fileOps.reloadActiveTab}
-              onReview={fileOps.reviewActiveTab}
+              onReview={activeTabIsText ? undefined : fileOps.reviewActiveTab}
             />
           )}
           {!isStartPage && activeReviewSession && (

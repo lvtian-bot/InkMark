@@ -18,16 +18,39 @@ import {
 import {
   decideCloseDirty,
   decideExternalChange,
-  resolveConflictChoice,
+  resolveConflictChoiceForKind,
 } from '../file-conflict-decision';
 import { isPathInside } from '../../../shared/file-tree-follow';
-import type { FileResult, FileWatchEvent, ViewMode } from '../types';
+import { resolveDocumentKind } from '../../../shared/openable-document';
+import type { EditorState as SourceEditorState } from '@codemirror/state';
+import type { FileResult, FileWatchEvent, OpenFileRejection, ViewMode } from '../types';
+
+// 内部流程（重载、冲突比对、审阅基线）只关心拿不拿得到正文；文件被外部
+// 换成过大或非 UTF-8 时按读取失败处理，走既有的缺失/外部改动提示。
+function asFileResult(result: FileResult | OpenFileRejection | null): FileResult | null {
+  return result && !('status' in result) ? result : null;
+}
+
+// 用户主动触发的读取（打开、重载、审阅基线）被守卫拒绝时，说明具体原因。
+async function showOpenRejection(result: OpenFileRejection, path: string): Promise<void> {
+  const reason =
+    result.status === 'too-large'
+      ? t('confirm.openPathTooLarge', { path })
+      : result.status === 'unsupported-encoding'
+        ? t('confirm.openPathUnsupportedEncoding', { path })
+        : t('confirm.openPathSymlink', { path });
+  await confirmDialog(t('confirm.openFailed'), reason, [t('common.ok')]);
+}
 
 function filePathKey(path: string): string {
   return window.inkmark.platform === 'win32' ? path.toLowerCase() : path;
 }
 
-export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode) {
+export function useFile(
+  setMarkdown: (md: string) => boolean,
+  viewMode: ViewMode,
+  refreshSourceMetadata: (state: SourceEditorState) => void,
+) {
   const tabs = useStore((s) => s.tabs);
   const activeTabId = useStore((s) => s.activeTabId);
   const addTab = useStore((s) => s.addTab);
@@ -117,7 +140,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         if (options.copyOnly) return await saveCopy();
         let diskVersion: FileResult | null;
         try {
-          diskVersion = await window.inkmark.openFilePath(originalPath);
+          diskVersion = asFileResult(await window.inkmark.openFilePath(originalPath));
         } catch {
           diskVersion = null;
         }
@@ -200,7 +223,19 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           return false;
         }
         if (result.status === 'conflict') {
-          const diskVersion = await window.inkmark.openFilePath(tab.filePath);
+          let diskRead: FileResult | OpenFileRejection | null;
+          try {
+            diskRead = await window.inkmark.openFilePath(tab.filePath);
+          } catch {
+            diskRead = null;
+          }
+          if (diskRead && 'status' in diskRead) {
+            // 磁盘版本已过大或非 UTF-8：说明原因并终止；不带差异对比的
+            // 覆盖选项会让用户在不知情下毁掉无法读取的外部新版本。
+            await showOpenRejection(diskRead, tab.filePath);
+            return false;
+          }
+          const diskVersion = diskRead;
           const choice = await confirmDialog(
             t('confirm.externalModified'),
             t('confirm.externalModifiedCoverHint'),
@@ -352,12 +387,14 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         activeTab.sourceContent === ''
       ) {
         editorStateCache.dispose(activeTab.id);
-        suppressDirtyRef.current = true;
-        if (!s.setMarkdown(result.content)) {
-          suppressDirtyRef.current = false;
-        }
-        if (s.viewMode === 'source') {
-          sourceEditorHandle.current?.setValue(result.content);
+        const isTextDoc = resolveDocumentKind(result.path) === 'text';
+        // 纯文本/代码文件不装入所见即所得编辑器（序列化可能改动内容），
+        // 也不依赖其迟到通知清除抑制标志。
+        if (!isTextDoc) {
+          suppressDirtyRef.current = true;
+          if (!s.setMarkdown(result.content)) {
+            suppressDirtyRef.current = false;
+          }
         }
         updateTab(activeTab.id, {
           filePath: result.path,
@@ -366,6 +403,18 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           fileMtime: result.mtime,
           isStartPage: false,
         });
+        // 偏好已是源码模式时必须在此处直接装载：复用标签不改变活动标签，
+        // 生效模式不会翻转，模式切换 effect 不会运行，错过装载会展示空正文，
+        // 首次编辑会把空内容当成原文覆盖保存。
+        if (s.viewMode === 'source') {
+          sourceEditorHandle.current?.setValue(result.content, {
+            preserveLineSeparator: isTextDoc,
+            plainText: isTextDoc,
+          });
+          // 程序化装载抑制了变更回调：字数与大纲在此主动刷新一次。
+          const loaded = sourceEditorHandle.current?.getEditorState();
+          if (loaded) refreshSourceMetadata(loaded);
+        }
         setDiskSnapshot(activeTab.id, result.content, result.mtime);
         return;
       }
@@ -377,22 +426,8 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       });
       setDiskSnapshot(newTabId, result.content, result.mtime);
     },
-    [addTab, setActiveTab, updateTab],
+    [addTab, refreshSourceMetadata, setActiveTab, updateTab],
   );
-
-  const openFile = useCallback(async () => {
-    let results;
-    try {
-      results = await window.inkmark.openFileDialog();
-    } catch {
-      await confirmDialog(t('confirm.openFailed'), t('confirm.openDialogFailed'), [t('common.ok')]);
-      return;
-    }
-    if (!results || results.length === 0) return;
-    for (const result of results) {
-      await openFileResult(result);
-    }
-  }, [openFileResult]);
 
   const openFilePath = useCallback(
     async (path: string): Promise<boolean> => {
@@ -411,11 +446,32 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         ]);
         return false;
       }
+      // 主进程的守卫结论：文件过大或编码不是 UTF-8，拒绝打开并说明原因。
+      // 返回 true：文件仍然存在且原因已说明，调用方（如开始页）不得把
+      // 它当作「已删除或移动」从最近记录里清掉。
+      if ('status' in result) {
+        await showOpenRejection(result, path);
+        return true;
+      }
       await openFileResult(result);
       return true;
     },
     [openFileResult],
   );
+
+  const openFile = useCallback(async () => {
+    let paths;
+    try {
+      paths = await window.inkmark.openFileDialog();
+    } catch {
+      await confirmDialog(t('confirm.openFailed'), t('confirm.openDialogFailed'), [t('common.ok')]);
+      return;
+    }
+    if (!paths || paths.length === 0) return;
+    for (const path of paths) {
+      await openFilePath(path);
+    }
+  }, [openFilePath]);
 
   const save = useCallback(async () => {
     await saveTab(useStore.getState().activeTabId);
@@ -539,11 +595,17 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   const renameTabFile = useCallback(
     (oldPath: string, newPath: string, mtime: number): void => {
       const key = filePathKey(oldPath);
+      const kindChanged = resolveDocumentKind(oldPath) !== resolveDocumentKind(newPath);
       for (const tab of useStore.getState().tabs) {
         if (!tab.filePath || filePathKey(tab.filePath) !== key) continue;
         const snapshot = getDiskSnapshot(tab.id);
         if (snapshot) setDiskSnapshot(tab.id, snapshot.content, mtime);
         missingNotifiedTabIdsRef.current.delete(tab.id);
+        // 跨类型重命名（后台标签同样命中）：缓存快照按内容匹配，不含文档
+        // 类型维度，不清理会恢复出旧类型的编辑器配置（Markdown 高亮、丢失
+        // CRLF 分隔符），继续编辑保存会整篇改写换行。清掉后切回时按新类型
+        // 重新装载。
+        if (kindChanged) editorStateCache.dispose(tab.id);
         updateTab(tab.id, {
           filePath: newPath,
           fileName: newPath.split(/[/\\]/).pop()!,
@@ -753,31 +815,44 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
   );
 
   const reloadTab = useCallback(
-    async (tabId: string): Promise<boolean> => {
+    async (tabId: string): Promise<'ok' | 'missing' | 'rejected'> => {
       const s = stateRef.current;
       const tab = s.tabs.find((t) => t.id === tabId);
-      if (!tab?.filePath) return false;
+      if (!tab?.filePath) return 'missing';
       let result;
       try {
         result = await window.inkmark.openFilePath(tab.filePath);
       } catch {
-        return false;
+        return 'missing';
       }
-      if (!result) return false;
+      // 磁盘版本被守卫拒绝（过大/非 UTF-8）时给出具体原因，不按文件丢失处理。
+      if (result && 'status' in result) {
+        await showOpenRejection(result, tab.filePath);
+        return 'rejected';
+      }
+      if (!result) return 'missing';
       const current = stateRef.current;
       const liveTab = useStore.getState().tabs.find((item) => item.id === tabId);
-      if (!liveTab || liveTab.reviewSession || liveTab.filePath !== tab.filePath) return false;
+      if (!liveTab || liveTab.reviewSession || liveTab.filePath !== tab.filePath) return 'missing';
       editorStateCache.dispose(tabId);
       clearReviewForTab(tabId);
-      suppressDirtyRef.current = true;
+      // 文本/代码文件不装入隐藏的所见即所得编辑器（整篇解析只是开销），
+      // 也没有它的迟到通知需要抑制。
+      const isTextDoc = resolveDocumentKind(tab.filePath) === 'text';
+      if (!isTextDoc) suppressDirtyRef.current = true;
       if (tabId === current.activeTabId) {
-        if (!current.setMarkdown(result.content)) {
+        if (!isTextDoc && !current.setMarkdown(result.content)) {
           suppressDirtyRef.current = false;
         }
         if (current.viewMode === 'source') {
-          sourceEditorHandle.current?.setValue(result.content);
+          sourceEditorHandle.current?.setValue(result.content, {
+            preserveLineSeparator: isTextDoc,
+            plainText: isTextDoc,
+          });
+          const loaded = sourceEditorHandle.current?.getEditorState();
+          if (loaded) refreshSourceMetadata(loaded);
         }
-      } else {
+      } else if (!isTextDoc) {
         suppressDirtyRef.current = false;
       }
       updateTab(tabId, {
@@ -790,9 +865,9 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       });
       setDiskSnapshot(tabId, result.content, result.mtime);
       missingNotifiedTabIdsRef.current.delete(tabId);
-      return true;
+      return 'ok';
     },
-    [updateTab],
+    [refreshSourceMetadata, updateTab],
   );
 
   const notifyMissingFile = useCallback(
@@ -868,7 +943,18 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
             }
 
             if (changeDecision === 'conflict') {
-              const diskVersion = await window.inkmark.openFilePath(currentTab.filePath);
+              let diskRead: FileResult | OpenFileRejection | null;
+              try {
+                diskRead = await window.inkmark.openFilePath(currentTab.filePath);
+              } catch {
+                diskRead = null;
+              }
+              if (diskRead && 'status' in diskRead) {
+                // 磁盘版本已变得过大或编码不受支持：说明原因，按无法比对处理。
+                await showOpenRejection(diskRead, currentTab.filePath);
+                continue;
+              }
+              const diskVersion = diskRead;
               if (!diskVersion) {
                 await notifyMissingFile(currentTab.id, currentTab.fileName);
                 continue;
@@ -879,18 +965,23 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                 ingestReviewChunks(currentTab.id, diskVersion.content, diskVersion.mtime);
                 continue;
               }
+              // 纯文本/代码文件没有逐项审阅能力，冲突弹窗只给磁盘版/保留覆盖/取消。
+              const isTextDoc = resolveDocumentKind(currentTab.filePath) === 'text';
+              const choices = isTextDoc
+                ? [t('confirm.useDisk'), t('confirm.keepAndOverride'), t('common.cancel')]
+                : [
+                    t('confirm.useDisk'),
+                    t('review.enterReview'),
+                    t('confirm.keepAndOverride'),
+                    t('common.cancel'),
+                  ];
               const choice = await confirmDialog(
                 t('confirm.externalModified'),
                 t('confirm.externalModifiedChooseHint'),
-                [
-                  t('confirm.useDisk'),
-                  t('review.enterReview'),
-                  t('confirm.keepAndOverride'),
-                  t('common.cancel'),
-                ],
+                choices,
                 {
-                  defaultId: 3,
-                  cancelId: 3,
+                  defaultId: choices.length - 1,
+                  cancelId: choices.length - 1,
                   diff: buildConflictDiff(diskVersion.content, getTabMarkdown(currentTab.id)),
                 },
               );
@@ -900,10 +991,13 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                 ingestReviewChunks(currentTab.id, diskVersion.content, diskVersion.mtime);
                 continue;
               }
-              const conflictAction = resolveConflictChoice(choice);
+              const conflictAction = resolveConflictChoiceForKind(
+                isTextDoc ? 'text' : 'markdown',
+                choice,
+              );
               if (conflictAction === 'reload') {
                 const reloaded = await reloadTab(currentTab.id);
-                if (!reloaded) {
+                if (reloaded === 'missing') {
                   const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
                   if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
                 }
@@ -913,7 +1007,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
                   ingestReviewChunks(currentTab.id, diskVersion.content, diskVersion.mtime);
                 } else {
                   const reloaded = await reloadTab(currentTab.id);
-                  if (!reloaded) {
+                  if (reloaded === 'missing') {
                     const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
                     if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
                   }
@@ -942,7 +1036,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     const tabId = useStore.getState().activeTabId;
     if (useStore.getState().tabs.find((tab) => tab.id === tabId)?.reviewSession) return;
     const reloaded = await reloadTab(tabId);
-    if (!reloaded) {
+    if (reloaded === 'missing') {
       const latestTab = useStore.getState().tabs.find((tab) => tab.id === tabId);
       // 仅对真实文件标签提示丢失；无路径标签（如开始页）不存在待重载场景。
       if (latestTab?.filePath) await notifyMissingFile(latestTab.id, latestTab.fileName);
@@ -954,15 +1048,21 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
     const state = useStore.getState();
     const tab = state.tabs.find((t) => t.id === state.activeTabId);
     if (!tab?.filePath) return;
+    // 纯文本/代码文件没有 Markdown 审阅能力（提示条也不展示该入口）。
+    if (resolveDocumentKind(tab.filePath) === 'text') return;
     if (tab.reviewSession) return;
     if (reviewRequestsRef.current.has(tab.id)) return;
     reviewRequestsRef.current.add(tab.id);
     try {
-      let diskVersion;
+      let diskVersion: FileResult | OpenFileRejection | null;
       try {
         diskVersion = await window.inkmark.openFilePath(tab.filePath);
       } catch {
         diskVersion = null;
+      }
+      if (diskVersion && 'status' in diskVersion) {
+        await showOpenRejection(diskVersion, tab.filePath);
+        return;
       }
       if (!diskVersion) {
         await notifyMissingFile(tab.id, tab.fileName);

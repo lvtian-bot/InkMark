@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { EditorState } from '@codemirror/state';
 import { useStore } from '../stores/useStore';
-import { extractSourceText } from '../source-document';
+import { resolveDocumentKind } from '../../../shared/openable-document';
+import { extractSourceText, serializeDoc } from '../source-document';
 
 export function useWordCount() {
   const updateTab = useStore((s) => s.updateTab);
@@ -53,7 +54,15 @@ export function useWordCount() {
 
   const updateSourceWordCount = useCallback(
     (state: EditorState, immediate = false) => {
-      scheduleCount(extractSourceText(state), immediate);
+      // 纯文本/代码文件按字面内容统计：Markdown 提取器会把 YAML 头、
+      // 标记符号等当作结构剔除，对文本文件没有意义。
+      const isTextDoc = (() => {
+        const tab = useStore
+          .getState()
+          .tabs.find((item) => item.id === useStore.getState().activeTabId);
+        return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+      })();
+      scheduleCount(isTextDoc ? serializeDoc(state) : extractSourceText(state), immediate);
     },
     [scheduleCount],
   );

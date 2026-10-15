@@ -16,6 +16,7 @@ import {
   type ToolbarWidth,
 } from '../settings';
 import type { LanguageSetting } from '../../../shared/i18n';
+import { resolveDocumentKind } from '../../../shared/openable-document';
 
 export interface Tab {
   id: string;
@@ -87,6 +88,14 @@ const initialSettings = loadSettings();
 export const selectAppTheme = (s: AppSettings): AppTheme => parseThemeId(s.themeId).theme;
 export const selectContentTheme = (s: AppSettings): ContentTheme =>
   parseThemeId(s.themeId).contentTheme;
+
+// viewMode 存的是用户对 Markdown 文档的偏好；纯文本/代码文件固定源码模式，
+// 由这个选择器派生出当前实际生效的模式。切换到文本标签不改写偏好，
+// 切回 Markdown 标签自动恢复原模式。
+export const selectViewMode = (s: InkMarkState): ViewMode => {
+  const tab = s.tabs.find((item) => item.id === s.activeTabId);
+  return tab && resolveDocumentKind(tab.filePath) === 'text' ? 'source' : s.viewMode;
+};
 
 let lastToggleViewModeTime = 0;
 export function resetToggleViewModeThrottleForTesting(): void {
@@ -290,10 +299,13 @@ export const useStore = create<InkMarkState>((set, get) => ({
     const now = Date.now();
     if (now - lastToggleViewModeTime < 250) return;
     const s = get();
+    const activeTab = s.tabs.find((tab) => tab.id === s.activeTabId);
+    // 纯文本/代码文件固定源码模式：快捷键与菜单入口在此拦下，
+    // 与有效模式（selectViewMode）的派生规则保持一致。
+    if (activeTab && resolveDocumentKind(activeTab.filePath) === 'text') return;
     // 审阅视图只存在于源码模式：处理完后仍要确认保存，会话结束前不切换。
     // 被锁定拒绝的切换不消耗防抖窗口，待审清零后可立即切换。
     if (s.viewMode !== 'wysiwyg') {
-      const activeTab = s.tabs.find((tab) => tab.id === s.activeTabId);
       if (activeTab?.reviewSession || (activeTab?.pendingReviewCount ?? 0) > 0) return;
     }
     lastToggleViewModeTime = now;

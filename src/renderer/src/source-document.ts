@@ -7,6 +7,11 @@ interface Range {
   to: number;
 }
 
+/** 按状态内声明的行分隔符序列化正文：doc.toString 恒用 LF，会改写 CRLF 文件。 */
+export function serializeDoc(state: EditorState): string {
+  return state.sliceDoc(0, state.doc.length);
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()

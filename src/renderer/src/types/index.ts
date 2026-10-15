@@ -43,6 +43,10 @@ export interface FileResult {
   mtime: number;
 }
 
+/** file:read 拒绝打开的原因：文件超过大小上限、不是合法 UTF-8 编码，或是符号链接。 */
+export type OpenFileRejection =
+  { status: 'too-large' } | { status: 'unsupported-encoding' } | { status: 'symlink' };
+
 export type SaveResult = { status: 'ok'; mtime: number } | { status: 'conflict' };
 
 export type MtimeResult = { status: 'ok'; mtime: number } | { status: 'error' };
@@ -64,7 +68,7 @@ export interface AppInfo {
 }
 
 export interface InkMarkAPI {
-  openFileDialog: () => Promise<FileResult[] | null>;
+  openFileDialog: () => Promise<string[] | null>;
   saveFile: (
     content: string,
     path: string,
@@ -79,7 +83,7 @@ export interface InkMarkAPI {
     expectedMtime: number,
   ) => Promise<SaveResult>;
   saveReviewCopy: (content: string, sourcePath: string) => Promise<SaveAsResult | null>;
-  openFilePath: (path: string) => Promise<FileResult | null>;
+  openFilePath: (path: string) => Promise<FileResult | OpenFileRejection | null>;
   getRecentFiles: () => Promise<RecentItem[]>;
   removeRecentFile: (path: string) => Promise<void>;
   toggleStarRecentFile: (path: string) => Promise<void>;
@@ -124,6 +128,8 @@ export interface InkMarkAPI {
   toggleAlwaysOnTop: () => Promise<boolean>;
   syncThemeId: (themeId: string) => void;
   syncSourceMode: (checked: boolean) => void;
+  /** 活动标签是否为纯文本/代码文件：主进程据此禁用导出与源码模式菜单项 */
+  syncDocumentKind: (isText: boolean) => void;
   syncOutlineVisible: (visible: boolean) => void;
   syncFileTreeVisible: (visible: boolean) => void;
   syncToolbarVisible: (visible: boolean) => void;

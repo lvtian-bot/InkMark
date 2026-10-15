@@ -8,8 +8,9 @@ import {
   TableOfContents,
 } from 'lucide-react';
 import { formatComboForDisplay, toDisplayPlatform } from '../../../shared/shortcuts';
+import { resolveDocumentKind } from '../../../shared/openable-document';
 import { useI18n } from '../i18n';
-import { useStore } from '../stores/useStore';
+import { useStore, selectViewMode } from '../stores/useStore';
 import '../styles/status-bar.css';
 
 interface StatusBarProps {
@@ -54,8 +55,12 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const setFileTreeVisible = useStore((s) => s.setFileTreeVisible);
   const panelLayout = useStore((s) => s.panelLayout);
   const toggleViewMode = useStore((s) => s.toggleViewMode);
-  const viewMode = useStore((s) => s.viewMode);
+  const viewMode = useStore(selectViewMode);
   const isSourceMode = viewMode === 'source';
+  const isPlainTextTab = useStore((s) => {
+    const tab = s.tabs.find((item) => item.id === s.activeTabId);
+    return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+  });
   const autoSave = useStore((s) => s.autoSave);
   const setAutoSave = useStore((s) => s.setAutoSave);
   const toggleSourceShortcut = useStore((s) => s.shortcuts.toggleSource);
@@ -107,8 +112,9 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
         <button
           className={`status-mode-btn${isSourceMode ? ' active' : ''}`}
           onClick={toggleViewMode}
-          title={sourceModeTitle}
-          aria-label={sourceModeTitle}
+          disabled={isPlainTextTab}
+          title={isPlainTextTab ? t('statusBar.sourceModeLocked') : sourceModeTitle}
+          aria-label={isPlainTextTab ? t('statusBar.sourceModeLocked') : sourceModeTitle}
           aria-pressed={isSourceMode}
         >
           <CodeXml size={14} />

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import type { MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { useStore } from '../stores/useStore';
+import { useStore, selectViewMode } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
@@ -18,7 +18,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   const { t } = useI18n();
   const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
   const activeTabId = useStore((s) => s.activeTabId);
-  const viewMode = useStore((s) => s.viewMode);
+  const viewMode = useStore(selectViewMode);
   const [activeId, setActiveId] = useState<string | null>(null);
   // 折叠集合与所属标签成对保存:标题 id 按文本生成,不同标签页可能出现同名 id,
   // 读取时若所属标签不是当前标签则视为空集合,避免状态串页

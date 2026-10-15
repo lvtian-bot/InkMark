@@ -45,18 +45,19 @@ describe('validateWorkspaceFileName', () => {
 });
 
 describe('validateWorkspaceDocumentName', () => {
-  it('可见的 Markdown 名称可用，大小写扩展名均可', () => {
+  it('可见的文档名称可用，大小写扩展名均可', () => {
     expect(validateWorkspaceDocumentName('会议记录.md')).toBeNull();
     expect(validateWorkspaceDocumentName('notes.MARKDOWN')).toBeNull();
+    expect(validateWorkspaceDocumentName('script.py')).toBeNull();
   });
 
   it('点号开头的隐藏名称不可用', () => {
     expect(validateWorkspaceDocumentName('.notes.md')).toBe('hidden-name');
   });
 
-  it('非 Markdown 扩展名或无扩展名不可用', () => {
-    expect(validateWorkspaceDocumentName('notes.txt')).toBe('unsupported-extension');
+  it('白名单之外的扩展名或无扩展名不可用', () => {
     expect(validateWorkspaceDocumentName('notes')).toBe('unsupported-extension');
+    expect(validateWorkspaceDocumentName('archive.zip')).toBe('unsupported-extension');
   });
 
   it('基础规则同样生效', () => {

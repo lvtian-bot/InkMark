@@ -4,6 +4,8 @@
 // 渲染端按需逐层懒加载。本模块不依赖 Node 或 DOM,可在主进程、预加载
 // 与渲染进程三端复用;需要 fs/path 的目录读取由主进程完成后再传入。
 
+import { hasOpenableDocumentExtension } from './openable-document';
+
 /** 单层目录条目:主进程读取后转为此结构,渲染端直接渲染。 */
 export interface WorkspaceEntry {
   name: string;
@@ -11,19 +13,21 @@ export interface WorkspaceEntry {
   isDirectory: boolean;
 }
 
-/** 文件树支持的 Markdown 文档扩展名(小写,含点)。 */
-export const WORKSPACE_DOC_EXTENSIONS = ['.md', '.markdown'] as const;
+/** 文件树默认不展示的目录(依赖与缓存目录,只制造噪音)。 */
+export const WORKSPACE_IGNORED_DIRECTORIES: readonly string[] = ['node_modules', '__pycache__'];
 
 /**
  * 判断单个条目是否应出现在文件树中。
  * - 以点号开头的隐藏项(.git、.assets、.DS_Store、.hidden.md 等)一律忽略。
- * - 文件仅保留 Markdown 文档扩展名;目录全部保留以便展开。
+ * - 文件保留全部可打开文档的扩展名(Markdown 与纯文本/代码,见 openable-document)。
+ * - 目录全部保留以便展开,依赖与缓存目录(node_modules、__pycache__)除外。
  */
 export function shouldIncludeEntry(name: string, isDirectory: boolean): boolean {
   if (name === '' || name.startsWith('.')) return false;
-  if (isDirectory) return true;
-  const lower = name.toLowerCase();
-  return WORKSPACE_DOC_EXTENSIONS.some((ext) => lower.endsWith(ext));
+  if (isDirectory) {
+    return !WORKSPACE_IGNORED_DIRECTORIES.includes(name.toLowerCase());
+  }
+  return hasOpenableDocumentExtension(name);
 }
 
 /** 比较器:目录优先,同类内按名称不区分大小写排序,保证跨平台稳定顺序。 */

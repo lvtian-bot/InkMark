@@ -48,11 +48,17 @@ describe('createWorkspaceDocument', () => {
     expect(createWorkspaceDocument(dir, 'CON.md')).toEqual({ error: 'invalid-name' });
   });
 
-  it('拒绝文件树不显示的名称:隐藏项与非 Markdown 扩展名', () => {
+  it('拒绝文件树不显示的名称:隐藏项与白名单外扩展名', () => {
     const dir = makeTempDir();
     expect(createWorkspaceDocument(dir, '.notes.md')).toEqual({ error: 'invalid-name' });
-    expect(createWorkspaceDocument(dir, 'notes.txt')).toEqual({ error: 'invalid-name' });
     expect(createWorkspaceDocument(dir, 'notes')).toEqual({ error: 'invalid-name' });
+    expect(createWorkspaceDocument(dir, 'archive.zip')).toEqual({ error: 'invalid-name' });
+  });
+
+  it('白名单内的文本文件可创建', () => {
+    const dir = makeTempDir();
+    const result = createWorkspaceDocument(dir, 'notes.txt');
+    expect(result).toHaveProperty('path');
   });
 
   it('目标已存在时报 exists 且不覆盖', () => {

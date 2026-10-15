@@ -15,6 +15,7 @@ import {
   readFileSync,
   writeFileSync,
   existsSync,
+  lstatSync,
   statSync,
   renameSync,
   unlinkSync,
@@ -26,7 +27,17 @@ import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
 import { createWorkspaceAuthorization } from './workspace-authorization';
 import { createImageStorage } from './image-storage';
-import { readStableTextFile } from './stable-file-read';
+import {
+  readStableTextFile,
+  FileTooLargeError,
+  UnsupportedEncodingError,
+} from './stable-file-read';
+import {
+  hasOpenableDocumentExtension,
+  isMarkdownDocumentPath,
+  MAX_OPEN_FILE_SIZE_BYTES,
+  PLAIN_TEXT_EXTENSIONS,
+} from '../shared/openable-document';
 import {
   saveReviewedFileVersion,
   writeNewReviewCopy,
@@ -84,6 +95,15 @@ let currentOutlineVisible = true;
 let currentFileTreeVisible = false;
 let currentToolbarVisible = true;
 let currentAlwaysOnTop = false;
+// 本会话内已成功打开或经对话框建立的文档路径：放宽可打开扩展名后，
+// file:save 的写入原语覆盖代码与脚本，沙箱内的渲染层必须先证明
+// 路径经可信流程打开，才可写入（含强制覆盖）。
+const openedDocuments = new Set<string>();
+const documentKey = (filePath: string): string =>
+  process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+// 活动标签是否为纯文本/代码文件：由渲染层按标签切换上报，用于禁用
+// 纯文本文件不可用的菜单项（导出、源码模式切换）。
+let currentActiveDocumentIsText = false;
 // 快捷键映射：启动时用默认值，渲染进程加载完用户设置后通过 shortcuts:sync 覆盖。
 let currentShortcuts: ShortcutMap = normalizeShortcutMap(DEFAULT_SHORTCUT_MAP);
 // 语言：启动时跟随系统；渲染进程加载完用户设置后通过 language:sync 覆盖。
@@ -204,7 +224,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isDocumentPath(value: unknown): value is string {
-  return typeof value === 'string' && isAbsolute(value) && /\.(md|markdown|txt)$/i.test(value);
+  return typeof value === 'string' && isAbsolute(value) && hasOpenableDocumentExtension(value);
+}
+
+/** 文件对话框 filters 用的扩展名清单（不含点、小写）。 */
+function textExtensionNames(): string[] {
+  return PLAIN_TEXT_EXTENSIONS.map((ext) => ext.slice(1));
+}
+
+/** 另存为对话框的过滤器：纯文本文件保持原扩展名，其余默认 Markdown。 */
+function saveDialogFilters(sourcePath: string | null): { name: string; extensions: string[] }[] {
+  if (sourcePath) {
+    const lower = sourcePath.toLowerCase();
+    const match = PLAIN_TEXT_EXTENSIONS.find((ext) => lower.endsWith(ext));
+    if (match) {
+      const name = match.slice(1).toUpperCase();
+      return [{ name, extensions: [match.slice(1)] }];
+    }
+  }
+  return [{ name: 'Markdown', extensions: ['md'] }];
 }
 
 function isAbsolutePath(value: unknown): value is string {
@@ -441,7 +479,7 @@ function getFileFromArgs(argv: string[]): string[] {
   const files: string[] = [];
   for (let i = 1; i < argv.length; i++) {
     const arg = argv[i];
-    if (!arg.startsWith('-') && !arg.startsWith('--') && /\.(md|markdown|txt)$/i.test(arg)) {
+    if (!arg.startsWith('-') && !arg.startsWith('--') && hasOpenableDocumentExtension(arg)) {
       files.push(arg);
     }
   }
@@ -672,6 +710,7 @@ function createMenu(): void {
         },
         {
           label: t('menu.export'),
+          enabled: !currentActiveDocumentIsText,
           submenu: [
             {
               label: t('menu.exportHtml'),
@@ -762,6 +801,7 @@ function createMenu(): void {
           accelerator: shortcutAccelerator('toggleSource'),
           type: 'checkbox',
           checked: currentSourceMode,
+          enabled: !currentActiveDocumentIsText,
           click: () => mainWindow?.webContents.send('menu:toggleSource'),
         },
         {
@@ -920,6 +960,13 @@ ipcMain.on('theme:syncThemeId', (event, themeId: unknown) => {
   });
 });
 
+ipcMain.on('menu:syncDocumentKind', (event, isText: unknown) => {
+  if (!isTrustedRenderer(event) || typeof isText !== 'boolean') return;
+  if (currentActiveDocumentIsText === isText) return;
+  currentActiveDocumentIsText = isText;
+  createMenu();
+});
+
 ipcMain.on('menu:syncSource', (event, checked: unknown) => {
   if (!isTrustedRenderer(event) || typeof checked !== 'boolean') return;
   currentSourceMode = checked;
@@ -1017,30 +1064,30 @@ ipcMain.handle('clipboard:writeText', (event, request: unknown) => {
   return true;
 });
 
+// 打开对话框只负责选路径；内容读取、大小/编码校验与最近列表登记统一走
+// file:read，保证对话框打开与文件树、链接跳转走同一套守卫和失败提示。
 ipcMain.handle('dialog:openFile', async (event) => {
   if (!isTrustedRenderer(event)) return null;
   if (!mainWindow) return null;
   const result = await dialog.showOpenDialog(mainWindow, {
-    filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }],
+    filters: [
+      {
+        name: t('dialog.supportedDocuments'),
+        extensions: ['md', 'markdown', ...textExtensionNames()],
+      },
+      { name: 'Markdown', extensions: ['md', 'markdown'] },
+    ],
     properties: ['openFile', 'multiSelections'],
     defaultPath: getLastDialogPath(),
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  const files: { path: string; content: string; mtime: number }[] = [];
+  // 原生对话框选择的文件，其所在目录计入授权；否则文件树跟随到
+  // 新文件夹后，右键新建/重命名/删除会被误拒
   for (const filePath of result.filePaths) {
-    try {
-      const { content, mtime } = readStableTextFile(filePath);
-      addRecent(filePath, 'file', { trusted: true });
-      // 原生对话框选择的文件，其所在目录计入授权；否则文件树跟随到
-      // 新文件夹后，右键新建/重命名/删除会被误拒
-      approveWorkspaceAroundFile(filePath);
-      files.push({ path: filePath, content, mtime });
-    } catch {
-      /* skip unreadable files */
-    }
+    approveWorkspaceAroundFile(filePath);
   }
-  if (files.length > 0) setLastDialogPath(files[0].path);
-  return files.length > 0 ? files : null;
+  setLastDialogPath(result.filePaths[0]);
+  return result.filePaths;
 });
 
 ipcMain.handle('file:save', async (event, request: unknown) => {
@@ -1048,6 +1095,9 @@ ipcMain.handle('file:save', async (event, request: unknown) => {
     throw new Error('Invalid file save request.');
   }
   const { content, path, knownMtime, force } = request;
+  if (!openedDocuments.has(documentKey(path))) {
+    throw new Error('Document was not opened in this session.');
+  }
   if (!force && knownMtime != null) {
     try {
       const currentMtime = statSync(path).mtimeMs;
@@ -1070,11 +1120,16 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   const { content, sourcePath } = request;
   if (!mainWindow) return null;
   const result = await dialog.showSaveDialog(mainWindow, {
-    filters: [{ name: 'Markdown', extensions: ['md'] }],
+    filters: saveDialogFilters(sourcePath ?? null),
   });
   if (result.canceled || !result.filePath) return null;
   const filePath = result.filePath;
-  imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+  openedDocuments.add(documentKey(filePath));
+  // 附件目录（<名>.assets）是 Markdown 文档的伴生结构；纯文本/代码文件
+  // 不复制，避免同名无关目录被误当附件搬运。
+  if (sourcePath === null || sourcePath === undefined || isMarkdownDocumentPath(sourcePath)) {
+    imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+  }
   workspaceWatchManager.recordSelfWrite(filePath);
   const mtime = fileWatchManager.performSelfWrite(filePath, () =>
     atomicWriteFile(filePath, content),
@@ -1088,6 +1143,9 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
 ipcMain.handle('file:saveReviewed', (event, request: unknown) => {
   if (!isTrustedRenderer(event) || !isReviewedFileSaveRequest(request)) {
     throw new Error('Invalid reviewed file save request.');
+  }
+  if (!openedDocuments.has(documentKey(request.path))) {
+    throw new Error('Document was not opened in this session.');
   }
   return saveReviewedFileVersion(request, () => {
     workspaceWatchManager.recordSelfWrite(request.path);
@@ -1125,6 +1183,7 @@ ipcMain.handle('dialog:saveReviewCopy', async (event, request: unknown) => {
       const mtime = fileWatchManager.performSelfWrite(filePath, () =>
         writeNewReviewCopy(filePath, request.content, sourcePath),
       );
+      openedDocuments.add(documentKey(filePath));
       addRecent(filePath, 'file', { trusted: true });
       approveWorkspaceAroundFile(filePath);
       return { path: filePath, mtime };
@@ -1207,8 +1266,28 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
     return null;
   }
   const { path } = request;
+  // 符号链接拒绝打开：保存走临时文件替换路径，会把链接替换成独立文件，
+  // 造成原目标与链接关系被静默破坏。
   try {
-    const { content, mtime } = readStableTextFile(path);
+    if (lstatSync(path).isSymbolicLink()) {
+      return { status: 'symlink' as const };
+    }
+  } catch {
+    removeRecentItem(path);
+    return null;
+  }
+  // 超大文件（常见于日志、数据导出）直接拒绝，避免打开时卡死界面。
+  try {
+    if (statSync(path).size > MAX_OPEN_FILE_SIZE_BYTES) {
+      return { status: 'too-large' as const };
+    }
+  } catch {
+    removeRecentItem(path);
+    return null;
+  }
+  try {
+    const { content, mtime } = readStableTextFile(path, undefined, 5, MAX_OPEN_FILE_SIZE_BYTES);
+    openedDocuments.add(documentKey(path));
     // 所在目录已在已批准范围内时,最近记录按可信持久化:推送打开(文件关联/
     // 命令行/最近菜单)的文档经此读取落档,重启后从开始页重开仍可播种授权。
     // 范围之外的读取依旧不可信——被攻破的渲染层无法借此扩大授权范围,
@@ -1218,7 +1297,14 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
       trusted: parentDir ? workspaceAuthorization.isApproved(parentDir) : false,
     });
     return { path, content, mtime };
-  } catch {
+  } catch (error) {
+    // 非 UTF-8 编码（如 GBK 的 txt）拒绝打开：以乱码展示、再保存会把坏内容写回。
+    if (error instanceof UnsupportedEncodingError) {
+      return { status: 'unsupported-encoding' as const };
+    }
+    if (error instanceof FileTooLargeError) {
+      return { status: 'too-large' as const };
+    }
     // 文件已被删除或移动：从最近列表移除死链，避免反复点击失败
     removeRecentItem(path);
     return null;
@@ -1484,6 +1570,10 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
     workspaceWatchManager.recordSelfWrite(request.path);
     workspaceWatchManager.recordSelfWrite(result.path);
     renameRecentItemEntry(request.path, result.path);
+    if (openedDocuments.has(documentKey(request.path))) {
+      openedDocuments.delete(documentKey(request.path));
+      openedDocuments.add(documentKey(result.path));
+    }
   }
   return result;
 });

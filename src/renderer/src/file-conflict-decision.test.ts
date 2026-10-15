@@ -3,6 +3,7 @@ import {
   decideCloseDirty,
   decideExternalChange,
   resolveConflictChoice,
+  resolveConflictChoiceForKind,
 } from './file-conflict-decision';
 
 describe('decideExternalChange', () => {
@@ -145,5 +146,20 @@ describe('decideCloseDirty', () => {
   it('cancels on an unexpected choice for a dirty tab', () => {
     expect(decideCloseDirty({ isDirty: true, choice: -1 })).toBe('cancel');
     expect(decideCloseDirty({ isDirty: true, choice: 3 })).toBe('cancel');
+  });
+});
+
+describe('resolveConflictChoiceForKind', () => {
+  it('keeps the markdown dialog mapping (review still offered)', () => {
+    expect(resolveConflictChoiceForKind('markdown', 0)).toBe('reload');
+    expect(resolveConflictChoiceForKind('markdown', 1)).toBe('review');
+    expect(resolveConflictChoiceForKind('markdown', 2)).toBe('keep-and-override');
+    expect(resolveConflictChoiceForKind('markdown', 3)).toBe('cancel');
+  });
+
+  it('maps the text dialog without the review option', () => {
+    expect(resolveConflictChoiceForKind('text', 0)).toBe('reload');
+    expect(resolveConflictChoiceForKind('text', 1)).toBe('keep-and-override');
+    expect(resolveConflictChoiceForKind('text', 2)).toBe('cancel');
   });
 });

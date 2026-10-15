@@ -8,7 +8,8 @@ import { sourceEditorHandle, type SourceSelection } from './source-editor-ref';
 import { promptDialog } from './confirm-dialog';
 import { formatDate, formatDateTime } from './datetime-format';
 import { t } from './i18n';
-import { useStore } from './stores/useStore';
+import { selectViewMode, useStore } from './stores/useStore';
+import { resolveDocumentKind } from '../../shared/openable-document';
 
 /// 源码模式下的编辑结果：新全文 + 新选区。辅助函数只产出这份结果，
 /// 统一由 applySourceEdit 落盘到 CodeMirror，保持「计算-写入」分离。
@@ -157,7 +158,7 @@ async function insertLink(): Promise<void> {
     confirmLabel: t('toolbar.insertLinkConfirm'),
   });
   if (!href) return;
-  if (useStore.getState().viewMode === 'wysiwyg') {
+  if (selectViewMode(useStore.getState()) === 'wysiwyg') {
     editorHandle.current?.insertLink(href);
   } else {
     const handle = sourceEditorHandle.current;
@@ -191,7 +192,7 @@ function insertSourceTable(): void {
 /// 在光标处插入纯文本：所见即所得走命令句柄；源码模式直接替换选区，
 /// 光标落位由 replaceRange 自带（落在插入文本之后），不再整篇重写。
 function insertPlainText(text: string): void {
-  if (useStore.getState().viewMode === 'wysiwyg') {
+  if (selectViewMode(useStore.getState()) === 'wysiwyg') {
     editorHandle.current?.insertText(text);
     return;
   }
@@ -208,9 +209,36 @@ const SOURCE_MARK_ACTIONS: Partial<Record<EditorShortcutAction, [string, string]
   inlineCode: ['`', '`'],
 };
 
+// 纯 Markdown 格式操作：纯文本/代码文件没有对应语义。插入日期与删除行
+// 有独立的纯文本实现，不受文本标签限制。
+const MARKDOWN_ONLY_ACTIONS = new Set<EditorShortcutAction>([
+  'bold',
+  'italic',
+  'strike',
+  'inlineCode',
+  'heading1',
+  'heading2',
+  'heading3',
+  'bulletList',
+  'taskList',
+  'codeBlock',
+  'link',
+  'table',
+]);
+
 /** 执行一个工具栏格式命令，按当前编辑模式分发。链接命令会弹出地址输入框。 */
 export function runEditorCommand(action: EditorShortcutAction): void {
-  const isWysiwyg = useStore.getState().viewMode === 'wysiwyg';
+  const state = useStore.getState();
+  const activeTab = state.tabs.find((item) => item.id === state.activeTabId);
+  // 纯文本/代码文件没有 Markdown 格式操作：工具栏按钮已隐藏，快捷键在此拦下。
+  if (
+    activeTab &&
+    resolveDocumentKind(activeTab.filePath) === 'text' &&
+    MARKDOWN_ONLY_ACTIONS.has(action)
+  ) {
+    return;
+  }
+  const isWysiwyg = selectViewMode(state) === 'wysiwyg';
   const mark = SOURCE_MARK_ACTIONS[action];
 
   if (mark) {
