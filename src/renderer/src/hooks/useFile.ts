@@ -22,6 +22,7 @@ import {
 } from '../file-conflict-decision';
 import { isPathInside } from '../../../shared/file-tree-follow';
 import { resolveDocumentKind } from '../../../shared/openable-document';
+import type { EditorState as SourceEditorState } from '@codemirror/state';
 import type { FileResult, FileWatchEvent, OpenFileRejection, ViewMode } from '../types';
 
 // 内部流程（重载、冲突比对、审阅基线）只关心拿不拿得到正文；文件被外部
@@ -43,7 +44,11 @@ function filePathKey(path: string): string {
   return window.inkmark.platform === 'win32' ? path.toLowerCase() : path;
 }
 
-export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode) {
+export function useFile(
+  setMarkdown: (md: string) => boolean,
+  viewMode: ViewMode,
+  refreshSourceMetadata: (state: SourceEditorState) => void,
+) {
   const tabs = useStore((s) => s.tabs);
   const activeTabId = useStore((s) => s.activeTabId);
   const addTab = useStore((s) => s.addTab);
@@ -389,14 +394,6 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
             suppressDirtyRef.current = false;
           }
         }
-        // 偏好已是源码模式时必须在此处直接装载：复用标签不改变活动标签，
-        // 生效模式不会翻转，模式切换 effect 不会运行，错过装载会展示空正文，
-        // 首次编辑会把空内容当成原文覆盖保存。
-        if (s.viewMode === 'source') {
-          sourceEditorHandle.current?.setValue(result.content, {
-            preserveLineSeparator: isTextDoc,
-          });
-        }
         updateTab(activeTab.id, {
           filePath: result.path,
           fileName: result.path.split(/[/\\]/).pop()!,
@@ -404,6 +401,18 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
           fileMtime: result.mtime,
           isStartPage: false,
         });
+        // 偏好已是源码模式时必须在此处直接装载：复用标签不改变活动标签，
+        // 生效模式不会翻转，模式切换 effect 不会运行，错过装载会展示空正文，
+        // 首次编辑会把空内容当成原文覆盖保存。
+        if (s.viewMode === 'source') {
+          sourceEditorHandle.current?.setValue(result.content, {
+            preserveLineSeparator: isTextDoc,
+            plainText: isTextDoc,
+          });
+          // 程序化装载抑制了变更回调：字数与大纲在此主动刷新一次。
+          const loaded = sourceEditorHandle.current?.getEditorState();
+          if (loaded) refreshSourceMetadata(loaded);
+        }
         setDiskSnapshot(activeTab.id, result.content, result.mtime);
         return;
       }
@@ -415,7 +424,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       });
       setDiskSnapshot(newTabId, result.content, result.mtime);
     },
-    [addTab, setActiveTab, updateTab],
+    [addTab, refreshSourceMetadata, setActiveTab, updateTab],
   );
 
   const openFilePath = useCallback(
@@ -828,7 +837,10 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
         if (current.viewMode === 'source') {
           sourceEditorHandle.current?.setValue(result.content, {
             preserveLineSeparator: isTextDoc,
+            plainText: isTextDoc,
           });
+          const loaded = sourceEditorHandle.current?.getEditorState();
+          if (loaded) refreshSourceMetadata(loaded);
         }
       } else if (!isTextDoc) {
         suppressDirtyRef.current = false;
@@ -845,7 +857,7 @@ export function useFile(setMarkdown: (md: string) => boolean, viewMode: ViewMode
       missingNotifiedTabIdsRef.current.delete(tabId);
       return 'ok';
     },
-    [updateTab],
+    [refreshSourceMetadata, updateTab],
   );
 
   const notifyMissingFile = useCallback(

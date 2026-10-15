@@ -13,9 +13,10 @@ import { HighlightStyle, syntaxHighlighting, defaultHighlightStyle } from '@code
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
-import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { resolveDocumentKind } from '../../../shared/openable-document';
+import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
+import { serializeDoc } from '../source-document';
 import { useI18n } from '../i18n';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import {
@@ -127,7 +128,7 @@ export function SourceEditor({
       }
     });
 
-    const createState = (doc: string, lineSeparator?: string) =>
+    const createState = (doc: string, lineSeparator?: string, plainText?: boolean) =>
       EditorState.create({
         doc,
         extensions: [
@@ -136,9 +137,15 @@ export function SourceEditor({
           ...(lineSeparator ? [EditorState.lineSeparator.of(lineSeparator)] : []),
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap]),
-          markdown({ base: markdownLanguage, codeLanguages: languages }),
-          syntaxHighlighting(fadedMarksHighlight),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+          // 文本/代码文件按产品边界不做 Markdown 解析与语法高亮：
+          // # 注释、星号等按字面显示，也省去大文件解析开销。
+          ...(plainText
+            ? []
+            : [
+                markdown({ base: markdownLanguage, codeLanguages: languages }),
+                syntaxHighlighting(fadedMarksHighlight),
+                syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+              ]),
           EditorView.lineWrapping,
           updateListener,
           EditorView.domEventHandlers({
@@ -168,20 +175,16 @@ export function SourceEditor({
     const initialDoc = initialTab?.sourceContent ?? '';
     // 挂载即可能是文本文件（懒加载晚于打开流程，句柄注入会被跳过）：
     // 初始化同样按内容保留 CRLF，否则首次编辑保存会把换行改写成 LF。
-    const initialSeparator =
-      initialTab &&
-      resolveDocumentKind(initialTab.filePath) === 'text' &&
-      initialDoc.includes('\r\n')
-        ? '\r\n'
-        : undefined;
+    const initialIsText = !!initialTab && resolveDocumentKind(initialTab.filePath) === 'text';
+    const initialSeparator = initialIsText && initialDoc.includes('\r\n') ? '\r\n' : undefined;
 
-    const state = createState(initialDoc, initialSeparator);
+    const state = createState(initialDoc, initialSeparator, initialIsText);
 
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
 
     sourceEditorHandle.current = {
-      getValue: () => view.state.doc.toString(),
+      getValue: () => serializeDoc(view.state),
       getEditorState: () => view.state,
       setEditorState: (state) => view.setState(state),
       setValue: (value, options) => {
@@ -189,7 +192,7 @@ export function SourceEditor({
         const lineSeparator =
           options?.preserveLineSeparator && value.includes('\r\n') ? '\r\n' : undefined;
         suppressRef.current = true;
-        view.setState(createState(value, lineSeparator));
+        view.setState(createState(value, lineSeparator, options?.plainText));
         suppressRef.current = false;
       },
       focus: () => view.focus(),

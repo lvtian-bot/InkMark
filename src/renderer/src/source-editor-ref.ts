@@ -19,7 +19,10 @@ export interface SourceEditorHandle {
   /// Replace the whole document.  Used when switching tabs / reloading from
   /// disk.  Does NOT fire the user-edit callback path - callers set the store
   /// themselves.
-  setValue: (value: string, options?: { preserveLineSeparator?: boolean }) => void;
+  setValue: (
+    value: string,
+    options?: { preserveLineSeparator?: boolean; plainText?: boolean },
+  ) => void;
   /// Focus the editor.
   focus: () => void;
   /// Current selection as character offsets.

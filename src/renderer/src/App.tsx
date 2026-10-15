@@ -38,6 +38,7 @@ import { confirmDialog, promptDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { followDocumentLinkHref } from './document-link';
 import { comboMatchesEvent } from './shortcut-recorder';
+import { serializeDoc } from './source-document';
 import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
 import { hasOpenableDocumentExtension, resolveDocumentKind } from '../../shared/openable-document';
 import { runEditorCommand } from './editor-commands';
@@ -176,7 +177,14 @@ function AppContent() {
     return selectViewMode(useStore.getState()) === 'wysiwyg' && !switchingRef.current;
   }, []);
 
-  const fileOps = useFile(setMarkdown, viewMode);
+  const refreshSourceMetadata = useCallback(
+    (state: SourceEditorState) => {
+      updateSourceOutline(state);
+      updateSourceWordCount(state, true);
+    },
+    [updateSourceOutline, updateSourceWordCount],
+  );
+  const fileOps = useFile(setMarkdown, viewMode, refreshSourceMetadata);
   const { finishReview } = fileOps;
   const { exportDocument: runExport } = useExport();
   const fileTree = useFileTree(activeFilePath);
@@ -307,6 +315,19 @@ function AppContent() {
       // 否则存在未处理的外部版本，重命名会把基线洗掉导致静默覆盖
       const baselineTab = liveAffected.find((tab) => tab.fileMtime != null);
       const renameTabIds = liveAffected.map((tab) => tab.id);
+      // 重命名会改变文档类型并触发模式翻转：先把可见编辑器里尚未上报的
+      // 最新内容刷进标签正文，避免类型翻转后迟到通知被拒而丢失键入。
+      const state0 = useStore.getState();
+      const activeTab0 = state0.tabs.find((tab) => tab.id === state0.activeTabId);
+      if (
+        activeTab0 &&
+        renameTabIds.includes(activeTab0.id) &&
+        selectViewMode(state0) === 'wysiwyg'
+      ) {
+        updateTab(activeTab0.id, {
+          sourceContent: editorHandle.current?.getMarkdown() ?? activeTab0.sourceContent,
+        });
+      }
       // 重命名执行期间抑制自动保存:主进程已移动文件而标签路径尚未更新时,
       // 待存定时器若触发会把内容写回旧路径、重新创建旧文件
       fileOps.suppressAutoSaveForTabs(renameTabIds);
@@ -338,7 +359,7 @@ function AppContent() {
       // 主进程最近记录已迁移,挂载中的开始页重拉列表
       setRecentRefreshKey((key) => key + 1);
     },
-    [fileTree, fileOps, t],
+    [fileTree, fileOps, t, updateTab],
   );
 
   const handleFileTreeDeleteEntry = useCallback(
@@ -491,7 +512,7 @@ function AppContent() {
 
   const handleSourceChange = useCallback(
     (state: SourceEditorState) => {
-      setSourceContent(state.doc.toString());
+      setSourceContent(serializeDoc(state));
       fileOps.markDirty();
       notifyFindContentChanged();
       updateSourceOutline(state);
@@ -539,13 +560,16 @@ function AppContent() {
     const captureMode = displayedModeRef.current;
 
     if (oldTabId) {
+      const oldTab = useStore.getState().tabs.find((item) => item.id === oldTabId);
       const scrollTop =
         captureMode === 'source'
           ? (sourceEditorHandle.current?.getScrollTop() ?? 0)
           : editorHandle.current.getScrollTop();
+      // 句柄未就绪（懒加载未完成）不等于正文为空：回退用标签已存的正文，
+      // 否则启动连开多个文件会把尚未展示标签的正文清空。
       const sourceContent =
         captureMode === 'source'
-          ? (sourceEditorHandle.current?.getValue() ?? '')
+          ? (sourceEditorHandle.current?.getValue() ?? oldTab?.sourceContent ?? '')
           : editorHandle.current.getMarkdown();
       if (captureMode === 'source') {
         const state = sourceEditorHandle.current?.getEditorState();
@@ -578,6 +602,7 @@ function AppContent() {
       } else {
         sourceEditorHandle.current?.setValue(newTab.sourceContent, {
           preserveLineSeparator: resolveDocumentKind(newTab.filePath) === 'text',
+          plainText: resolveDocumentKind(newTab.filePath) === 'text',
         });
       }
     }
@@ -663,6 +688,7 @@ function AppContent() {
       } else {
         sourceEditorHandle.current?.setValue(md, {
           preserveLineSeparator: tab ? resolveDocumentKind(tab.filePath) === 'text' : false,
+          plainText: tab ? resolveDocumentKind(tab.filePath) === 'text' : false,
         });
       }
     } else {
