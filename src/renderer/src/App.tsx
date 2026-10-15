@@ -777,8 +777,12 @@ function AppContent() {
     // 仅同一标签的类型变化（重命名）需要重建：跨标签切换由标签切换
     // effect 完成装载，此处不再处理，避免清掉目标标签的撤销历史。
     if (!prev || prev.tabId !== tab.id || prev.isText === isText) return;
-    if (selectViewMode(state) !== 'source') return;
+    // 类型变化先无条件作废该标签的编辑器状态缓存：缓存快照不含类型维度，
+    // 无论当前生效模式是哪个，残留都会在之后装载源码时恢复成旧类型的配置
+    // （Markdown 文件丢高亮/大纲，文本文件丢 CRLF 分隔符）。先前的作废放在
+    // 模式判断之后，所见即所得偏好的「文本→Markdown」方向会漏掉。
     editorStateCache.dispose(tab.id);
+    if (selectViewMode(state) !== 'source') return;
     sourceEditorHandle.current?.setValue(tab.sourceContent, {
       preserveLineSeparator: isText,
       plainText: isText,
