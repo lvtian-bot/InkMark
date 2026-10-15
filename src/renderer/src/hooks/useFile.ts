@@ -595,11 +595,17 @@ export function useFile(
   const renameTabFile = useCallback(
     (oldPath: string, newPath: string, mtime: number): void => {
       const key = filePathKey(oldPath);
+      const kindChanged = resolveDocumentKind(oldPath) !== resolveDocumentKind(newPath);
       for (const tab of useStore.getState().tabs) {
         if (!tab.filePath || filePathKey(tab.filePath) !== key) continue;
         const snapshot = getDiskSnapshot(tab.id);
         if (snapshot) setDiskSnapshot(tab.id, snapshot.content, mtime);
         missingNotifiedTabIdsRef.current.delete(tab.id);
+        // 跨类型重命名（后台标签同样命中）：缓存快照按内容匹配，不含文档
+        // 类型维度，不清理会恢复出旧类型的编辑器配置（Markdown 高亮、丢失
+        // CRLF 分隔符），继续编辑保存会整篇改写换行。清掉后切回时按新类型
+        // 重新装载。
+        if (kindChanged) editorStateCache.dispose(tab.id);
         updateTab(tab.id, {
           filePath: newPath,
           fileName: newPath.split(/[/\\]/).pop()!,
