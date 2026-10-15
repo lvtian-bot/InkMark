@@ -575,13 +575,21 @@ function AppContent() {
       const sourceContent =
         captureMode === 'source'
           ? (sourceEditorHandle.current?.getValue() ?? oldTab?.sourceContent ?? '')
-          : editorHandle.current.getMarkdown();
+          : oldTab && resolveDocumentKind(oldTab.filePath) === 'text'
+            ? // 文本旧标签的内容从未装入所见即所得编辑器（批量打开时展示
+              // 模式也可能尚未切换）：其中的空白不代表正文，回退用已存正文。
+              (oldTab.sourceContent ?? '')
+            : editorHandle.current.getMarkdown();
       if (captureMode === 'source') {
         const state = sourceEditorHandle.current?.getEditorState();
         if (state) editorStateCache.capture(oldTabId, 'source', sourceContent, state);
       } else {
         const state = editorHandle.current.getEditorState();
-        if (state) editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
+        // 文本旧标签不同步所见即所得缓存：其中的空白状态会在类型切回时
+        // 被误恢复成编辑器内容。
+        if (state && oldTab && resolveDocumentKind(oldTab.filePath) !== 'text') {
+          editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
+        }
       }
       updateTab(oldTabId, { sourceContent, ...scrollPositionUpdate(captureMode, scrollTop) });
     }
@@ -777,7 +785,9 @@ function AppContent() {
     });
     const loaded = sourceEditorHandle.current?.getEditorState();
     if (loaded) refreshSourceMetadata(loaded);
-  }, [activeTabIsText, refreshSourceMetadata]);
+    // 依赖纳入活动标签：同类型标签切换也要更新记录，否则后续重命名
+    // 会被误判为跨标签切换而跳过重建。
+  }, [activeTabId, activeTabIsText, refreshSourceMetadata]);
 
   // 审阅视图只存在于源码模式（change-review.md）：活动标签出现待决外部改动时
   // 自动切入源码模式；期间 toggleViewMode 被锁定，处理完才能切回。
