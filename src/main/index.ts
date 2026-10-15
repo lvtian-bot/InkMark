@@ -15,6 +15,7 @@ import {
   readFileSync,
   writeFileSync,
   existsSync,
+  lstatSync,
   statSync,
   renameSync,
   unlinkSync,
@@ -1265,6 +1266,16 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
     return null;
   }
   const { path } = request;
+  // 符号链接拒绝打开：保存走临时文件替换路径，会把链接替换成独立文件，
+  // 造成原目标与链接关系被静默破坏。
+  try {
+    if (lstatSync(path).isSymbolicLink()) {
+      return { status: 'symlink' as const };
+    }
+  } catch {
+    removeRecentItem(path);
+    return null;
+  }
   // 超大文件（常见于日志、数据导出）直接拒绝，避免打开时卡死界面。
   try {
     if (statSync(path).size > MAX_OPEN_FILE_SIZE_BYTES) {

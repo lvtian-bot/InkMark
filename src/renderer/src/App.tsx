@@ -325,10 +325,12 @@ function AppContent() {
         selectViewMode(state0) === 'wysiwyg'
       ) {
         // 刷新的正文可能包含 Milkdown 尚未上报的键入：类型翻转后迟到通知
-        // 会被拒绝，必须标记未保存并交给自动保存，否则关闭时静默丢失。
+        // 会被拒绝，因此刷新后必须标记未保存并交给自动保存，否则关闭时
+        // 静默丢失。内容与已存正文一致（干净文档重命名）时不标脏。
+        const flushed = editorHandle.current?.getMarkdown() ?? activeTab0.sourceContent;
         updateTab(activeTab0.id, {
-          sourceContent: editorHandle.current?.getMarkdown() ?? activeTab0.sourceContent,
-          isDirty: true,
+          sourceContent: flushed,
+          isDirty: flushed !== activeTab0.sourceContent ? true : activeTab0.isDirty,
         });
       }
       // 重命名执行期间抑制自动保存:主进程已移动文件而标签路径尚未更新时,
@@ -756,19 +758,22 @@ function AppContent() {
 
   // 源码偏好下重命名导致文档类型变化时，生效模式不变、各同步 effect 都不
   // 运行：此处重建源码编辑器状态（扩展随类型更换），并清掉旧类型的缓存。
-  const prevActiveTabIsTextRef = useRef(activeTabIsText);
+  const prevKindRef = useRef<{ tabId: string; isText: boolean } | null>(null);
   useEffect(() => {
-    const prev = prevActiveTabIsTextRef.current;
-    prevActiveTabIsTextRef.current = activeTabIsText;
-    if (prev === activeTabIsText) return;
     const state = useStore.getState();
-    if (selectViewMode(state) !== 'source') return;
     const tab = state.tabs.find((item) => item.id === state.activeTabId);
     if (!tab) return;
+    const isText = resolveDocumentKind(tab.filePath) === 'text';
+    const prev = prevKindRef.current;
+    prevKindRef.current = { tabId: tab.id, isText };
+    // 仅同一标签的类型变化（重命名）需要重建：跨标签切换由标签切换
+    // effect 完成装载，此处不再处理，避免清掉目标标签的撤销历史。
+    if (!prev || prev.tabId !== tab.id || prev.isText === isText) return;
+    if (selectViewMode(state) !== 'source') return;
     editorStateCache.dispose(tab.id);
     sourceEditorHandle.current?.setValue(tab.sourceContent, {
-      preserveLineSeparator: activeTabIsText,
-      plainText: activeTabIsText,
+      preserveLineSeparator: isText,
+      plainText: isText,
     });
     const loaded = sourceEditorHandle.current?.getEditorState();
     if (loaded) refreshSourceMetadata(loaded);

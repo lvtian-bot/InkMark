@@ -402,6 +402,7 @@ export const messages = {
   'confirm.openPathMissing': '"{path}" 可能已被删除或移动。',
   'confirm.openPathTooLarge': '"{path}" 超过 10 MB，暂不支持打开。',
   'confirm.openPathUnsupportedEncoding': '"{path}" 不是 UTF-8 编码，暂不支持打开。',
+  'confirm.openPathSymlink': '"{path}" 是符号链接，暂不支持打开。',
   'confirm.exportUnsupportedTitle': '暂不支持导出',
   'confirm.exportUnsupportedBody': '纯文本与代码文件不支持导出 HTML 或 PDF。',
   'confirm.imageSaving': '图片正在保存',

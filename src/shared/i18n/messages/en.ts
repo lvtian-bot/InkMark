@@ -422,6 +422,7 @@ export const messages: Record<MessageKey, string> = {
   'confirm.openPathMissing': '"{path}" may have been deleted or moved.',
   'confirm.openPathTooLarge': '"{path}" is larger than 10 MB and cannot be opened yet.',
   'confirm.openPathUnsupportedEncoding': '"{path}" is not UTF-8 encoded and cannot be opened yet.',
+  'confirm.openPathSymlink': '"{path}" is a symbolic link and cannot be opened yet.',
   'confirm.exportUnsupportedTitle': 'Export Not Supported',
   'confirm.exportUnsupportedBody': 'Plain-text and code files cannot be exported to HTML or PDF.',
   'confirm.imageSaving': 'Saving Image',
