@@ -23,6 +23,8 @@ export interface SourceEditorHandle {
     value: string,
     options?: { preserveLineSeparator?: boolean; plainText?: boolean },
   ) => void;
+  /** 内部坐标文本（恒 LF）：查找替换的偏移必须与 CodeMirror 位置一致。 */
+  getDocText: () => string;
   /// Focus the editor.
   focus: () => void;
   /// Current selection as character offsets.

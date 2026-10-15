@@ -94,6 +94,12 @@ let currentOutlineVisible = true;
 let currentFileTreeVisible = false;
 let currentToolbarVisible = true;
 let currentAlwaysOnTop = false;
+// 本会话内已成功打开或经对话框建立的文档路径：放宽可打开扩展名后，
+// file:save 的写入原语覆盖代码与脚本，沙箱内的渲染层必须先证明
+// 路径经可信流程打开，才可写入（含强制覆盖）。
+const openedDocuments = new Set<string>();
+const documentKey = (filePath: string): string =>
+  process.platform === 'win32' ? filePath.toLowerCase() : filePath;
 // 活动标签是否为纯文本/代码文件：由渲染层按标签切换上报，用于禁用
 // 纯文本文件不可用的菜单项（导出、源码模式切换）。
 let currentActiveDocumentIsText = false;
@@ -1088,6 +1094,9 @@ ipcMain.handle('file:save', async (event, request: unknown) => {
     throw new Error('Invalid file save request.');
   }
   const { content, path, knownMtime, force } = request;
+  if (!openedDocuments.has(documentKey(path))) {
+    throw new Error('Document was not opened in this session.');
+  }
   if (!force && knownMtime != null) {
     try {
       const currentMtime = statSync(path).mtimeMs;
@@ -1114,6 +1123,7 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   });
   if (result.canceled || !result.filePath) return null;
   const filePath = result.filePath;
+  openedDocuments.add(documentKey(filePath));
   // 附件目录（<名>.assets）是 Markdown 文档的伴生结构；纯文本/代码文件
   // 不复制，避免同名无关目录被误当附件搬运。
   if (sourcePath === null || sourcePath === undefined || isMarkdownDocumentPath(sourcePath)) {
@@ -1132,6 +1142,9 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
 ipcMain.handle('file:saveReviewed', (event, request: unknown) => {
   if (!isTrustedRenderer(event) || !isReviewedFileSaveRequest(request)) {
     throw new Error('Invalid reviewed file save request.');
+  }
+  if (!openedDocuments.has(documentKey(request.path))) {
+    throw new Error('Document was not opened in this session.');
   }
   return saveReviewedFileVersion(request, () => {
     workspaceWatchManager.recordSelfWrite(request.path);
@@ -1169,6 +1182,7 @@ ipcMain.handle('dialog:saveReviewCopy', async (event, request: unknown) => {
       const mtime = fileWatchManager.performSelfWrite(filePath, () =>
         writeNewReviewCopy(filePath, request.content, sourcePath),
       );
+      openedDocuments.add(documentKey(filePath));
       addRecent(filePath, 'file', { trusted: true });
       approveWorkspaceAroundFile(filePath);
       return { path: filePath, mtime };
@@ -1262,6 +1276,7 @@ ipcMain.handle('file:read', async (event, request: unknown) => {
   }
   try {
     const { content, mtime } = readStableTextFile(path, undefined, 5, MAX_OPEN_FILE_SIZE_BYTES);
+    openedDocuments.add(documentKey(path));
     // 所在目录已在已批准范围内时,最近记录按可信持久化:推送打开(文件关联/
     // 命令行/最近菜单)的文档经此读取落档,重启后从开始页重开仍可播种授权。
     // 范围之外的读取依旧不可信——被攻破的渲染层无法借此扩大授权范围,
@@ -1544,6 +1559,10 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
     workspaceWatchManager.recordSelfWrite(request.path);
     workspaceWatchManager.recordSelfWrite(result.path);
     renameRecentItemEntry(request.path, result.path);
+    if (openedDocuments.has(documentKey(request.path))) {
+      openedDocuments.delete(documentKey(request.path));
+      openedDocuments.add(documentKey(result.path));
+    }
   }
   return result;
 });

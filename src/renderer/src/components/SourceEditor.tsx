@@ -185,6 +185,7 @@ export function SourceEditor({
 
     sourceEditorHandle.current = {
       getValue: () => serializeDoc(view.state),
+      getDocText: () => view.state.doc.toString(),
       getEditorState: () => view.state,
       setEditorState: (state) => view.setState(state),
       setValue: (value, options) => {

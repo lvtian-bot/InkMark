@@ -62,7 +62,9 @@ function createWysiwygAdapter(): FindReplaceAdapter {
 function createSourceAdapter(focusQueryInput: () => void): FindReplaceAdapter {
   return {
     clear: () => editorHandle.current?.showTextMatches([], -1),
-    find: (query) => findLiteralMatches(sourceEditorHandle.current?.getValue() ?? '', query),
+    // 查找偏移必须落在 CodeMirror 内部坐标上：CRLF 文件经 getValue
+    // 序列化后分隔符占两个字符，会让首次换行后的匹配错位甚至损坏替换。
+    find: (query) => findLiteralMatches(sourceEditorHandle.current?.getDocText() ?? '', query),
     focus: () => sourceEditorHandle.current?.focus(),
     replaceAll: (matches, replacement) => {
       const handle = sourceEditorHandle.current;

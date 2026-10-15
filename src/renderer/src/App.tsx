@@ -324,8 +324,11 @@ function AppContent() {
         renameTabIds.includes(activeTab0.id) &&
         selectViewMode(state0) === 'wysiwyg'
       ) {
+        // 刷新的正文可能包含 Milkdown 尚未上报的键入：类型翻转后迟到通知
+        // 会被拒绝，必须标记未保存并交给自动保存，否则关闭时静默丢失。
         updateTab(activeTab0.id, {
           sourceContent: editorHandle.current?.getMarkdown() ?? activeTab0.sourceContent,
+          isDirty: true,
         });
       }
       // 重命名执行期间抑制自动保存:主进程已移动文件而标签路径尚未更新时,
@@ -750,6 +753,26 @@ function AppContent() {
       window.inkmark.syncDocumentKind(activeTabIsText);
     }
   }, [activeTabIsText]);
+
+  // 源码偏好下重命名导致文档类型变化时，生效模式不变、各同步 effect 都不
+  // 运行：此处重建源码编辑器状态（扩展随类型更换），并清掉旧类型的缓存。
+  const prevActiveTabIsTextRef = useRef(activeTabIsText);
+  useEffect(() => {
+    const prev = prevActiveTabIsTextRef.current;
+    prevActiveTabIsTextRef.current = activeTabIsText;
+    if (prev === activeTabIsText) return;
+    const state = useStore.getState();
+    if (selectViewMode(state) !== 'source') return;
+    const tab = state.tabs.find((item) => item.id === state.activeTabId);
+    if (!tab) return;
+    editorStateCache.dispose(tab.id);
+    sourceEditorHandle.current?.setValue(tab.sourceContent, {
+      preserveLineSeparator: activeTabIsText,
+      plainText: activeTabIsText,
+    });
+    const loaded = sourceEditorHandle.current?.getEditorState();
+    if (loaded) refreshSourceMetadata(loaded);
+  }, [activeTabIsText, refreshSourceMetadata]);
 
   // 审阅视图只存在于源码模式（change-review.md）：活动标签出现待决外部改动时
   // 自动切入源码模式；期间 toggleViewMode 被锁定，处理完才能切回。
@@ -1281,6 +1304,9 @@ function AppContent() {
   useEffect(() => {
     const handleDrop = async (e: DragEvent): Promise<void> => {
       e.preventDefault();
+      // SVG 等内容编辑器会作为图片插入：上传进行中时窗口级打开处理
+      // 不再重复接管，否则会新建标签并打断插入。
+      if (isImageUploadInProgress()) return;
       const file = e.dataTransfer?.files?.[0];
       if (file) {
         const path = (file as File & { path?: string }).path;

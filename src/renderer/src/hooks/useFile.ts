@@ -445,9 +445,11 @@ export function useFile(
         return false;
       }
       // 主进程的守卫结论：文件过大或编码不是 UTF-8，拒绝打开并说明原因。
+      // 返回 true：文件仍然存在且原因已说明，调用方（如开始页）不得把
+      // 它当作「已删除或移动」从最近记录里清掉。
       if ('status' in result) {
         await showOpenRejection(result, path);
-        return false;
+        return true;
       }
       await openFileResult(result);
       return true;
