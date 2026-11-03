@@ -491,6 +491,18 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           console.error('setMarkdown error:', e);
         }
       },
+      replaceDocumentUndoable: (md: string) => {
+        // 以一次普通事务替换整篇内容（flush=false）：保留撤销历史，
+        // 用户按 Ctrl+Z 可一步撤回（大纲拖动搬移章节使用）。
+        try {
+          ed.action(replaceAllAction(md, false));
+          const view = ed.ctx.get(editorViewCtx);
+          syncedDocRef.current = view.state.doc;
+          onDocChangeRef.current(view.state.doc);
+        } catch (e) {
+          console.error('replaceDocumentUndoable error:', e);
+        }
+      },
       skipFrontmatterIfSelected: () => {
         // 文档以 frontmatter 开头、且当前选区落在它上面时(如刚加载内容默认选在首节点),
         // 把光标移到 frontmatter 之后的正文,避免 atom 节点被选中产生扎眼高亮。

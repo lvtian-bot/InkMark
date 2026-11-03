@@ -109,3 +109,29 @@
   white-space: nowrap;
   flex: 1;
 }
+/* 拖动中的标题淡出，提示这一行正在被搬走 */
+.outline-item.dragging {
+  opacity: 0.45;
+}
+/* 插入线：落点在目标章节之前或之后，与 Word 导航窗格一致 */
+.outline-item.drop-before,
+.outline-item.drop-after {
+  position: relative;
+}
+.outline-item.drop-before::before,
+.outline-item.drop-after::after {
+  content: '';
+  position: absolute;
+  left: var(--panel-row-margin-x);
+  right: var(--panel-row-margin-x);
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.outline-item.drop-before::before {
+  top: 0;
+}
+.outline-item.drop-after::after {
+  bottom: 0;
+}

@@ -7,6 +7,8 @@ export interface EditorHandle {
   getPendingMarkdown: () => string | null;
   getSelectedMarkdown: () => string;
   setMarkdown: (md: string) => void;
+  /// 以整篇替换的方式写入正文，作为一次可撤销编辑提交（不清空撤销历史）。
+  replaceDocumentUndoable: (md: string) => void;
   skipFrontmatterIfSelected: () => void;
   getEditorState: () => EditorState | null;
   setEditorState: (state: EditorState) => void;

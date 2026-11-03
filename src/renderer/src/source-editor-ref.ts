@@ -49,6 +49,9 @@ export interface SourceEditorHandle {
   redo: () => void;
   /// Delete all lines covered by the selection.
   deleteLine: () => void;
+  /// 用 `nextDoc` 整篇替换正文，作为一次可撤销的用户编辑提交（大纲拖动搬移章节使用）。
+  /// 与 `setValue` 的区别：不清空撤销历史；与 `replaceRangeQuiet` 的区别：会通知撤销与变更回调。
+  replaceDocumentUndoable: (nextDoc: string) => void;
   /// 外部改动审阅：整体替换未决块（set 语义，位置已锚定到当前文档）。
   applyReviewChunks: (chunks: ReviewChunk[]) => void;
   /// 当前源码编辑器中的未决外部改动块。
