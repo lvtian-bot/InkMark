@@ -46,4 +46,40 @@ describe('headingsFromMarkdown', () => {
       { pos: 7, level: 2 },
     ]);
   });
+
+  it('四反引号围栏内的三反引号行不闭合代码块', () => {
+    const doc = '# A\n\n````markdown\n```\n# fake\n````\n\n# B\n\nbody';
+    expect(headingsFromMarkdown(doc)).toEqual([
+      { pos: 0, level: 1 },
+      { pos: doc.indexOf('# B'), level: 1 },
+    ]);
+  });
+
+  it('闭合围栏长度不足时不闭合', () => {
+    const doc = '# A\n\n````\n```\n# fake\n````\n\n# B';
+    expect(headingsFromMarkdown(doc).map((heading) => heading.level)).toEqual([1, 1]);
+  });
+
+  it('识别引用块内的标题', () => {
+    const doc = '# A\n\n> # Quote\n\n# B';
+    expect(headingsFromMarkdown(doc)).toEqual([
+      { pos: 0, level: 1 },
+      { pos: doc.indexOf('> # Quote'), level: 1 },
+      { pos: doc.indexOf('# B'), level: 1 },
+    ]);
+  });
+
+  it('识别列表项内的标题', () => {
+    const doc = '# A\n\n- # Item\n\n# B';
+    expect(headingsFromMarkdown(doc).map((heading) => heading.level)).toEqual([1, 1, 1]);
+  });
+
+  it('识别嵌套容器内的标题', () => {
+    const doc = '# A\n\n> - > ## Deep\n\n# B';
+    expect(headingsFromMarkdown(doc)).toEqual([
+      { pos: 0, level: 1 },
+      { pos: doc.indexOf('> - > ## Deep'), level: 2 },
+      { pos: doc.indexOf('# B'), level: 1 },
+    ]);
+  });
 });

@@ -202,6 +202,27 @@ describe('moveSection', () => {
     const result = move(doc, 3, 'before', 0);
     expect(result).not.toMatch(/\n{3,}/);
   });
+
+  it('保留未移动章节里的行尾字面空白', () => {
+    // C 的缩进代码块以两个空格结尾，属于代码内容，搬移其他章节时不能删除。
+    const content = '# A\n\na\n\n# B\n\nb\n\n# C\n\n    code  ';
+    const result = move(content, 1, 'before', 0);
+    expect(result?.endsWith('# C\n\n    code  ')).toBe(true);
+    expect(result?.match(/code {2}$/)).not.toBeNull();
+  });
+
+  it('搬到文末后仍以章节正文结尾,不留多余空行', () => {
+    const content = '# A\n\na body\n\n# B\n\nb body\n\n# C\n\nc body';
+    const result = move(content, 0, 'after', 2);
+    expect(result?.endsWith('# A\n\na body')).toBe(true);
+    expect(result).not.toMatch(/\n{3,}/);
+  });
+
+  it('章节间只有一个空行时搬移后仍保持分隔', () => {
+    const content = '# A\n\na\n\n# B\n\nb';
+    const result = move(content, 1, 'before', 0);
+    expect(result).toBe('# B\n\nb\n\n# A\n\na');
+  });
 });
 
 describe('resolveDropAnchor / isSectionAncestor', () => {

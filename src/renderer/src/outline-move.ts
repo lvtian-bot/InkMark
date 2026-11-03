@@ -76,14 +76,19 @@ function readMoveContext(): MoveContext | null {
 
 /**
  * 从 Markdown 文本中提取标题位置，用于所见即所得模式的章节区间计算。
- * 判定与 `source-document.ts` 的源码大纲保持一致：跳过 YAML frontmatter，
- * 识别 ATX 与 setext 标题；围栏代码块内的 `#` 不算标题。
+ *
+ * 判定需要与大纲数据源（`hooks/useOutline.ts` 遍历 ProseMirror 全部后代）保持一致，
+ * 否则标题数量不等会导致拒绝移动：
+ * - 跳过 YAML frontmatter；
+ * - 识别 ATX 与 setext 标题，包括引用、列表等容器内的标题；
+ * - 围栏代码块内的 `#` 不算标题，闭合围栏长度不小于开启围栏才算闭合。
  */
 export function headingsFromMarkdown(doc: string): Array<{ pos: number; level: number }> {
   const frontmatter = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(doc);
   const start = frontmatter ? frontmatter[0].length : 0;
   const headings: Array<{ pos: number; level: number }> = [];
-  let fence: string | null = null;
+  // 当前围栏：字符与开启长度。只有长度足够的同类围栏才能闭合。
+  let fence: { char: string; length: number } | null = null;
   // 上一个非空普通行起点：setext 标题的位置记在它的行首。
   let previousParagraphStart: number | null = null;
 
@@ -92,20 +97,23 @@ export function headingsFromMarkdown(doc: string): Array<{ pos: number; level: n
     const lineStart = offset;
     offset += line.length + 1;
     const content = line.replace(/\r$/, '');
+    // 剥掉引用前缀与列表标记，使容器内的标题与顶层标题一样可识别。
+    const stripped = stripContainers(content);
 
-    const fenceMatch = /^\s{0,3}(```+|~~~+)/.exec(content);
+    const fenceMatch = /^(```+|~~~+)/.exec(stripped);
     if (fenceMatch) {
+      const marker = fenceMatch[1];
       if (fence === null) {
-        fence = fenceMatch[1][0];
+        fence = { char: marker[0], length: marker.length };
         previousParagraphStart = null;
-      } else if (fence === fenceMatch[1][0]) {
+      } else if (marker[0] === fence.char && marker.length >= fence.length) {
         fence = null;
       }
       continue;
     }
     if (fence !== null) continue;
 
-    const atx = /^\s{0,3}(#{1,6})(?:[ \t]+|$)/.exec(content);
+    const atx = /^(#{1,6})(?:[ \t]+|$)/.exec(stripped);
     if (atx) {
       headings.push({ pos: lineStart, level: atx[1].length });
       previousParagraphStart = null;
@@ -113,17 +121,30 @@ export function headingsFromMarkdown(doc: string): Array<{ pos: number; level: n
     }
 
     // setext 标题：上一行普通文本下跟一行 === 或 ---。
-    if (/^\s{0,3}(=+|-+)\s*$/.test(content) && previousParagraphStart !== null) {
+    if (/^(=+|-+)\s*$/.test(stripped) && previousParagraphStart !== null) {
       headings.push({
         pos: previousParagraphStart,
-        level: content.trim().startsWith('=') ? 1 : 2,
+        level: stripped.startsWith('=') ? 1 : 2,
       });
       previousParagraphStart = null;
       continue;
     }
 
-    previousParagraphStart = content.trim() !== '' ? lineStart : null;
+    previousParagraphStart = stripped.trim() !== '' ? lineStart : null;
   }
 
   return headings.sort((a, b) => a.pos - b.pos);
+}
+
+/** 去掉行首的缩进、引用标记与列表标记，返回内容起点开始的文本。 */
+function stripContainers(line: string): string {
+  let rest = line;
+  // 反复剥离：`- > # 标题` 这类嵌套容器需要多次。
+  for (;;) {
+    const next = rest
+      .replace(/^[ \t]{0,3}>[ \t]?/, '')
+      .replace(/^[ \t]{0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+/, '');
+    if (next === rest) return rest;
+    rest = next;
+  }
 }

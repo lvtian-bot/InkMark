@@ -51,7 +51,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     null,
   );
   // 拖动结束后浏览器会补发一次 click，用它拦下该次误触发的跳转。
-  const justDraggedRef = useRef(false);
+  const suppressNextClickRef = useRef(false);
 
   useEffect(() => {
     const handleScroll = (): void => {
@@ -96,8 +96,8 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
 
   const handleClick = (pos: number): void => {
     // 拖动结束后的补发 click 不触发跳转，否则会跳到已被搬走的标题位置。
-    if (justDraggedRef.current) {
-      justDraggedRef.current = false;
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
       return;
     }
     if (viewMode === 'source') {
@@ -147,23 +147,29 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   };
 
   const handleDrop = (event: DragEvent<HTMLButtonElement>, index: number): void => {
+    // 没有大纲内部拖动时不拦截事件：外部文件拖放需继续冒泡到窗口级打开处理。
+    if (dragIndex === null) return;
     event.preventDefault();
     event.stopPropagation();
     const from = dragIndex;
-    justDraggedRef.current = true;
+    suppressNextClickRef.current = true;
     setDragIndex(null);
     setDropTarget(null);
-    if (from === null) return;
     if (isSectionAncestor(outline, from, index)) return;
     const rect = event.currentTarget.getBoundingClientRect();
     moveOutlineSection(from, resolveDropAnchor(index, (event.clientY - rect.top) / rect.height));
   };
 
   const handleDragEnd = (): void => {
-    // 拖动结束后浏览器仍会补发一次 click，若不拦下会跳到刚拖走的旧标题位置。
-    justDraggedRef.current = true;
+    // 拖动结束后浏览器会补发一次 click，若不拦下会跳到刚拖走的旧标题位置。
+    // 标记只保留到本次事件序列结束：Esc 取消拖动时没有补发 click，
+    // 若长期保留会吞掉用户下一次正常的点击跳转。
+    suppressNextClickRef.current = true;
     setDragIndex(null);
     setDropTarget(null);
+    window.setTimeout(() => {
+      suppressNextClickRef.current = false;
+    }, 0);
   };
 
   if (outline.length === 0) {

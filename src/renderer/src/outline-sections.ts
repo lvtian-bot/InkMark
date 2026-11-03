@@ -128,7 +128,10 @@ export function moveSection(
 
   const moving = doc.slice(source.from, source.to).replace(/\s+$/, '');
   // 章节连同其尾部空行一起移除，搬移后不会在原地留下空行。
-  const removed = doc.slice(0, source.from) + doc.slice(source.gapTo);
+  const removedAll = doc.slice(0, source.from) + doc.slice(source.gapTo);
+  // 被搬章节原本位于文末时，被移走的是它自己这部分分隔空白；
+  // 剩下的尾部空白必须一并清掉，否则新文末会残留空行。
+  const removed = source.gapTo >= doc.length ? removedAll.replace(/\s+$/, '') : removedAll;
   const removedCount = source.gapTo - source.from;
   // 目标偏移换算到删除之后的坐标系：源区间之后的内容整体前移。
   const target = clampToDoc(
@@ -136,9 +139,11 @@ export function moveSection(
     anchorOffset > source.gapTo ? anchorOffset - removedCount : anchorOffset,
   );
 
-  // 拼接两侧的现有空白一律收敛为一个空行，避免出现多余空行或正文粘连。
+  // 只在拼接边界上归一空白：两侧已有换行说明它们本身就是完整的行，
+  // 多余的换行只来自被移走的章节。剩余正文的其余内容必须逐字保留，
+  // 否则会误删未移动章节里有意义的行尾空格（如缩进代码块）。
   const prefix = removed.slice(0, target).replace(/\s+$/, '');
-  const suffix = removed.slice(target).replace(/^\s+/, '').replace(/\s+$/, '');
+  const suffix = removed.slice(target).replace(/^[ \t]*\r?\n/, '');
   const before = prefix.length > 0 ? '\n\n' : '';
   // 章节位于文末时不再补尾部空行。
   const after = suffix.length > 0 ? '\n\n' : '';
