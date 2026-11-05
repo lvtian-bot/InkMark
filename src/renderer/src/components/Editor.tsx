@@ -37,6 +37,7 @@ import {
   callCommand,
 } from '@milkdown/kit/utils';
 import { TextSelection } from '@milkdown/kit/prose/state';
+import { closeHistory } from '@milkdown/kit/prose/history';
 import type { Node as ProseNode, ResolvedPos } from '@milkdown/kit/prose/model';
 import { editorHandle } from '../editor-ref';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
@@ -72,6 +73,15 @@ import {
   dropBrPlaceholderHandler,
   breakHandler,
 } from '../markdown-stringify-options';
+
+/** 将整篇替换隔离为独立撤销步骤，不与前后输入合并。 */
+// eslint-disable-next-line react-refresh/only-export-components -- 集成测试复用实际写入入口。
+export function replaceMarkdownUndoable(editor: MilkdownEditor, markdown: string): void {
+  const view = editor.ctx.get(editorViewCtx);
+  view.dispatch(closeHistory(view.state.tr));
+  editor.action(replaceAllAction(markdown, false));
+  view.dispatch(closeHistory(view.state.tr));
+}
 
 const GITHUB_LINK_ID = 'inkmark-github-theme';
 
@@ -495,7 +505,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         // 以一次普通事务替换整篇内容（flush=false）：保留撤销历史，
         // 用户按 Ctrl+Z 可一步撤回（大纲拖动搬移章节使用）。
         try {
-          ed.action(replaceAllAction(md, false));
+          replaceMarkdownUndoable(ed, md);
           const view = ed.ctx.get(editorViewCtx);
           syncedDocRef.current = view.state.doc;
           onDocChangeRef.current(view.state.doc);

@@ -10,7 +10,7 @@ import {
   computeVisibleHeadings,
   resolveActiveId,
 } from '../outline-visibility';
-import { canMoveOutlineSection, moveOutlineSection } from '../outline-move';
+import { canDropOutlineSection, canMoveOutlineSection, moveOutlineSection } from '../outline-move';
 import { isSectionAncestor, resolveDropAnchor, type DropAnchor } from '../outline-sections';
 import '../styles/outline.css';
 
@@ -52,6 +52,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   );
   // 拖动结束后浏览器会补发一次 click，用它拦下该次误触发的跳转。
   const suppressNextClickRef = useRef(false);
+  const dropSafetyRef = useRef(new Map<string, boolean>());
 
   useEffect(() => {
     const handleScroll = (): void => {
@@ -122,6 +123,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   };
 
   const handleDragStart = (event: DragEvent<HTMLButtonElement>, index: number): void => {
+    dropSafetyRef.current.clear();
     // 文档结构无法安全搬移时（如存在未闭合代码围栏）不允许发起拖动。
     if (!canMoveOutlineSection()) {
       event.preventDefault();
@@ -142,7 +144,12 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     // 与 Word 导航窗格一致：标题行上半区插到该章节之前，下半区插到该章节之后。
     const anchor = resolveDropAnchor(index, (event.clientY - rect.top) / rect.height);
     // 拖进自身或其子章节属于无效放置，直接给出禁止光标。
-    const valid = !isSectionAncestor(outline, dragIndex, index);
+    const key = `${index}:${anchor.kind}`;
+    let valid = dropSafetyRef.current.get(key);
+    if (valid === undefined) {
+      valid = canDropOutlineSection(dragIndex, anchor);
+      dropSafetyRef.current.set(key, valid);
+    }
     event.dataTransfer.dropEffect = valid ? 'move' : 'none';
     setDropTarget(valid ? { index, kind: anchor.kind } : null);
   };
@@ -170,6 +177,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     // 标记只保留到本次事件序列结束：Esc 取消拖动时没有补发 click，
     // 若长期保留会吞掉用户下一次正常的点击跳转。
     suppressNextClickRef.current = true;
+    dropSafetyRef.current.clear();
     setDragIndex(null);
     setDropTarget(null);
     window.setTimeout(() => {

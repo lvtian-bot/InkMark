@@ -1,3 +1,5 @@
+import { markdownLanguage } from '@codemirror/lang-markdown';
+
 /**
  * 大纲拖动移动的纯逻辑：把大纲标题映射回正文的字符区间，
  * 并计算「把一整节搬到另一处」之后的新正文。与编辑器、DOM 无关，便于单元测试。
@@ -67,15 +69,15 @@ export function computeSectionRanges(
 
   const starts = order.map(({ heading }) => expandToLineStart(doc, heading.pos));
   const levels = order.map(({ heading }) => heading.level);
-  // 章节止于其右侧第一个「同级或更高级」标题；没有则直到文末。
+  // 从右向左维护最近的同级或更高级标题，避免长文档逐项向后扫描。
   const boundaries = order.map(() => doc.length);
-  for (let i = 0; i < order.length; i += 1) {
-    for (let j = i + 1; j < order.length; j += 1) {
-      if (levels[j] <= levels[i]) {
-        boundaries[i] = starts[j];
-        break;
-      }
+  const candidates: number[] = [];
+  for (let i = order.length - 1; i >= 0; i -= 1) {
+    while (candidates.length > 0 && levels[candidates[candidates.length - 1]] > levels[i]) {
+      candidates.pop();
     }
+    if (candidates.length > 0) boundaries[i] = starts[candidates[candidates.length - 1]];
+    candidates.push(i);
   }
 
   return order
@@ -137,6 +139,56 @@ export interface MoveSectionResult {
   movedFrom: number;
 }
 
+/** 只在顶层标题边界切分，避免拆开列表、引用等 Markdown 容器。 */
+export function hasSafeSectionBoundaries(
+  doc: string,
+  ranges: readonly OutlineSection[],
+  fromIndex: number,
+  anchor: DropAnchor,
+): boolean {
+  const source = ranges[fromIndex];
+  const target = ranges[anchor.index];
+  if (!source || !target) return false;
+  const boundaries = new Set<number>([doc.length]);
+  markdownLanguage.parser.parse(doc).iterate({
+    enter(node) {
+      if (
+        /^(?:ATXHeading|SetextHeading)[1-6]$/.test(node.name) &&
+        node.node.parent?.name === 'Document'
+      ) {
+        boundaries.add(expandToLineStart(doc, node.from));
+      }
+    },
+  });
+  const destination = anchor.kind === 'before' ? target.from : target.gapTo;
+  return (
+    boundaries.has(source.from) &&
+    boundaries.has(source.gapTo) &&
+    boundaries.has(target.from) &&
+    boundaries.has(destination)
+  );
+}
+
+/** 引用式链接使用全局定义；改变定义顺序可能改变未移动链接的目标。 */
+export function hasStableLinkDefinitions(before: string, after: string): boolean {
+  // 引用式定义的标签以 ]: 结束；普通正文不必为每个落点重复解析两遍。
+  if (!before.includes(']:') && !after.includes(']:')) return true;
+  const definitions = (doc: string): string[] => {
+    const found: string[] = [];
+    markdownLanguage.parser.parse(doc).iterate({
+      enter(node) {
+        if (node.name === 'LinkReference') found.push(doc.slice(node.from, node.to));
+      },
+    });
+    return found;
+  };
+  const original = definitions(before);
+  const moved = definitions(after);
+  return (
+    original.length === moved.length && original.every((value, index) => value === moved[index])
+  );
+}
+
 /**
  * 把第 `fromIndex` 节整体搬到 `anchor` 指定的位置，返回移动后的新正文。
  * 返回 null 表示无需移动（找不到章节、原地搬回、或落点落在自己内部）。
@@ -196,35 +248,17 @@ export function moveSection(
  * 后续章节会被吞进代码块，因此这类移动需要拒绝。
  */
 export function hasUnclosedFence(doc: string, from: number): boolean {
-  let fence: { char: string; length: number } | null = null;
-  let offset = from;
-  for (const line of doc.slice(from).split('\n')) {
-    const lineStart = offset;
-    offset += line.length + 1;
-    if (lineStart < from) continue;
-    const stripped = stripContainersForFence(line.replace(/\r$/, ''));
-    const match = /^(```+|~~~+)/.exec(stripped);
-    if (!match) continue;
-    const marker = match[1];
-    if (fence === null) {
-      fence = { char: marker[0], length: marker.length };
-    } else if (marker[0] === fence.char && marker.length >= fence.length) {
-      fence = null;
-    }
-  }
-  return fence !== null;
-}
-
-/** 去掉行首引用前缀与列表标记，用于识别容器内的围栏。 */
-function stripContainersForFence(line: string): string {
-  let rest = line;
-  for (;;) {
-    const next = rest
-      .replace(/^[ \t]{0,3}>[ \t]?/, '')
-      .replace(/^[ \t]{0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+/, '');
-    if (next === rest) return rest;
-    rest = next;
-  }
+  if (!doc.includes('```', from) && !doc.includes('~~~', from)) return false;
+  let unclosed = false;
+  markdownLanguage.parser.parse(doc.slice(from)).iterate({
+    enter(node) {
+      if (node.name !== 'FencedCode') return;
+      // 使用编辑器的 Markdown 解析器识别围栏，避免遗漏缩进和错误的闭合行。
+      if (node.node.getChildren('CodeMark').length < 2) unclosed = true;
+      return false;
+    },
+  });
+  return unclosed;
 }
 
 /**

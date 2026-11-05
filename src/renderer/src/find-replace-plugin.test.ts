@@ -5,6 +5,8 @@ import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { history } from '@milkdown/kit/plugin/history';
 import { replaceAll } from '@milkdown/kit/utils';
+import { closeHistory, undo } from '@milkdown/kit/prose/history';
+import { replaceMarkdownUndoable } from './components/Editor';
 import { frontmatter } from './plugins/frontmatter';
 import { findReplacePlugin, setFindDecorations } from './find-replace-plugin';
 import { findTextMatchesInDocument } from './find-replace-doc';
@@ -26,6 +28,24 @@ async function bootWithFind(markdown: string) {
 }
 
 describe('findTextMatchesInDocument (real Milkdown schema)', () => {
+  it('大纲移动与移动前后的输入分别撤销', async () => {
+    const { editor, view } = await bootWithFind('# A\n\n# B');
+    view.dispatch(closeHistory(view.state.tr));
+    view.dispatch(view.state.tr.insertText('!', 2));
+    const afterFirstInput = view.state.doc.toJSON();
+    replaceMarkdownUndoable(editor, '# B\n\n# A!');
+    const afterMove = view.state.doc.toJSON();
+    view.dispatch(view.state.tr.insertText('?', 2));
+
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.toJSON()).toEqual(afterMove);
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.toJSON()).toEqual(afterFirstInput);
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.textContent).toBe('AB');
+    await editor.destroy();
+  });
+
   it('matches plain text across paragraphs', async () => {
     const { view, editor } = await bootWithFind('foo bar\n\nfoo baz');
     const matches = findTextMatchesInDocument(view.state.doc, 'foo');

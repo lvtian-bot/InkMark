@@ -1,6 +1,16 @@
-import { describe, expect, it } from 'vitest';
-import { headingsFromMarkdown } from './outline-move';
+import { EditorState } from '@codemirror/state';
+import { markdown } from '@codemirror/lang-markdown';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  canDropOutlineSection,
+  canMoveOutlineSection,
+  headingsFromMarkdown,
+  moveOutlineSection,
+} from './outline-move';
 import { hasUnclosedFence } from './outline-sections';
+import { extractHeadings } from './hooks/useOutline';
+import { sourceEditorHandle } from './source-editor-ref';
+import { useStore } from './stores/useStore';
 
 describe('headingsFromMarkdown', () => {
   it('识别 ATX 标题并记录行首位置', () => {
@@ -99,7 +109,120 @@ describe('hasUnclosedFence', () => {
     expect(hasUnclosedFence('````\ncode\n```', 0)).toBe(true);
   });
 
+  it('识别带缩进和伪闭合行的未闭合围栏', () => {
+    expect(hasUnclosedFence('# A\n\n# B\n\n  ```js\ncode', 0)).toBe(true);
+    expect(hasUnclosedFence('# A\n\n# B\n\n```js\n```not-a-close\ncode', 0)).toBe(true);
+  });
+
+  it('区分引用内结束的围栏和后续的普通章节', () => {
+    expect(hasUnclosedFence('# A\n\n> ```js\n> code\n\n# B', 0)).toBe(true);
+    expect(hasUnclosedFence('# A\n\n> ```js\n> code\n> ```\n\n# B', 0)).toBe(false);
+  });
+
   it('没有围栏时返回 false', () => {
     expect(hasUnclosedFence('# A\n\nbody', 0)).toBe(false);
+  });
+});
+
+describe('富文本大纲标题标识', () => {
+  it('标题本身带序号时仍不与重复标题的标识冲突', () => {
+    const texts = ['a', 'a-1', 'a', 'B'];
+    const doc = {
+      descendants: (
+        visit: (
+          node: { type: { name: string }; attrs: { level: number }; textContent: string },
+          pos: number,
+        ) => boolean,
+      ) => {
+        texts.forEach((textContent, pos) =>
+          visit({ type: { name: 'heading' }, attrs: { level: 1 }, textContent }, pos),
+        );
+      },
+    };
+    expect(extractHeadings(doc).map((heading) => heading.id)).toEqual(['a', 'a-1', 'a-2', 'b']);
+  });
+});
+
+describe('源码模式大纲搬移接入', () => {
+  const initialState = useStore.getState();
+
+  afterEach(() => {
+    useStore.setState(initialState);
+    sourceEditorHandle.current = null;
+  });
+
+  function prepare(doc: string, readOnly = false) {
+    const state = EditorState.create({
+      doc,
+      extensions: [markdown(), EditorState.readOnly.of(readOnly)],
+    });
+    const replaceDocumentUndoable = vi.fn();
+    useStore.setState({ viewMode: 'source' });
+    sourceEditorHandle.current = {
+      getValue: () => state.sliceDoc(),
+      getDocText: () => state.doc.toString(),
+      getEditorState: () => state,
+      setEditorState: () => undefined,
+      setValue: () => undefined,
+      focus: () => undefined,
+      getSelection: () => ({ from: 0, to: 0 }),
+      getSelectedText: () => '',
+      setSelection: () => undefined,
+      getScrollTop: () => 0,
+      setScrollTop: () => undefined,
+      replaceRange: () => undefined,
+      replaceRangeQuiet: () => undefined,
+      notifyChange: () => undefined,
+      undo: () => undefined,
+      redo: () => undefined,
+      deleteLine: () => undefined,
+      replaceDocumentUndoable,
+      applyReviewChunks: () => undefined,
+      getReviewChunks: () => [],
+      acceptAllReviewChunks: () => undefined,
+      rejectAllReviewChunks: () => undefined,
+    };
+    return replaceDocumentUndoable;
+  }
+
+  it('安全的顶层章节移动写回正确正文', () => {
+    const replace = prepare('# A\n\na\n\n# B\n\nb');
+    expect(canDropOutlineSection(1, { kind: 'before', index: 0 })).toBe(true);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(true);
+    expect(replace).toHaveBeenCalledWith('# B\n\nb\n\n# A\n\na');
+  });
+
+  it('不允许拆开列表中的相邻章节', () => {
+    const replace = prepare('# X\n\n- # A\n\n  # B\n\n# C');
+    expect(canDropOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('未闭合的缩进围栏阻止写回', () => {
+    const replace = prepare('# A\n\na\n\n# B\n\n  ```js\ncode');
+    expect(canMoveOutlineSection()).toBe(false);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('审阅只读状态禁止拖动与写回', () => {
+    const replace = prepare('# A\n\n# B', true);
+    expect(canMoveOutlineSection()).toBe(false);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('拒绝改变链接定义顺序，避免未移动章节的链接指向改变', () => {
+    const replace = prepare('# A\n\n[x]: /first\n\n# B\n\n[x]: /second\n\n# C\n\n[read][x]');
+    expect(canDropOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('未改变链接定义顺序时仍可移动其他章节', () => {
+    const replace = prepare('# A\n\n[x]: /first\n\n# B\n\nbody\n\n# C\n\n[read][x]');
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(true);
+    expect(replace).toHaveBeenCalledOnce();
   });
 });

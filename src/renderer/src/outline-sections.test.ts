@@ -3,6 +3,7 @@ import {
   computeSectionRanges,
   expandToLineEnd,
   expandToLineStart,
+  hasSafeSectionBoundaries,
   isSectionAncestor,
   moveSection,
   resolveDropAnchor,
@@ -244,6 +245,44 @@ describe('moveSection', () => {
     const result = move(content, 1, 'before', 0);
     expect(result).toContain('line  \n\n  more  ');
     expect(result?.startsWith('# B\n\nline  \n\n  more  ')).toBe(true);
+  });
+});
+
+describe('hasSafeSectionBoundaries', () => {
+  it('拒绝拆开同一列表项，保留相邻未移动标题的归属', () => {
+    const content = '# X\n\n- # A\n\n  # B\n\n# C';
+    const headings = [
+      { pos: content.indexOf('# X'), level: 1 },
+      { pos: content.indexOf('# A'), level: 1 },
+      { pos: content.indexOf('# B'), level: 1 },
+      { pos: content.indexOf('# C'), level: 1 },
+    ];
+    const ranges = computeSectionRanges(content, headings);
+    expect(hasSafeSectionBoundaries(content, ranges, 1, { kind: 'before', index: 0 })).toBe(false);
+    expect(hasSafeSectionBoundaries(content, ranges, 3, { kind: 'after', index: 1 })).toBe(false);
+  });
+
+  it('不因其他章节存在嵌套标题而阻止无关顶层章节移动', () => {
+    const content = '# X\n\nx\n\n# Y\n\ny\n\n# Z\n\n- ## nested\n\n  body';
+    const headings = [
+      { pos: content.indexOf('# X'), level: 1 },
+      { pos: content.indexOf('# Y'), level: 1 },
+      { pos: content.indexOf('# Z'), level: 1 },
+      { pos: content.indexOf('## nested'), level: 2 },
+    ];
+    const ranges = computeSectionRanges(content, headings);
+    expect(hasSafeSectionBoundaries(content, ranges, 1, { kind: 'before', index: 0 })).toBe(true);
+  });
+
+  it('拒绝在引用标题内插入章节', () => {
+    const content = '# X\n\n> # A\n> body\n\n# B';
+    const headings = [
+      { pos: content.indexOf('# X'), level: 1 },
+      { pos: content.indexOf('# A'), level: 1 },
+      { pos: content.indexOf('# B'), level: 1 },
+    ];
+    const ranges = computeSectionRanges(content, headings);
+    expect(hasSafeSectionBoundaries(content, ranges, 2, { kind: 'before', index: 1 })).toBe(false);
   });
 });
 

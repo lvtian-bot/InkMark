@@ -31,13 +31,20 @@ export function extractHeadings(doc: unknown): Heading[] {
   // 引发列表渲染错乱（切窗回来后大纲出现重复/错位条目）。
   // 对重复 slug 追加序号保证 id 唯一。
   const slugCount = new Map<string, number>();
+  const usedIds = new Set<string>();
   d.descendants((node, pos) => {
     if (node.type.name === 'heading' && node.attrs.level) {
       const base = slugify(node.textContent) || `heading-${pos}`;
-      const n = slugCount.get(base) ?? 0;
+      let n = slugCount.get(base) ?? 0;
+      let id = n === 0 ? base : `${base}-${n}`;
+      while (usedIds.has(id)) {
+        n += 1;
+        id = `${base}-${n}`;
+      }
       slugCount.set(base, n + 1);
+      usedIds.add(id);
       headings.push({
-        id: n === 0 ? base : `${base}-${n}`,
+        id,
         level: node.attrs.level,
         text: node.textContent,
         pos,

@@ -1,11 +1,15 @@
-import type { EditorState } from '@codemirror/state';
+import { EditorState } from '@codemirror/state';
+import { markdownLanguage } from '@codemirror/lang-markdown';
 import { useStore, selectViewMode } from './stores/useStore';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle } from './source-editor-ref';
 import { extractSourceHeadings } from './source-document';
 import {
   computeSectionRanges,
+  expandToLineStart,
   hasUnclosedFence,
+  hasSafeSectionBoundaries,
+  hasStableLinkDefinitions,
   isSectionAncestor,
   moveSection,
   type DropAnchor,
@@ -25,12 +29,13 @@ export function moveOutlineSection(fromIndex: number, anchor: DropAnchor): boole
   const context = readMoveContext();
   if (!context) return false;
   if (isSectionAncestor(context.headings, fromIndex, anchor.index)) return false;
+  if (!hasSafeSectionBoundaries(context.doc, context.ranges, fromIndex, anchor)) return false;
   // 未闭合的代码围栏会延续到文末；把末尾章节搬到中间会让后续章节被吞进代码块，
   // 静默改变未移动内容的结构，因此这类文档暂不支持拖动搬移。
   if (hasUnclosedFence(context.doc, 0)) return false;
 
   const result = moveSection(context.doc, context.ranges, fromIndex, anchor);
-  if (!result) return false;
+  if (!result || !hasStableLinkDefinitions(context.doc, result.content)) return false;
   context.apply(result.content);
   return true;
 }
@@ -51,6 +56,20 @@ export function canMoveOutlineSection(): boolean {
   return context !== null && !hasUnclosedFence(context.doc, 0);
 }
 
+/** 预览落点时执行与实际搬移相同的结构安全检查。 */
+export function canDropOutlineSection(fromIndex: number, anchor: DropAnchor): boolean {
+  const context = readMoveContext();
+  if (
+    !context ||
+    hasUnclosedFence(context.doc, 0) ||
+    isSectionAncestor(context.headings, fromIndex, anchor.index) ||
+    !hasSafeSectionBoundaries(context.doc, context.ranges, fromIndex, anchor)
+  )
+    return false;
+  const result = moveSection(context.doc, context.ranges, fromIndex, anchor);
+  return result !== null && hasStableLinkDefinitions(context.doc, result.content);
+}
+
 /** 读取当前编辑模式下用于计算的正文、章节区间与写回方式；无法安全计算时返回 null。 */
 function readMoveContext(): MoveContext | null {
   const state = useStore.getState();
@@ -61,6 +80,7 @@ function readMoveContext(): MoveContext | null {
     const handle = sourceEditorHandle.current;
     if (!handle) return null;
     const editorState: EditorState = handle.getEditorState();
+    if (editorState.facet(EditorState.readOnly)) return null;
     const doc = editorState.doc.toString();
     const headings = extractSourceHeadings(editorState);
     return {
@@ -78,7 +98,11 @@ function readMoveContext(): MoveContext | null {
   if (!doc) return null;
   // 大纲里的标题与文本中解析出的标题必须一一对应，否则序号会错位、搬错章节。
   const headings = headingsFromMarkdown(doc);
-  if (tab.outline.length !== headings.length) return null;
+  if (
+    tab.outline.length !== headings.length ||
+    headings.some((heading, index) => heading.level !== tab.outline[index].level)
+  )
+    return null;
   return {
     doc,
     headings,
@@ -93,71 +117,18 @@ function readMoveContext(): MoveContext | null {
  * 判定需要与大纲数据源（`hooks/useOutline.ts` 遍历 ProseMirror 全部后代）保持一致，
  * 否则标题数量不等会导致拒绝移动：
  * - 跳过 YAML frontmatter；
- * - 识别 ATX 与 setext 标题，包括引用、列表等容器内的标题；
- * - 围栏代码块内的 `#` 不算标题，闭合围栏长度不小于开启围栏才算闭合。
+ * - 用编辑器的 Markdown 解析器识别标题，包括引用、列表等容器内的标题。
  */
 export function headingsFromMarkdown(doc: string): Array<{ pos: number; level: number }> {
   const frontmatter = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(doc);
   const start = frontmatter ? frontmatter[0].length : 0;
   const headings: Array<{ pos: number; level: number }> = [];
-  // 当前围栏：字符与开启长度。只有长度足够的同类围栏才能闭合。
-  let fence: { char: string; length: number } | null = null;
-  // 上一个非空普通行起点：setext 标题的位置记在它的行首。
-  let previousParagraphStart: number | null = null;
-
-  let offset = start;
-  for (const line of doc.slice(start).split('\n')) {
-    const lineStart = offset;
-    offset += line.length + 1;
-    const content = line.replace(/\r$/, '');
-    // 剥掉引用前缀与列表标记，使容器内的标题与顶层标题一样可识别。
-    const stripped = stripContainers(content);
-
-    const fenceMatch = /^(```+|~~~+)/.exec(stripped);
-    if (fenceMatch) {
-      const marker = fenceMatch[1];
-      if (fence === null) {
-        fence = { char: marker[0], length: marker.length };
-        previousParagraphStart = null;
-      } else if (marker[0] === fence.char && marker.length >= fence.length) {
-        fence = null;
-      }
-      continue;
-    }
-    if (fence !== null) continue;
-
-    const atx = /^(#{1,6})(?:[ \t]+|$)/.exec(stripped);
-    if (atx) {
-      headings.push({ pos: lineStart, level: atx[1].length });
-      previousParagraphStart = null;
-      continue;
-    }
-
-    // setext 标题：上一行普通文本下跟一行 === 或 ---。
-    if (/^(=+|-+)\s*$/.test(stripped) && previousParagraphStart !== null) {
-      headings.push({
-        pos: previousParagraphStart,
-        level: stripped.startsWith('=') ? 1 : 2,
-      });
-      previousParagraphStart = null;
-      continue;
-    }
-
-    previousParagraphStart = stripped.trim() !== '' ? lineStart : null;
-  }
-
-  return headings.sort((a, b) => a.pos - b.pos);
-}
-
-/** 去掉行首的缩进、引用标记与列表标记，返回内容起点开始的文本。 */
-function stripContainers(line: string): string {
-  let rest = line;
-  // 反复剥离：`- > # 标题` 这类嵌套容器需要多次。
-  for (;;) {
-    const next = rest
-      .replace(/^[ \t]{0,3}>[ \t]?/, '')
-      .replace(/^[ \t]{0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+/, '');
-    if (next === rest) return rest;
-    rest = next;
-  }
+  markdownLanguage.parser.parse(doc.slice(start)).iterate({
+    enter(node) {
+      const match = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(node.name);
+      if (match)
+        headings.push({ pos: expandToLineStart(doc, start + node.from), level: Number(match[1]) });
+    },
+  });
+  return headings;
 }
