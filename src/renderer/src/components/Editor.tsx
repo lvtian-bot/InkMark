@@ -499,6 +499,8 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           const view = ed.ctx.get(editorViewCtx);
           syncedDocRef.current = view.state.doc;
           onDocChangeRef.current(view.state.doc);
+          // 拖动来自大纲按钮，焦点已离开编辑器；交还焦点才能让撤销快捷键立即生效。
+          view.focus();
         } catch (e) {
           console.error('replaceDocumentUndoable error:', e);
         }

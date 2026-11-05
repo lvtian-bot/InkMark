@@ -10,7 +10,7 @@ import {
   computeVisibleHeadings,
   resolveActiveId,
 } from '../outline-visibility';
-import { moveOutlineSection } from '../outline-move';
+import { canMoveOutlineSection, moveOutlineSection } from '../outline-move';
 import { isSectionAncestor, resolveDropAnchor, type DropAnchor } from '../outline-sections';
 import '../styles/outline.css';
 
@@ -122,6 +122,11 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   };
 
   const handleDragStart = (event: DragEvent<HTMLButtonElement>, index: number): void => {
+    // 文档结构无法安全搬移时（如存在未闭合代码围栏）不允许发起拖动。
+    if (!canMoveOutlineSection()) {
+      event.preventDefault();
+      return;
+    }
     event.stopPropagation();
     event.dataTransfer.effectAllowed = 'move';
     // 部分平台在未设置数据时不触发拖动，放入纯文本兜底。

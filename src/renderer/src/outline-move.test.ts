@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { headingsFromMarkdown } from './outline-move';
+import { hasUnclosedFence } from './outline-sections';
 
 describe('headingsFromMarkdown', () => {
   it('识别 ATX 标题并记录行首位置', () => {
@@ -81,5 +82,24 @@ describe('headingsFromMarkdown', () => {
       { pos: doc.indexOf('> - > ## Deep'), level: 2 },
       { pos: doc.indexOf('# B'), level: 1 },
     ]);
+  });
+});
+
+describe('hasUnclosedFence', () => {
+  it('文末未闭合的围栏被识别', () => {
+    expect(hasUnclosedFence('# A\n\na\n\n# B\n\n```js\ncode', 0)).toBe(true);
+  });
+
+  it('已闭合的围栏不算未闭合', () => {
+    expect(hasUnclosedFence('# A\n\n```js\ncode\n```\n\n# B', 0)).toBe(false);
+  });
+
+  it('闭合围栏长度不足时仍视为未闭合', () => {
+    expect(hasUnclosedFence('````\n```\ncode\n````', 0)).toBe(false);
+    expect(hasUnclosedFence('````\ncode\n```', 0)).toBe(true);
+  });
+
+  it('没有围栏时返回 false', () => {
+    expect(hasUnclosedFence('# A\n\nbody', 0)).toBe(false);
   });
 });

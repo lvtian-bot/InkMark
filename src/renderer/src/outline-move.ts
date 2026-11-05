@@ -5,6 +5,7 @@ import { sourceEditorHandle } from './source-editor-ref';
 import { extractSourceHeadings } from './source-document';
 import {
   computeSectionRanges,
+  hasUnclosedFence,
   isSectionAncestor,
   moveSection,
   type DropAnchor,
@@ -24,6 +25,9 @@ export function moveOutlineSection(fromIndex: number, anchor: DropAnchor): boole
   const context = readMoveContext();
   if (!context) return false;
   if (isSectionAncestor(context.headings, fromIndex, anchor.index)) return false;
+  // 未闭合的代码围栏会延续到文末；把末尾章节搬到中间会让后续章节被吞进代码块，
+  // 静默改变未移动内容的结构，因此这类文档暂不支持拖动搬移。
+  if (hasUnclosedFence(context.doc, 0)) return false;
 
   const result = moveSection(context.doc, context.ranges, fromIndex, anchor);
   if (!result) return false;
@@ -36,6 +40,15 @@ interface MoveContext {
   headings: ReadonlyArray<{ pos: number; level: number }>;
   ranges: OutlineSection[];
   apply: (next: string) => void;
+}
+
+/**
+ * 当前文档是否允许大纲拖动搬移。
+ * 未闭合的代码围栏会延续到文末，搬移会让后续章节被吞进代码块，此时禁止拖动。
+ */
+export function canMoveOutlineSection(): boolean {
+  const context = readMoveContext();
+  return context !== null && !hasUnclosedFence(context.doc, 0);
 }
 
 /** 读取当前编辑模式下用于计算的正文、章节区间与写回方式；无法安全计算时返回 null。 */

@@ -191,6 +191,43 @@ export function moveSection(
 }
 
 /**
+ * 判断从 `from` 起（到文末）是否存在未闭合的代码围栏。
+ * 未闭合围栏在 Markdown 中合法且会一直延续到文末；若把这样的章节搬到中间，
+ * 后续章节会被吞进代码块，因此这类移动需要拒绝。
+ */
+export function hasUnclosedFence(doc: string, from: number): boolean {
+  let fence: { char: string; length: number } | null = null;
+  let offset = from;
+  for (const line of doc.slice(from).split('\n')) {
+    const lineStart = offset;
+    offset += line.length + 1;
+    if (lineStart < from) continue;
+    const stripped = stripContainersForFence(line.replace(/\r$/, ''));
+    const match = /^(```+|~~~+)/.exec(stripped);
+    if (!match) continue;
+    const marker = match[1];
+    if (fence === null) {
+      fence = { char: marker[0], length: marker.length };
+    } else if (marker[0] === fence.char && marker.length >= fence.length) {
+      fence = null;
+    }
+  }
+  return fence !== null;
+}
+
+/** 去掉行首引用前缀与列表标记，用于识别容器内的围栏。 */
+function stripContainersForFence(line: string): string {
+  let rest = line;
+  for (;;) {
+    const next = rest
+      .replace(/^[ \t]{0,3}>[ \t]?/, '')
+      .replace(/^[ \t]{0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+/, '');
+    if (next === rest) return rest;
+    rest = next;
+  }
+}
+
+/**
  * 判断 `targetIndex` 章节是否属于 `fromIndex` 章节（含自身）或位于其内部。
  * 只依赖标题层级：被拖章节覆盖其后所有更深层级的标题，直到遇到同级或更高级标题。
  * 用于拖动时立即给出「禁止放置」反馈，无需读取正文。
