@@ -14,7 +14,8 @@ function headingsOf(doc: string): HeadingRange[] {
   const headings: HeadingRange[] = [];
   let offset = 0;
   for (const line of doc.split('\n')) {
-    const match = /^(#{1,6})\s+/.exec(line);
+    // 允许缩进：列表等容器内的标题与顶层标题一样计入大纲。
+    const match = /^[ \t]{0,3}(#{1,6})[ \t]+/.exec(line);
     if (match) headings.push({ pos: offset, level: match[1].length });
     offset += line.length + 1;
   }
@@ -222,6 +223,27 @@ describe('moveSection', () => {
     const content = '# A\n\na\n\n# B\n\nb';
     const result = move(content, 1, 'before', 0);
     expect(result).toBe('# B\n\nb\n\n# A\n\na');
+  });
+
+  it('不吞掉相邻标题前的缩进,保持其容器归属', () => {
+    // B 缩进两格属于列表项，搬移 C 后 B 仍须留在列表内。
+    const content = '# X\n\n- # A\n\n  # B\n\n# C';
+    const result = move(content, 2, 'before', 0);
+    expect(result).toBe('# C\n\n# X\n\n- # A\n\n  # B');
+  });
+
+  it('搬移末尾为缩进代码块时不删除行尾字面空格', () => {
+    const content = '# A\n\na\n\n# B\n\n    code  ';
+    const result = move(content, 1, 'before', 0);
+    expect(result).toContain('    code  ');
+    expect(result?.endsWith('# A\n\na')).toBe(true);
+  });
+
+  it('正文中的行尾空格随章节一起搬动', () => {
+    const content = '# A\n\na\n\n# B\n\nline  \n\n  more  ';
+    const result = move(content, 1, 'before', 0);
+    expect(result).toContain('line  \n\n  more  ');
+    expect(result?.startsWith('# B\n\nline  \n\n  more  ')).toBe(true);
   });
 });
 

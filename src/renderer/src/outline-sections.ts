@@ -83,20 +83,49 @@ export function computeSectionRanges(
       const from = starts[index];
       const lineEnd = expandToLineEnd(doc, heading.pos);
       const boundary = Math.max(boundaries[index], lineEnd);
-      // 章节内容止于最后一个非空行的行尾（不含换行符），之后的空行记为 gapTo。
+      // 章节内容止于最后一个非空行的行尾（保留其行尾字面空格），
+      // 其后的空白行作为分隔记录在 gapTo 中。
+      // gapTo 不得越过下一章节边界，否则会把相邻标题前的缩进一并让出，
+      // 改变那个未移动标题的容器归属。
       const contentEnd = Math.max(trimTrailingBlankLines(doc, from, boundary), from + 1);
-      let gapTo = contentEnd;
-      while (gapTo < doc.length && /\s/.test(doc[gapTo])) gapTo += 1;
-      return { from, to: contentEnd, gapTo: Math.max(gapTo, boundary) };
+      const gapTo = Math.min(skipBlankLines(doc, contentEnd, boundary), boundary);
+      return { from, to: contentEnd, gapTo: Math.max(gapTo, contentEnd) };
     })
     .sort((a, b) => a.from - b.from);
 }
 
-/** 返回区间内最后一个非空白行末尾之后的位置（不含行尾换行符）。 */
+/**
+ * 去掉区间末尾的空白行，但保留最后一个有内容的那一行（含其行尾空格）。
+ * 只按行判断：整行都由空白组成才算空行，行尾空格属于字面内容。
+ */
 function trimTrailingBlankLines(doc: string, from: number, to: number): number {
-  let cursor = to - 1;
-  while (cursor >= from && /\s/.test(doc[cursor])) cursor -= 1;
-  return cursor < from ? from : cursor + 1;
+  let end = to;
+  while (end > from) {
+    // 定位 end 之前最后一个非换行字符（即上一行最后一个字符）。
+    let cursor = end - 1;
+    while (cursor >= from && (doc[cursor] === '\n' || doc[cursor] === '\r')) cursor -= 1;
+    if (cursor < from) return from;
+    let lineStart = cursor;
+    while (lineStart > from && doc[lineStart - 1] !== '\n' && doc[lineStart - 1] !== '\r') {
+      lineStart -= 1;
+    }
+    if (doc.slice(lineStart, cursor + 1).trim() !== '') return cursor + 1;
+    end = lineStart;
+  }
+  return from;
+}
+
+/** 从 `from` 起跳过连续的空白行，返回下一个非空行的行首；不越过 `limit`。 */
+function skipBlankLines(doc: string, from: number, limit: number): number {
+  let cursor = from;
+  while (cursor < limit) {
+    let lineEnd = cursor;
+    while (lineEnd < limit && doc[lineEnd] !== '\n' && doc[lineEnd] !== '\r') lineEnd += 1;
+    if (doc.slice(cursor, lineEnd).trim() !== '') return cursor;
+    while (lineEnd < limit && (doc[lineEnd] === '\n' || doc[lineEnd] === '\r')) lineEnd += 1;
+    cursor = lineEnd;
+  }
+  return limit;
 }
 
 /** 落点：插到某个章节之前（`before`）或某个章节之后（`after`）。 */
@@ -126,12 +155,17 @@ export function moveSection(
   const anchorOffset = anchor.kind === 'before' ? anchorRange.from : anchorRange.gapTo;
   if (anchorOffset >= source.from && anchorOffset <= source.gapTo) return null;
 
-  const moving = doc.slice(source.from, source.to).replace(/\s+$/, '');
+  // 章节内容本身就是「最后一个非空行的行尾」，不在此处再裁空白，
+  // 否则会删掉末行里字面意义的空格（如缩进代码块的行尾空格）。
+  const moving = doc.slice(source.from, source.to);
   // 章节连同其尾部空行一起移除，搬移后不会在原地留下空行。
   const removedAll = doc.slice(0, source.from) + doc.slice(source.gapTo);
   // 被搬章节原本位于文末时，被移走的是它自己这部分分隔空白；
-  // 剩下的尾部空白必须一并清掉，否则新文末会残留空行。
-  const removed = source.gapTo >= doc.length ? removedAll.replace(/\s+$/, '') : removedAll;
+  // 剩下的尾部空行必须一并清掉，否则新文末会残留空行。只按整行去掉空行。
+  const removed =
+    source.gapTo >= doc.length
+      ? removedAll.slice(0, trimTrailingBlankLines(removedAll, 0, removedAll.length))
+      : removedAll;
   const removedCount = source.gapTo - source.from;
   // 目标偏移换算到删除之后的坐标系：源区间之后的内容整体前移。
   const target = clampToDoc(
@@ -139,17 +173,21 @@ export function moveSection(
     anchorOffset > source.gapTo ? anchorOffset - removedCount : anchorOffset,
   );
 
-  // 只在拼接边界上归一空白：两侧已有换行说明它们本身就是完整的行，
-  // 多余的换行只来自被移走的章节。剩余正文的其余内容必须逐字保留，
-  // 否则会误删未移动章节里有意义的行尾空格（如缩进代码块）。
-  const prefix = removed.slice(0, target).replace(/\s+$/, '');
-  const suffix = removed.slice(target).replace(/^[ \t]*\r?\n/, '');
-  const before = prefix.length > 0 ? '\n\n' : '';
-  // 章节位于文末时不再补尾部空行。
+  // 只在拼接边界上归一空白：去掉左侧末尾的空白行与右侧开头的空白行，
+  // 两侧正文其余内容逐字保留，避免误删未移动章节里有意义的行尾空格。
+  const prefix = removed.slice(0, target);
+  const prefixEnd = trimTrailingBlankLines(prefix, 0, prefix.length);
+  const prefixTrimmed = prefix.slice(0, prefixEnd);
+  const rawSuffix = removed.slice(target);
+  const suffixStart = skipBlankLines(rawSuffix, 0, rawSuffix.length);
+  // 被搬章节自带开头，不加前导空行；两侧都有内容时补一个空行分隔。
+  const before = prefixTrimmed.length > 0 ? '\n\n' : '';
+  const suffix = rawSuffix.slice(suffixStart);
+  // 章节移到文末后不再补尾部空行。
   const after = suffix.length > 0 ? '\n\n' : '';
-  const content = prefix + before + moving + after + suffix;
+  const content = prefixTrimmed + before + moving + after + suffix;
   if (content === doc) return null;
-  return { content, movedFrom: prefix.length + before.length };
+  return { content, movedFrom: prefixTrimmed.length + before.length };
 }
 
 /**
