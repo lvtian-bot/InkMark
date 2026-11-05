@@ -189,6 +189,52 @@ export function hasStableLinkDefinitions(before: string, after: string): boolean
   );
 }
 
+/** 确认移动后所有标题仍按指定顺序存在，防止未闭合块吞掉后续章节。 */
+export function hasExpectedHeadingOrder(
+  before: string,
+  after: string,
+  ranges: readonly OutlineSection[],
+  fromIndex: number,
+  anchor: DropAnchor,
+): boolean {
+  const source = ranges[fromIndex];
+  const target = ranges[anchor.index];
+  if (!source || !target) return false;
+  const destination = anchor.kind === 'before' ? target.from : target.gapTo;
+  const headings = (doc: string): Array<{ pos: number; name: string; text: string }> => {
+    const found: Array<{ pos: number; name: string; text: string }> = [];
+    markdownLanguage.parser.parse(doc).iterate({
+      enter(node) {
+        if (/^(?:ATXHeading|SetextHeading)[1-6]$/.test(node.name)) {
+          found.push({ pos: node.from, name: node.name, text: doc.slice(node.from, node.to) });
+        }
+      },
+    });
+    return found;
+  };
+  const original = headings(before);
+  const moved = original.filter(
+    (heading) => heading.pos >= source.from && heading.pos < source.gapTo,
+  );
+  const remaining = original.filter(
+    (heading) => heading.pos < source.from || heading.pos >= source.gapTo,
+  );
+  const expected = [
+    ...remaining.filter((heading) => heading.pos < destination),
+    ...moved,
+    ...remaining.filter((heading) => heading.pos >= destination),
+  ];
+  const actual = headings(after);
+  return (
+    moved.length > 0 &&
+    expected.length === actual.length &&
+    expected.every(
+      (heading, index) =>
+        heading.name === actual[index].name && heading.text === actual[index].text,
+    )
+  );
+}
+
 /**
  * 把第 `fromIndex` 节整体搬到 `anchor` 指定的位置，返回移动后的新正文。
  * 返回 null 表示无需移动（找不到章节、原地搬回、或落点落在自己内部）。

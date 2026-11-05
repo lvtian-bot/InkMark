@@ -206,6 +206,30 @@ describe('源码模式大纲搬移接入', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['HTML 注释', '<!-- comment'],
+    ['脚本块', '<script>\nconst x = 1;'],
+    ['样式块', '<style>\n.x { color: red; }'],
+  ])('未闭合的%s不能吞掉其他章节', (_name, block) => {
+    const replace = prepare(`# A\n\na\n\n# B\n\n${block}`);
+    expect(canDropOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('闭合的 HTML 注释不妨碍安全移动', () => {
+    const replace = prepare('# A\n\na\n\n# B\n\n<!-- comment -->');
+    expect(canDropOutlineSection(1, { kind: 'before', index: 0 })).toBe(true);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(true);
+    expect(replace).toHaveBeenCalledWith('# B\n\n<!-- comment -->\n\n# A\n\na');
+  });
+
+  it('向后移动父章节时保留其子标题的顺序和内容', () => {
+    const replace = prepare('# A\n\n## A1\n\nbody\n\n# B\n\nb');
+    expect(moveOutlineSection(0, { kind: 'after', index: 2 })).toBe(true);
+    expect(replace).toHaveBeenCalledWith('# B\n\nb\n\n# A\n\n## A1\n\nbody');
+  });
+
   it('审阅只读状态禁止拖动与写回', () => {
     const replace = prepare('# A\n\n# B', true);
     expect(canMoveOutlineSection()).toBe(false);

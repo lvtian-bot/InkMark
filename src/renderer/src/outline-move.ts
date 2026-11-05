@@ -7,6 +7,7 @@ import { extractSourceHeadings } from './source-document';
 import {
   computeSectionRanges,
   expandToLineStart,
+  hasExpectedHeadingOrder,
   hasUnclosedFence,
   hasSafeSectionBoundaries,
   hasStableLinkDefinitions,
@@ -27,16 +28,9 @@ import {
  */
 export function moveOutlineSection(fromIndex: number, anchor: DropAnchor): boolean {
   const context = readMoveContext();
-  if (!context) return false;
-  if (isSectionAncestor(context.headings, fromIndex, anchor.index)) return false;
-  if (!hasSafeSectionBoundaries(context.doc, context.ranges, fromIndex, anchor)) return false;
-  // 未闭合的代码围栏会延续到文末；把末尾章节搬到中间会让后续章节被吞进代码块，
-  // 静默改变未移动内容的结构，因此这类文档暂不支持拖动搬移。
-  if (hasUnclosedFence(context.doc, 0)) return false;
-
-  const result = moveSection(context.doc, context.ranges, fromIndex, anchor);
-  if (!result || !hasStableLinkDefinitions(context.doc, result.content)) return false;
-  context.apply(result.content);
+  const next = context && computeSafeMove(context, fromIndex, anchor);
+  if (!context || next === null) return false;
+  context.apply(next);
   return true;
 }
 
@@ -59,15 +53,29 @@ export function canMoveOutlineSection(): boolean {
 /** 预览落点时执行与实际搬移相同的结构安全检查。 */
 export function canDropOutlineSection(fromIndex: number, anchor: DropAnchor): boolean {
   const context = readMoveContext();
+  return context !== null && computeSafeMove(context, fromIndex, anchor) !== null;
+}
+
+/** 拖动预览与最终写回共享同一套结构检查。 */
+function computeSafeMove(
+  context: MoveContext,
+  fromIndex: number,
+  anchor: DropAnchor,
+): string | null {
   if (
-    !context ||
     hasUnclosedFence(context.doc, 0) ||
     isSectionAncestor(context.headings, fromIndex, anchor.index) ||
     !hasSafeSectionBoundaries(context.doc, context.ranges, fromIndex, anchor)
   )
-    return false;
+    return null;
   const result = moveSection(context.doc, context.ranges, fromIndex, anchor);
-  return result !== null && hasStableLinkDefinitions(context.doc, result.content);
+  if (
+    !result ||
+    !hasStableLinkDefinitions(context.doc, result.content) ||
+    !hasExpectedHeadingOrder(context.doc, result.content, context.ranges, fromIndex, anchor)
+  )
+    return null;
+  return result.content;
 }
 
 /** 读取当前编辑模式下用于计算的正文、章节区间与写回方式；无法安全计算时返回 null。 */
