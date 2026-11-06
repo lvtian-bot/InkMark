@@ -351,10 +351,10 @@ export const messages: Record<MessageKey, string> = {
   'fileTree.menu.newDocument': 'New Document',
   'fileTree.menu.rename': 'Rename',
   'fileTree.menu.remove': 'Delete',
-  'fileTree.newDocumentDefaultName': 'Untitled.md',
+  'fileTree.newDocumentDefaultName': 'Untitled',
   'fileTree.createDocumentTitle': 'New Document',
   'fileTree.createDocumentPrompt':
-    'Create a new Markdown document in "{folder}". Leave empty to cancel.',
+    'Create a new document in "{folder}". The .md extension is added if omitted. Leave empty to cancel.',
   'fileTree.renameTitle': 'Rename',
   'fileTree.renamePrompt': 'Enter a new name for "{name}". Leave empty to cancel.',
   'fileTree.deleteTitle': 'Delete',

@@ -17,6 +17,7 @@ import {
 import { tmpdir } from 'os';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import {
+  completeWorkspaceDocumentName,
   validateWorkspaceDocumentName,
   type WorkspaceFileOpResult,
 } from '../shared/workspace-file-name';
@@ -29,6 +30,7 @@ export type {
 
 /** 在 dirPath 下新建空 Markdown 文档，不覆盖既有文件。 */
 export function createWorkspaceDocument(dirPath: string, fileName: string): WorkspaceFileOpResult {
+  fileName = completeWorkspaceDocumentName(fileName);
   if (validateWorkspaceDocumentName(fileName)) return { error: 'invalid-name' };
   // 目录探测同样在错误边界内:目录在检查瞬间被移除或权限异常时返回结构化
   // parent-missing,不让异常穿透 IPC

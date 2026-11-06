@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  completeWorkspaceDocumentName,
   ensureUniqueFileName,
   isWorkspaceFileNameTaken,
   validateWorkspaceDocumentName,
@@ -63,6 +64,28 @@ describe('validateWorkspaceDocumentName', () => {
   it('基础规则同样生效', () => {
     expect(validateWorkspaceDocumentName('a|b.md')).toBe('invalid-chars');
     expect(validateWorkspaceDocumentName('')).toBe('empty');
+  });
+});
+
+describe('completeWorkspaceDocumentName', () => {
+  it('无扩展名时补全为 Markdown 文件名', () => {
+    expect(completeWorkspaceDocumentName('会议记录')).toBe('会议记录.md');
+  });
+
+  it('已填写扩展名时保留用户输入', () => {
+    expect(completeWorkspaceDocumentName('会议记录.markdown')).toBe('会议记录.markdown');
+    expect(completeWorkspaceDocumentName('notes.MARKDOWN')).toBe('notes.MARKDOWN');
+    expect(completeWorkspaceDocumentName('notes.MD')).toBe('notes.MD');
+    expect(completeWorkspaceDocumentName('notes.txt')).toBe('notes.txt');
+  });
+
+  it('空名、非法名或隐藏名不做补全', () => {
+    expect(completeWorkspaceDocumentName('')).toBe('');
+    expect(completeWorkspaceDocumentName('a|b')).toBe('a|b');
+    expect(completeWorkspaceDocumentName('.notes')).toBe('.notes');
+    expect(completeWorkspaceDocumentName('CON')).toBe('CON');
+    expect(completeWorkspaceDocumentName('note.')).toBe('note.');
+    expect(completeWorkspaceDocumentName('note ')).toBe('note ');
   });
 });
 
