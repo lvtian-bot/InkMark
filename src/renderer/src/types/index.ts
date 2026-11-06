@@ -27,6 +27,8 @@ import type { WorkspaceFileOpResult } from '../../../shared/workspace-file-name'
 export type { RecentItem, RecentKind } from '../../../shared/recent-items';
 import type { RecentItem } from '../../../shared/recent-items';
 import type { UpdateState } from '../../../shared/update-state';
+import type { SaveAsResponse } from '../../../shared/save-as';
+export type { SaveAsResult, SaveAsFailure, SaveAsResponse } from '../../../shared/save-as';
 
 export interface Heading {
   id: string;
@@ -57,11 +59,6 @@ export type FileWatchEvent = {
   mtime?: number;
 };
 
-export interface SaveAsResult {
-  path: string;
-  mtime: number;
-}
-
 export interface AppInfo {
   name: string;
   version: string;
@@ -75,14 +72,14 @@ export interface InkMarkAPI {
     knownMtime?: number | null,
     force?: boolean,
   ) => Promise<SaveResult>;
-  saveFileAs: (content: string, sourcePath?: string | null) => Promise<SaveAsResult | null>;
+  saveFileAs: (content: string, sourcePath?: string | null) => Promise<SaveAsResponse>;
   saveReviewedFile: (
     content: string,
     path: string,
     expectedContent: string,
     expectedMtime: number,
   ) => Promise<SaveResult>;
-  saveReviewCopy: (content: string, sourcePath: string) => Promise<SaveAsResult | null>;
+  saveReviewCopy: (content: string, sourcePath: string) => Promise<SaveAsResponse>;
   openFilePath: (path: string) => Promise<FileResult | OpenFileRejection | null>;
   getRecentFiles: () => Promise<RecentItem[]>;
   removeRecentFile: (path: string) => Promise<void>;

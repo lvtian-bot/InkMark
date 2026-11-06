@@ -8,7 +8,7 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
+  rmdirSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -23,6 +23,7 @@ import type {
   StoreImageResult,
 } from '../shared/image-storage';
 import type { MessageKey } from '../shared/i18n';
+import { rewriteMarkdownImageSources } from './markdown-image-references';
 
 export type Translate = (key: MessageKey, params?: Record<string, string | number>) => string;
 
@@ -36,7 +37,11 @@ interface DetectedImage {
 export interface ImageStorage {
   store: (request: StoreImageRequest) => StoreImageResult;
   resolveSource: (request: ResolveImageSourceRequest) => ResolveImageSourceResult;
-  copyAssetsForSaveAs: (sourceDocumentPath: string | null, targetDocumentPath: string) => void;
+  copyAssetsForSaveAs: (
+    sourceDocumentPath: string | null,
+    targetDocumentPath: string,
+    content: string,
+  ) => string;
   discard: (request: DiscardStoredImageRequest) => DiscardStoredImageResult;
   getProtocolFilePath: (requestUrl: string) => string | null;
   close: () => void;
@@ -105,32 +110,6 @@ function ensureSafeDirectory(directoryPath: string): void {
   }
 }
 
-function copyDirectoryWithoutOverwrite(
-  sourceDirectory: string,
-  targetDirectory: string,
-  t: Translate,
-): void {
-  ensureSafeDirectory(targetDirectory);
-  for (const entry of readdirSync(sourceDirectory, { withFileTypes: true })) {
-    const sourcePath = join(sourceDirectory, entry.name);
-    const targetPath = join(targetDirectory, entry.name);
-    if (entry.isDirectory()) {
-      copyDirectoryWithoutOverwrite(sourcePath, targetPath, t);
-      continue;
-    }
-    if (!entry.isFile()) continue;
-
-    const copyResult = copyFileAtomicExclusive(sourcePath, targetPath);
-    if (copyResult === 'exists') {
-      if (!readFileSync(sourcePath).equals(readFileSync(targetPath))) {
-        throw new Error(
-          `An attachment with the same name but different content already exists: ${entry.name}`,
-        );
-      }
-    }
-  }
-}
-
 function publishTemporaryFile(tempPath: string, targetPath: string): 'written' | 'exists' {
   try {
     linkSync(tempPath, targetPath);
@@ -175,6 +154,87 @@ function copyFileAtomicExclusive(sourcePath: string, targetPath: string): 'writt
     }
     throw error;
   }
+}
+
+type ImageCopyError = Error & { code: 'IMAGE_COPY_FAILED' };
+
+interface LocalImageReference {
+  source: string;
+  filePath: string;
+  fileName: string;
+}
+
+function imageCopyError(message: string): ImageCopyError {
+  return Object.assign(new Error(message), { code: 'IMAGE_COPY_FAILED' as const });
+}
+
+function isImageCopyError(error: unknown): error is ImageCopyError {
+  return error instanceof Error && 'code' in error && error.code === 'IMAGE_COPY_FAILED';
+}
+
+function isRemoteImageSource(source: string): boolean {
+  return /^(?:https?:|data:|blob:)/i.test(source) || source.startsWith('//');
+}
+
+function resolveLocalImagePathForCopy(source: string, documentDirectory: string): string | null {
+  const candidates = [source];
+  try {
+    const decoded = decodeURIComponent(source);
+    if (decoded !== source) candidates.push(decoded);
+  } catch {
+    // 文件名可以合法包含单独的 %，保留原始路径候选即可。
+  }
+
+  for (const candidate of candidates) {
+    try {
+      let candidatePath: string;
+      if (candidate.startsWith('file:')) {
+        candidatePath = fileURLToPath(candidate);
+      } else if (isAbsolute(candidate)) {
+        candidatePath = resolve(candidate);
+      } else {
+        candidatePath = resolve(documentDirectory, candidate);
+      }
+      if (!IMAGE_EXTENSIONS.has(extname(candidatePath).toLowerCase())) continue;
+      if (existsSync(candidatePath)) return candidatePath;
+    } catch {
+      // 继续尝试原始路径或 URI 解码后的另一个候选路径。
+    }
+  }
+  return null;
+}
+
+function validateLocalImageForCopy(filePath: string, t: Translate): void {
+  let stats;
+  try {
+    const linkStats = lstatSync(filePath);
+    if (linkStats.isSymbolicLink() || !linkStats.isFile()) {
+      throw imageCopyError(t('image.sourceNotFound'));
+    }
+    stats = statSync(filePath);
+  } catch (error) {
+    if (isImageCopyError(error)) throw error;
+    throw imageCopyError(t('image.sourceNotFound'));
+  }
+  if (stats.size > MAX_IMAGE_BYTES) throw imageCopyError(t('image.tooLarge'));
+}
+
+function targetImageFileName(filePath: string): string {
+  const extension = extname(filePath).toLowerCase();
+  return `${safeFileStem(basename(filePath))}${extension}`;
+}
+
+/** 按 URI 逐段编码目标路径，保留 `/` 作为 Markdown 路径分隔符。 */
+function encodeMarkdownImagePath(path: string): string {
+  return path
+    .split('/')
+    .map((segment) =>
+      encodeURIComponent(segment).replace(
+        /[!'()*]/g,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join('/');
 }
 
 export function createImageStorage(options: { t: Translate }): ImageStorage {
@@ -323,24 +383,104 @@ export function createImageStorage(options: { t: Translate }): ImageStorage {
       return { status: 'ok', url: `inkmark-local://image/${token}` };
     },
 
-    copyAssetsForSaveAs: (sourceDocumentPath, targetDocumentPath) => {
-      if (!sourceDocumentPath || !isAbsolute(sourceDocumentPath)) return;
+    copyAssetsForSaveAs: (sourceDocumentPath, targetDocumentPath, content) => {
+      if (!sourceDocumentPath || !isAbsolute(sourceDocumentPath)) return content;
       const sourceDirectory = dirname(resolve(sourceDocumentPath));
       const targetDirectory = dirname(resolve(targetDocumentPath));
-      if (sourceDirectory === targetDirectory) return;
+      if (sourceDirectory === targetDirectory) return content;
 
-      const sourceDocumentName = basename(sourceDocumentPath, extname(sourceDocumentPath));
-      const sourceAssets = join(sourceDirectory, `${sourceDocumentName}.assets`);
-      if (!existsSync(sourceAssets)) return;
-      const sourceStats = lstatSync(sourceAssets);
-      if (!sourceStats.isDirectory() || sourceStats.isSymbolicLink()) {
-        throw new Error('The source attachment directory is not a safe local directory.');
+      const sources = new Set<string>();
+      rewriteMarkdownImageSources(content, (source) => {
+        sources.add(source);
+        return source;
+      });
+
+      const references: LocalImageReference[] = [];
+      const referenceByPath = new Map<string, LocalImageReference>();
+      const sourceToReference = new Map<string, LocalImageReference>();
+      for (const source of sources) {
+        if (isRemoteImageSource(source)) continue;
+        const filePath = resolveLocalImagePathForCopy(source, sourceDirectory);
+        if (!filePath) throw imageCopyError(t('image.sourceNotFound'));
+        validateLocalImageForCopy(filePath, t);
+        const key = process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+        let reference = referenceByPath.get(key);
+        if (!reference) {
+          reference = { source, filePath, fileName: targetImageFileName(filePath) };
+          referenceByPath.set(key, reference);
+          references.push(reference);
+        }
+        sourceToReference.set(source, reference);
       }
-      copyDirectoryWithoutOverwrite(
-        sourceAssets,
-        join(targetDirectory, `${sourceDocumentName}.assets`),
-        t,
-      );
+      if (references.length === 0) return content;
+
+      const targetDocumentName = basename(targetDocumentPath, extname(targetDocumentPath));
+      const targetAssets = join(targetDirectory, `${targetDocumentName}.assets`);
+      let targetAssetsCreated = false;
+      const createdFiles: string[] = [];
+      const copiedPathByReference = new Map<LocalImageReference, string>();
+      try {
+        if (!existsSync(targetAssets)) targetAssetsCreated = true;
+        else {
+          const targetStats = lstatSync(targetAssets);
+          if (!targetStats.isDirectory() || targetStats.isSymbolicLink()) {
+            throw imageCopyError(t('image.storageFailed'));
+          }
+        }
+        ensureSafeDirectory(targetAssets);
+        for (const reference of references) {
+          const sourceData = readFileSync(reference.filePath);
+          let targetPath: string | null = null;
+          const targetBase = basename(reference.fileName, extname(reference.fileName));
+          const extension = extname(reference.fileName);
+          for (let index = 0; index < 10_000; index += 1) {
+            const suffix = index === 0 ? '' : `-${index}`;
+            const candidate = join(targetAssets, `${targetBase}${suffix}${extension}`);
+            if (existsSync(candidate)) {
+              const candidateStats = lstatSync(candidate);
+              if (candidateStats.isSymbolicLink() || !candidateStats.isFile()) {
+                throw imageCopyError(t('image.storageFailed'));
+              }
+              if (readFileSync(candidate).equals(sourceData)) {
+                targetPath = candidate;
+                break;
+              }
+              continue;
+            }
+            if (copyFileAtomicExclusive(reference.filePath, candidate) === 'written') {
+              createdFiles.push(candidate);
+              targetPath = candidate;
+              break;
+            }
+          }
+          if (!targetPath) throw imageCopyError(t('image.storageFailed'));
+          copiedPathByReference.set(
+            reference,
+            encodeMarkdownImagePath(relative(targetDirectory, targetPath).replace(/\\/g, '/')),
+          );
+        }
+        return rewriteMarkdownImageSources(content, (source) => {
+          const reference = sourceToReference.get(source);
+          return reference ? (copiedPathByReference.get(reference) ?? source) : source;
+        });
+      } catch (error) {
+        for (const filePath of createdFiles) {
+          try {
+            unlinkSync(filePath);
+          } catch {
+            // 失败清理尽力而为，保留原文件和已有目标文件。
+          }
+        }
+        if (targetAssetsCreated) {
+          try {
+            rmdirSync(targetAssets);
+          } catch {
+            // 目录非空或已被并发写入时保留，不能删除其他内容。
+          }
+        }
+        if (isImageCopyError(error)) throw error;
+        throw imageCopyError(t('image.storageFailed'));
+      }
     },
 
     discard: (request) => {
