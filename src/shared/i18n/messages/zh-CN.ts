@@ -366,6 +366,9 @@ export const messages = {
 
   'outline.title': '大纲',
   'outline.empty': '暂无大纲',
+  'outline.promote': '升级',
+  'outline.demote': '降级',
+  'outline.deleteSection': '删除章节',
 
   'find.noResults': '无结果',
   'find.barAria': '查找与替换',
