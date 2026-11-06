@@ -53,6 +53,12 @@ export function validateWorkspaceFileName(name: string): WorkspaceFileNameIssue 
   return null;
 }
 
+/** 新建文档省略扩展名时默认使用 Markdown；显式后缀与非法名称留给校验处理。 */
+export function completeWorkspaceDocumentName(name: string): string {
+  if (validateWorkspaceFileName(name) || name.includes('.')) return name;
+  return `${name}.md`;
+}
+
 /**
  * 校验可作为文件树文档创建/重命名的名称：在基础规则之上，还要求名称能被
  * 文件树显示（非点号开头的隐藏项）且属于可打开文档的扩展名白名单

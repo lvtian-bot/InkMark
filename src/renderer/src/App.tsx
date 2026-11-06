@@ -52,6 +52,7 @@ import {
 } from './file-tree-actions';
 import { parentDirectory } from '../../shared/file-tree-follow';
 import {
+  completeWorkspaceDocumentName,
   ensureUniqueFileName,
   validateWorkspaceDocumentName,
   type WorkspaceFileNameIssue,
@@ -215,16 +216,20 @@ function AppContent() {
     async (dirPath: string): Promise<void> => {
       const folderName = dirPath.split(/[/\\]/).pop() ?? dirPath;
       const siblingNames = (fileTree.dirCache.get(dirPath) ?? []).map((entry) => entry.name);
-      const defaultName = ensureUniqueFileName(t('fileTree.newDocumentDefaultName'), siblingNames);
-      const name = await promptDialog(
+      const defaultName = ensureUniqueFileName(
+        `${t('fileTree.newDocumentDefaultName')}.md`,
+        siblingNames,
+      ).slice(0, -3);
+      const inputName = await promptDialog(
         t('fileTree.createDocumentTitle'),
         t('fileTree.createDocumentPrompt', { folder: folderName }),
         { defaultValue: defaultName, confirmLabel: t('fileTree.createAction') },
       );
-      if (name === null) return;
+      if (inputName === null) return;
       // 对话框打开期间用户可能已切换到其他文件夹(跟随换根),在已看不见的
       // 目录里创建还会把用户拽回去;静默中止
       if (!fileTree.isPathInCurrentRoot(dirPath)) return;
+      const name = completeWorkspaceDocumentName(inputName);
       const issue = validateWorkspaceDocumentName(name);
       if (issue) {
         await confirmDialog(t('fileTree.createDocumentTitle'), t(FILE_NAME_ISSUE_MESSAGE[issue]), [

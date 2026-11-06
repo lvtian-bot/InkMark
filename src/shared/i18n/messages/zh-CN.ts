@@ -336,9 +336,10 @@ export const messages = {
   'fileTree.menu.newDocument': '新建文档',
   'fileTree.menu.rename': '重命名',
   'fileTree.menu.remove': '删除',
-  'fileTree.newDocumentDefaultName': '新建文档.md',
+  'fileTree.newDocumentDefaultName': '新建文档',
   'fileTree.createDocumentTitle': '新建文档',
-  'fileTree.createDocumentPrompt': '在「{folder}」中新建 Markdown 文档，留空则取消。',
+  'fileTree.createDocumentPrompt':
+    '在「{folder}」中新建文档，未填写扩展名时自动添加 .md，留空则取消。',
   'fileTree.renameTitle': '重命名',
   'fileTree.renamePrompt': '请输入「{name}」的新名称，留空则取消。',
   'fileTree.deleteTitle': '删除',

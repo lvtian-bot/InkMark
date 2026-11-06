@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   symlinkSync,
@@ -41,6 +42,14 @@ describe('createWorkspaceDocument', () => {
     if ('mtime' in result) expect(result.mtime).toBeGreaterThan(0);
   });
 
+  it('无扩展名时自动创建 Markdown 文件', () => {
+    const dir = makeTempDir();
+    const result = createWorkspaceDocument(dir, '会议记录');
+
+    expect(result).toMatchObject({ path: join(dir, '会议记录.md') });
+    expect(existsSync(join(dir, '会议记录.md'))).toBe(true);
+  });
+
   it('拒绝非法文件名', () => {
     const dir = makeTempDir();
     expect(createWorkspaceDocument(dir, 'a/b.md')).toEqual({ error: 'invalid-name' });
@@ -51,7 +60,6 @@ describe('createWorkspaceDocument', () => {
   it('拒绝文件树不显示的名称:隐藏项与白名单外扩展名', () => {
     const dir = makeTempDir();
     expect(createWorkspaceDocument(dir, '.notes.md')).toEqual({ error: 'invalid-name' });
-    expect(createWorkspaceDocument(dir, 'notes')).toEqual({ error: 'invalid-name' });
     expect(createWorkspaceDocument(dir, 'archive.zip')).toEqual({ error: 'invalid-name' });
   });
 
@@ -68,7 +76,18 @@ describe('createWorkspaceDocument', () => {
     const result = createWorkspaceDocument(dir, 'note.md');
 
     expect(result).toEqual({ error: 'exists' });
-    expect(join(dir, 'note.md') && existsSync(join(dir, 'note.md'))).toBe(true);
+    expect(existsSync(join(dir, 'note.md'))).toBe(true);
+    expect(readFileSync(join(dir, 'note.md'), 'utf8')).toBe('已有内容');
+  });
+
+  it('无扩展名补全后的目标已存在时报 exists 且不覆盖', () => {
+    const dir = makeTempDir();
+    writeFileSync(join(dir, 'note.md'), '已有内容', 'utf8');
+
+    const result = createWorkspaceDocument(dir, 'note');
+
+    expect(result).toEqual({ error: 'exists' });
+    expect(readFileSync(join(dir, 'note.md'), 'utf8')).toBe('已有内容');
   });
 
   it('目录不存在时报 parent-missing', () => {
@@ -95,6 +114,16 @@ describe('renameWorkspaceFile', () => {
     const oldPath = join(dir, 'note.md');
     writeFileSync(oldPath, '', 'utf8');
     expect(renameWorkspaceFile(oldPath, 'a|b.md')).toEqual({ error: 'invalid-name' });
+  });
+
+  it('重命名仍要求显式填写扩展名', () => {
+    const dir = makeTempDir();
+    const oldPath = join(dir, 'note.md');
+    writeFileSync(oldPath, '', 'utf8');
+
+    expect(renameWorkspaceFile(oldPath, 'renamed')).toEqual({ error: 'invalid-name' });
+    expect(existsSync(oldPath)).toBe(true);
+    expect(existsSync(join(dir, 'renamed.md'))).toBe(false);
   });
 
   it('新名已存在时报 exists 且原文件保留', () => {
