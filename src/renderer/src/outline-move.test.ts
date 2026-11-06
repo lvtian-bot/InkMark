@@ -7,7 +7,14 @@ import {
   headingsFromMarkdown,
   moveOutlineSection,
 } from './outline-move';
-import { hasUnclosedFence } from './outline-sections';
+import {
+  computeSectionRanges,
+  hasExpectedHeadingOrder,
+  hasSafeSectionBoundaries,
+  hasStableLinkDefinitions,
+  hasUnclosedFence,
+  moveSection,
+} from './outline-sections';
 import { extractHeadings } from './hooks/useOutline';
 import { sourceEditorHandle } from './source-editor-ref';
 import { useStore } from './stores/useStore';
@@ -124,6 +131,46 @@ describe('hasUnclosedFence', () => {
   });
 });
 
+describe('YAML 元信息不参与正文安全检查', () => {
+  it.each(['\n', '\r\n'])('保留原文坐标并允许安全移动（换行 %j）', (eol) => {
+    const metadata = [
+      '---',
+      'description: |',
+      '  ```js',
+      '  # example',
+      '  [x]: /metadata',
+      '  <!-- example',
+      '---',
+      '',
+      '',
+    ].join(eol);
+    const doc = metadata + ['# A', '', 'a', '', '# B', '', 'b'].join(eol);
+    const headings = headingsFromMarkdown(doc);
+    expect(headings).toEqual([
+      { pos: doc.indexOf('# A'), level: 1 },
+      { pos: doc.indexOf('# B'), level: 1 },
+    ]);
+    const ranges = computeSectionRanges(doc, headings);
+    const anchor = { kind: 'before', index: 0 } as const;
+    const result = moveSection(doc, ranges, 1, anchor);
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.content.startsWith(metadata.trimEnd())).toBe(true);
+    expect(hasUnclosedFence(doc, 0)).toBe(false);
+    expect(hasSafeSectionBoundaries(doc, ranges, 1, anchor)).toBe(true);
+    expect(hasExpectedHeadingOrder(doc, result.content, ranges, 1, anchor)).toBe(true);
+    expect(hasStableLinkDefinitions(doc, result.content)).toBe(true);
+  });
+
+  it('空元信息不产生假标题', () => {
+    expect(headingsFromMarkdown('---\n---\n\n# A')).toEqual([{ pos: 9, level: 1 }]);
+  });
+
+  it('跳过元信息后仍能发现正文中的未闭合围栏', () => {
+    expect(hasUnclosedFence('---\ntitle: example\n---\n\n# A\n\n```js\ncode', 0)).toBe(true);
+  });
+});
+
 describe('富文本大纲标题标识', () => {
   it('标题本身带序号时仍不与重复标题的标识冲突', () => {
     const texts = ['a', 'a-1', 'a', 'B'];
@@ -197,6 +244,19 @@ describe('源码模式大纲搬移接入', () => {
     expect(canDropOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
     expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('拒绝让未移动的缩进标题进入列表', () => {
+    const replace = prepare('  # A\n\na\n\n# B\n\n- item');
+    expect(canDropOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('缩进标题归属不变时仍允许移动', () => {
+    const replace = prepare('  # A\n\na\n\n# B\n\nb');
+    expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(true);
+    expect(replace).toHaveBeenCalledWith('# B\n\nb\n\n  # A\n\na');
   });
 
   it('未闭合的缩进围栏阻止写回', () => {

@@ -1,5 +1,4 @@
 import { EditorState } from '@codemirror/state';
-import { markdownLanguage } from '@codemirror/lang-markdown';
 import { useStore, selectViewMode } from './stores/useStore';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle } from './source-editor-ref';
@@ -13,6 +12,7 @@ import {
   hasStableLinkDefinitions,
   isSectionAncestor,
   moveSection,
+  parseOutlineMarkdown,
   type DropAnchor,
   type OutlineSection,
 } from './outline-sections';
@@ -128,14 +128,11 @@ function readMoveContext(): MoveContext | null {
  * - 用编辑器的 Markdown 解析器识别标题，包括引用、列表等容器内的标题。
  */
 export function headingsFromMarkdown(doc: string): Array<{ pos: number; level: number }> {
-  const frontmatter = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/.exec(doc);
-  const start = frontmatter ? frontmatter[0].length : 0;
   const headings: Array<{ pos: number; level: number }> = [];
-  markdownLanguage.parser.parse(doc.slice(start)).iterate({
+  parseOutlineMarkdown(doc).iterate({
     enter(node) {
       const match = /^(?:ATXHeading|SetextHeading)([1-6])$/.exec(node.name);
-      if (match)
-        headings.push({ pos: expandToLineStart(doc, start + node.from), level: Number(match[1]) });
+      if (match) headings.push({ pos: expandToLineStart(doc, node.from), level: Number(match[1]) });
     },
   });
   return headings;

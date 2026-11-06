@@ -1,5 +1,14 @@
 import { markdownLanguage } from '@codemirror/lang-markdown';
 
+/** 元信息不参与 Markdown 正文解析；保留字符长度和换行，维持原文坐标。 */
+export function parseOutlineMarkdown(doc: string) {
+  const frontmatter = /^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(doc);
+  const masked = frontmatter
+    ? frontmatter[0].replace(/[^\r\n]/g, ' ') + doc.slice(frontmatter[0].length)
+    : doc;
+  return markdownLanguage.parser.parse(masked);
+}
+
 /**
  * 大纲拖动移动的纯逻辑：把大纲标题映射回正文的字符区间，
  * 并计算「把一整节搬到另一处」之后的新正文。与编辑器、DOM 无关，便于单元测试。
@@ -150,7 +159,7 @@ export function hasSafeSectionBoundaries(
   const target = ranges[anchor.index];
   if (!source || !target) return false;
   const boundaries = new Set<number>([doc.length]);
-  markdownLanguage.parser.parse(doc).iterate({
+  parseOutlineMarkdown(doc).iterate({
     enter(node) {
       if (
         /^(?:ATXHeading|SetextHeading)[1-6]$/.test(node.name) &&
@@ -175,7 +184,7 @@ export function hasStableLinkDefinitions(before: string, after: string): boolean
   if (!before.includes(']:') && !after.includes(']:')) return true;
   const definitions = (doc: string): string[] => {
     const found: string[] = [];
-    markdownLanguage.parser.parse(doc).iterate({
+    parseOutlineMarkdown(doc).iterate({
       enter(node) {
         if (node.name === 'LinkReference') found.push(doc.slice(node.from, node.to));
       },
@@ -201,12 +210,23 @@ export function hasExpectedHeadingOrder(
   const target = ranges[anchor.index];
   if (!source || !target) return false;
   const destination = anchor.kind === 'before' ? target.from : target.gapTo;
-  const headings = (doc: string): Array<{ pos: number; name: string; text: string }> => {
-    const found: Array<{ pos: number; name: string; text: string }> = [];
-    markdownLanguage.parser.parse(doc).iterate({
+  const headings = (doc: string) => {
+    const found: Array<{ pos: number; name: string; text: string; ancestry: string }> = [];
+    parseOutlineMarkdown(doc).iterate({
       enter(node) {
         if (/^(?:ATXHeading|SetextHeading)[1-6]$/.test(node.name)) {
-          found.push({ pos: node.from, name: node.name, text: doc.slice(node.from, node.to) });
+          const ancestors: string[] = [];
+          let parent = node.node.parent;
+          while (parent) {
+            ancestors.push(parent.name);
+            parent = parent.parent;
+          }
+          found.push({
+            pos: node.from,
+            name: node.name,
+            text: doc.slice(node.from, node.to),
+            ancestry: ancestors.join('/'),
+          });
         }
       },
     });
@@ -230,7 +250,9 @@ export function hasExpectedHeadingOrder(
     expected.length === actual.length &&
     expected.every(
       (heading, index) =>
-        heading.name === actual[index].name && heading.text === actual[index].text,
+        heading.name === actual[index].name &&
+        heading.text === actual[index].text &&
+        heading.ancestry === actual[index].ancestry,
     )
   );
 }
@@ -296,7 +318,8 @@ export function moveSection(
 export function hasUnclosedFence(doc: string, from: number): boolean {
   if (!doc.includes('```', from) && !doc.includes('~~~', from)) return false;
   let unclosed = false;
-  markdownLanguage.parser.parse(doc.slice(from)).iterate({
+  parseOutlineMarkdown(doc).iterate({
+    from,
     enter(node) {
       if (node.name !== 'FencedCode') return;
       // 使用编辑器的 Markdown 解析器识别围栏，避免遗漏缩进和错误的闭合行。
