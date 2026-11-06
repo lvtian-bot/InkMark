@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import type { MouseEvent } from 'react';
+import type { DragEvent, MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useStore, selectViewMode } from '../stores/useStore';
 import { useI18n } from '../i18n';
@@ -10,6 +10,8 @@ import {
   computeVisibleHeadings,
   resolveActiveId,
 } from '../outline-visibility';
+import { canDropOutlineSection, canMoveOutlineSection, moveOutlineSection } from '../outline-move';
+import { isSectionAncestor, resolveDropAnchor, type DropAnchor } from '../outline-sections';
 import '../styles/outline.css';
 
 const EMPTY_IDS: Set<string> = new Set();
@@ -39,6 +41,18 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     () => resolveActiveId(outline, visibleIds, activeId),
     [outline, visibleIds, activeId],
   );
+  // 标题 id → 大纲序号：拖动落点以整份大纲的序号表示，折叠状态下序号仍然稳定。
+  const headingIndex = useMemo(
+    () => new Map(outline.map((heading, index) => [heading.id, index])),
+    [outline],
+  );
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ index: number; kind: DropAnchor['kind'] } | null>(
+    null,
+  );
+  // 拖动结束后浏览器会补发一次 click，用它拦下该次误触发的跳转。
+  const suppressNextClickRef = useRef(false);
+  const dropSafetyRef = useRef(new Map<string, boolean>());
 
   useEffect(() => {
     const handleScroll = (): void => {
@@ -82,6 +96,11 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   }, [outline]);
 
   const handleClick = (pos: number): void => {
+    // 拖动结束后的补发 click 不触发跳转，否则会跳到已被搬走的标题位置。
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
     if (viewMode === 'source') {
       sourceEditorHandle.current?.setSelection(pos, pos);
     } else {
@@ -103,6 +122,69 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     });
   };
 
+  const handleDragStart = (event: DragEvent<HTMLButtonElement>, index: number): void => {
+    dropSafetyRef.current.clear();
+    // 文档结构无法安全搬移时（如存在未闭合代码围栏）不允许发起拖动。
+    if (!canMoveOutlineSection()) {
+      event.preventDefault();
+      return;
+    }
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = 'move';
+    // 部分平台在未设置数据时不触发拖动，放入纯文本兜底。
+    event.dataTransfer.setData('text/plain', outline[index]?.text ?? '');
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLButtonElement>, index: number): void => {
+    if (dragIndex === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    // 与 Word 导航窗格一致：标题行上半区插到该章节之前，下半区插到该章节之后。
+    const anchor = resolveDropAnchor(index, (event.clientY - rect.top) / rect.height);
+    // 拖进自身或其子章节属于无效放置，直接给出禁止光标。
+    const key = `${index}:${anchor.kind}`;
+    let valid = dropSafetyRef.current.get(key);
+    if (valid === undefined) {
+      valid = canDropOutlineSection(dragIndex, anchor);
+      dropSafetyRef.current.set(key, valid);
+    }
+    event.dataTransfer.dropEffect = valid ? 'move' : 'none';
+    setDropTarget(valid ? { index, kind: anchor.kind } : null);
+  };
+
+  const handleDragLeave = (index: number): void => {
+    setDropTarget((prev) => (prev && prev.index === index ? null : prev));
+  };
+
+  const handleDrop = (event: DragEvent<HTMLButtonElement>, index: number): void => {
+    // 没有大纲内部拖动时不拦截事件：外部文件拖放需继续冒泡到窗口级打开处理。
+    if (dragIndex === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const from = dragIndex;
+    suppressNextClickRef.current = true;
+    setDragIndex(null);
+    setDropTarget(null);
+    if (isSectionAncestor(outline, from, index)) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    moveOutlineSection(from, resolveDropAnchor(index, (event.clientY - rect.top) / rect.height));
+  };
+
+  const handleDragEnd = (): void => {
+    // 拖动结束后浏览器会补发一次 click，若不拦下会跳到刚拖走的旧标题位置。
+    // 标记只保留到本次事件序列结束：Esc 取消拖动时没有补发 click，
+    // 若长期保留会吞掉用户下一次正常的点击跳转。
+    suppressNextClickRef.current = true;
+    dropSafetyRef.current.clear();
+    setDragIndex(null);
+    setDropTarget(null);
+    window.setTimeout(() => {
+      suppressNextClickRef.current = false;
+    }, 0);
+  };
+
   if (outline.length === 0) {
     return (
       <aside className={`outline${side === 'right' ? ' side-right' : ''}`}>
@@ -120,27 +202,38 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
         <span className="outline-title">{t('outline.title')}</span>
       </div>
       <nav className="outline-list">
-        {visibleHeadings.map((heading) => (
-          <button
-            key={heading.id}
-            className={`outline-item level-${heading.level} ${
-              displayedActiveId === heading.id ? 'active' : ''
-            }`}
-            onClick={() => handleClick(heading.pos)}
-            title={heading.text}
-          >
-            {collapsibleIds.has(heading.id) ? (
-              <ChevronRight
-                size={12}
-                className={`outline-chevron${collapsedIds.has(heading.id) ? '' : ' open'}`}
-                onClick={(event) => handleToggle(heading.id, event)}
-              />
-            ) : (
-              <span className="outline-chevron-placeholder" />
-            )}
-            <span className="outline-text">{heading.text}</span>
-          </button>
-        ))}
+        {visibleHeadings.map((heading) => {
+          const index = headingIndex.get(heading.id) ?? -1;
+          const isDragging = dragIndex === index;
+          const marker = dropTarget && dropTarget.index === index ? ` drop-${dropTarget.kind}` : '';
+          return (
+            <button
+              key={heading.id}
+              className={`outline-item level-${heading.level} ${
+                displayedActiveId === heading.id ? 'active' : ''
+              }${isDragging ? ' dragging' : ''}${marker}`}
+              onClick={() => handleClick(heading.pos)}
+              title={heading.text}
+              draggable
+              onDragStart={(event) => handleDragStart(event, index)}
+              onDragOver={(event) => handleDragOver(event, index)}
+              onDragLeave={() => handleDragLeave(index)}
+              onDrop={(event) => handleDrop(event, index)}
+              onDragEnd={handleDragEnd}
+            >
+              {collapsibleIds.has(heading.id) ? (
+                <ChevronRight
+                  size={12}
+                  className={`outline-chevron${collapsedIds.has(heading.id) ? '' : ' open'}`}
+                  onClick={(event) => handleToggle(heading.id, event)}
+                />
+              ) : (
+                <span className="outline-chevron-placeholder" />
+              )}
+              <span className="outline-text">{heading.text}</span>
+            </button>
+          );
+        })}
       </nav>
     </aside>
   );

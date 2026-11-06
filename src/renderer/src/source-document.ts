@@ -91,6 +91,7 @@ export function extractSourceHeadings(state: EditorState): Heading[] {
   const frontmatterEnd = findFrontmatterRange(doc)?.to ?? 0;
   const headings: Heading[] = [];
   const slugCount = new Map<string, number>();
+  const usedIds = new Set<string>();
   const cursor = syntaxTree(state).cursor();
 
   const visit = (): void => {
@@ -105,10 +106,16 @@ export function extractSourceHeadings(state: EditorState): Heading[] {
             .trim()
         : (source.split(/\r?\n/, 1)[0] ?? '').trim();
       const base = slugify(text) || `heading-${cursor.from}`;
-      const duplicateIndex = slugCount.get(base) ?? 0;
+      let duplicateIndex = slugCount.get(base) ?? 0;
+      let id = duplicateIndex === 0 ? base : `${base}-${duplicateIndex}`;
+      while (usedIds.has(id)) {
+        duplicateIndex += 1;
+        id = `${base}-${duplicateIndex}`;
+      }
       slugCount.set(base, duplicateIndex + 1);
+      usedIds.add(id);
       headings.push({
-        id: duplicateIndex === 0 ? base : `${base}-${duplicateIndex}`,
+        id,
         level,
         text,
         pos: cursor.from,

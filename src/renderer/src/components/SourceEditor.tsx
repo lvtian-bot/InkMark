@@ -241,6 +241,20 @@ export function SourceEditor({
         deleteLineCommand(view);
         view.focus();
       },
+      replaceDocumentUndoable: (nextDoc) => {
+        // 整篇替换以一次普通事务提交：undo 栈保留，用户按 Ctrl+Z 可一步撤回。
+        // 光标落在文首，避免沿用已被搬移内容里的旧位置。
+        suppressRef.current = false;
+        view.dispatch(
+          view.state.update({
+            changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
+            selection: { anchor: 0 },
+            userEvent: 'input.move',
+          }),
+        );
+        // 拖动来自大纲按钮，焦点已离开编辑器；交还焦点才能让撤销快捷键立即生效。
+        view.focus();
+      },
       applyReviewChunks: (chunks) => {
         view.dispatch({ effects: setReviewChunks.of(chunks) });
       },

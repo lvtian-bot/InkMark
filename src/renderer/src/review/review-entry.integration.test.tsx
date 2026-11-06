@@ -102,6 +102,7 @@ function createEditorHandle(
     getPendingMarkdown: pendingMarkdown,
     getSelectedMarkdown: () => '',
     setMarkdown: () => undefined,
+    replaceDocumentUndoable: () => undefined,
     skipFrontmatterIfSelected: () => undefined,
     getEditorState: () => null,
     setEditorState: () => undefined,

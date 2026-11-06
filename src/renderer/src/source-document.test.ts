@@ -28,4 +28,9 @@ describe('source document', () => {
 
     expect(extractSourceText(state)).toBe(' 标题 One\n\n 粗体 and 链接\n\n  task\n\ncode');
   });
+
+  it('keeps heading IDs unique when a numbered title collides with a duplicate', () => {
+    const headings = extractSourceHeadings(sourceState('# a\n\n# a-1\n\n# a\n\n# B'));
+    expect(headings.map((heading) => heading.id)).toEqual(['a', 'a-1', 'a-2', 'b']);
+  });
 });
