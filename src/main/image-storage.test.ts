@@ -136,6 +136,35 @@ describe('copyAssetsForSaveAs', () => {
     expect(existsSync(join(targetDirectory, '副本 (#) 1.assets', '图 (1)--.png'))).toBe(true);
   });
 
+  it('图片名在 80 字符边界遇到 emoji 时仍能复制并为截断同名图片编号', () => {
+    const root = makeTempDir();
+    const sourceDirectory = join(root, 'source');
+    const targetDirectory = join(root, 'target');
+    mkdirSync(sourceDirectory);
+    mkdirSync(targetDirectory);
+    const prefix = 'a'.repeat(79);
+    const firstName = `${prefix}😀-one.png`;
+    const secondName = `${prefix}😀-two.png`;
+    writeImage(join(sourceDirectory, firstName), 'one');
+    writeImage(join(sourceDirectory, secondName), 'two');
+
+    const result = createImageStorage({ t }).copyAssetsForSaveAs(
+      join(sourceDirectory, 'note.md'),
+      join(targetDirectory, 'copy.md'),
+      `![one](${firstName})\n![two](${secondName})`,
+    );
+    const decoded = decodeURIComponent(result);
+
+    expect(decoded).toContain(`copy.assets/${prefix}😀.png`);
+    expect(decoded).toContain(`copy.assets/${prefix}😀-1.png`);
+    expect(readFileSync(join(targetDirectory, 'copy.assets', `${prefix}😀.png`), 'utf8')).toBe(
+      'image:one',
+    );
+    expect(readFileSync(join(targetDirectory, 'copy.assets', `${prefix}😀-1.png`), 'utf8')).toBe(
+      'image:two',
+    );
+  });
+
   it('已有同名同内容图片复用，冲突内容保留原图并使用序号', () => {
     const root = makeTempDir();
     const sourceDirectory = join(root, 'source');

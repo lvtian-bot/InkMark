@@ -133,4 +133,34 @@ describe('rewriteMarkdownImageSources', () => {
       expect(replace).toHaveBeenCalledTimes(1);
     }
   });
+
+  it('图片说明中的嵌套链接和 HTML 属性不参与外层地址定位', () => {
+    const cases = [
+      '![[foo](a]b)](image.png)',
+      '![<span title="]">](image.png)',
+      '![[foo](a]b)](https://example.com/image.png)',
+    ];
+    for (const markdown of cases) {
+      const replace = vi.fn((source: string) =>
+        source.startsWith('https:') ? source : 'copied/image.png',
+      );
+      expect(rewriteMarkdownImageSources(markdown, replace)).toBe(
+        markdown.includes('https:')
+          ? markdown
+          : markdown.replace('(image.png)', '(copied/image.png)'),
+      );
+      expect(replace).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('沿用 GFM 和元信息语法，在表格及图片链接中只修改图片地址', () => {
+    const markdown =
+      '---\r\ntitle: "![示例](fake.png)"\r\n---\r\n\r\n' +
+      '| 图片 |\r\n| --- |\r\n| [![图](old/图.png "说明")](target.md) |\r\n';
+    const replace = vi.fn(() => 'copy/image.png');
+    expect(rewriteMarkdownImageSources(markdown, replace)).toBe(
+      markdown.replace('old/图.png', 'copy/image.png'),
+    );
+    expect(replace).toHaveBeenCalledExactlyOnceWith('old/图.png');
+  });
 });

@@ -1,216 +1,45 @@
 import { unified } from 'unified';
+import { parse, postprocess, preprocess } from 'micromark';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
-import type { Definition, Image, ImageReference, Node, Nodes, Root } from 'mdast';
+import type { Definition, Image, ImageReference, Nodes } from 'mdast';
 
+type Token = ReturnType<typeof postprocess>[number][1];
+type Destination = { start: number; end: number; nodeEnd: number };
 type Replacement = { start: number; end: number; value: string };
 
 const parser = unified().use(remarkParse).use(remarkGfm).use(remarkFrontmatter, 'yaml');
 
-function nodePosition(node: Node): { start: number; end: number } {
-  const start = node.position?.start.offset;
-  const end = node.position?.end.offset;
-  if (typeof start !== 'number' || typeof end !== 'number' || start < 0 || end < start) {
-    throw new Error('Unable to locate Markdown image reference.');
-  }
-  return { start, end };
-}
-
-function isEscaped(text: string, offset: number): boolean {
-  let slashes = 0;
-  for (let index = offset - 1; index >= 0 && text[index] === '\\'; index -= 1) slashes += 1;
-  return slashes % 2 === 1;
-}
-
-function findClosingCodeSpan(
-  markdown: string,
-  start: number,
-  end: number,
-  runLength: number,
-): number | null {
-  for (let index = start; index < end; index += 1) {
-    if (markdown[index] !== '`') continue;
-    const runStart = index;
-    while (markdown[index + 1] === '`') index += 1;
-    const closingLength = index - runStart + 1;
+/** 使用与 remark 相同的语法扩展取原文坐标，不再重复实现内联 Markdown 语法。 */
+function imageDestinations(markdown: string): Map<number, Destination> {
+  const events = postprocess(
+    parse({ extensions: parser.data('micromarkExtensions') })
+      .document()
+      .write(preprocess()(markdown, 'utf8', true)),
+  );
+  const owners: Token[] = [];
+  const destinations = new Map<number, Destination>();
+  for (const [phase, token] of events) {
+    if (token.type === 'image' || token.type === 'link' || token.type === 'definition') {
+      if (phase === 'enter') owners.push(token);
+      else owners.pop();
+      continue;
+    }
+    if (phase !== 'enter') continue;
+    const owner = owners.at(-1);
     if (
-      closingLength === runLength &&
-      (runStart === start || markdown[runStart - 1] !== '`') &&
-      (index + 1 >= end || markdown[index + 1] !== '`')
+      (owner?.type === 'image' && token.type === 'resourceDestinationString') ||
+      (owner?.type === 'definition' && token.type === 'definitionDestinationString')
     ) {
-      return runStart;
+      destinations.set(owner.start.offset, {
+        start: token.start.offset,
+        end: token.end.offset,
+        nodeEnd: owner.end.offset,
+      });
     }
   }
-  return null;
-}
-
-function skipMarkdownContinuation(markdown: string, start: number, end: number): number {
-  let index = start;
-  let atLineStart = false;
-  while (index < end) {
-    const character = markdown[index];
-    if (character === '\r' || character === '\n') {
-      if (character === '\r' && markdown[index + 1] === '\n') index += 1;
-      index += 1;
-      atLineStart = true;
-      continue;
-    }
-    if (atLineStart) {
-      while (markdown[index] === ' ' || markdown[index] === '\t') index += 1;
-      if (markdown[index] === '>') {
-        index += 1;
-        if (markdown[index] === ' ' || markdown[index] === '\t') index += 1;
-        continue;
-      }
-      atLineStart = false;
-    }
-    if (/\s/.test(markdown[index] ?? '')) {
-      index += 1;
-      continue;
-    }
-    break;
-  }
-  return index;
-}
-
-function findImageDestination(
-  markdown: string,
-  start: number,
-  end: number,
-): { start: number; end: number } {
-  let index = start;
-  if (markdown[index] !== '!' || markdown[index + 1] !== '[') {
-    throw new Error('Unable to locate Markdown image destination.');
-  }
-  index += 2;
-  let bracketDepth = 1;
-  for (; index < end; index += 1) {
-    const character = markdown[index];
-    if (character === '\\') {
-      index += 1;
-      continue;
-    }
-    if (character === '`') {
-      const runStart = index;
-      while (markdown[index + 1] === '`') index += 1;
-      const runLength = index - runStart + 1;
-      const closing = findClosingCodeSpan(markdown, index + 1, end, runLength);
-      if (closing !== null) {
-        index = closing + runLength - 1;
-        continue;
-      }
-    }
-    if (character === '[') bracketDepth += 1;
-    if (character === ']') {
-      bracketDepth -= 1;
-      if (bracketDepth === 0) break;
-    }
-  }
-  if (bracketDepth !== 0) throw new Error('Unable to locate Markdown image label.');
-  index += 1;
-  index = skipMarkdownContinuation(markdown, index, end);
-  if (markdown[index] !== '(') throw new Error('Unable to locate Markdown image destination.');
-  index += 1;
-  index = skipMarkdownContinuation(markdown, index, end);
-  if (markdown[index] === '<') {
-    const valueStart = index + 1;
-    index = valueStart;
-    for (; index < end; index += 1) {
-      if (markdown[index] === '>' && !isEscaped(markdown, index)) {
-        return { start: valueStart, end: index };
-      }
-      if (markdown[index] === '\\') index += 1;
-    }
-    throw new Error('Unable to locate Markdown image destination.');
-  }
-
-  const valueStart = index;
-  let parentheses = 0;
-  for (; index < end; index += 1) {
-    const character = markdown[index];
-    if (character === '\\') {
-      index += 1;
-      continue;
-    }
-    if (character === '(') {
-      parentheses += 1;
-      continue;
-    }
-    if (character === ')') {
-      if (parentheses === 0) return { start: valueStart, end: index };
-      parentheses -= 1;
-      continue;
-    }
-    if (/\s/.test(character) && parentheses === 0) return { start: valueStart, end: index };
-  }
-  throw new Error('Unable to locate Markdown image destination.');
-}
-
-function findDefinitionDestination(
-  markdown: string,
-  start: number,
-  end: number,
-): { start: number; end: number } {
-  let index = start;
-  while (/\s/.test(markdown[index] ?? '') && index < end) index += 1;
-  if (markdown[index] !== '[') throw new Error('Unable to locate Markdown definition.');
-  index += 1;
-  let brackets = 1;
-  for (; index < end; index += 1) {
-    if (markdown[index] === '\\') {
-      index += 1;
-      continue;
-    }
-    if (markdown[index] === '[') brackets += 1;
-    if (markdown[index] === ']') {
-      brackets -= 1;
-      if (brackets === 0) break;
-    }
-  }
-  if (brackets !== 0) throw new Error('Unable to locate Markdown definition label.');
-  index += 1;
-  while (markdown[index] === ' ' || markdown[index] === '\t') index += 1;
-  if (markdown[index] !== ':') throw new Error('Unable to locate Markdown definition.');
-  index += 1;
-  index = skipMarkdownContinuation(markdown, index, end);
-  if (markdown[index] === '<') {
-    const valueStart = index + 1;
-    index = valueStart;
-    for (; index < end; index += 1) {
-      if (markdown[index] === '>' && !isEscaped(markdown, index))
-        return { start: valueStart, end: index };
-      if (markdown[index] === '\\') index += 1;
-    }
-    throw new Error('Unable to locate Markdown definition destination.');
-  }
-  const valueStart = index;
-  for (; index < end; index += 1) {
-    if (markdown[index] === '\\') {
-      index += 1;
-      continue;
-    }
-    if (/\s/.test(markdown[index])) return { start: valueStart, end: index };
-  }
-  return { start: valueStart, end };
-}
-
-function assertDestinationMatches(
-  markdown: string,
-  destination: { start: number; end: number },
-  expected: string,
-): void {
-  const raw = markdown.slice(destination.start, destination.end);
-  const isAngle = markdown[destination.start - 1] === '<';
-  const probe = parser.parse(`![x](${isAngle ? `<${raw}>` : raw})`);
-  const first = probe.children[0];
-  if (!first || first.type !== 'paragraph') {
-    throw new Error('Unable to validate Markdown image destination.');
-  }
-  const image = first.children.find((child): child is Image => child.type === 'image');
-  if (!image || image.url !== expected) {
-    throw new Error('Unable to validate Markdown image destination.');
-  }
+  return destinations;
 }
 
 function walk(node: Nodes, visit: (node: Nodes) => void): void {
@@ -220,66 +49,54 @@ function walk(node: Nodes, visit: (node: Nodes) => void): void {
   }
 }
 
-function normalizeIdentifier(identifier: string): string {
-  return identifier.trim().replace(/\s+/g, ' ').toLowerCase();
-}
-
-/**
- * 只改写解析确认的 Markdown 图片 URL 区间，其他原文保持不变，包括换行和 YAML。
- */
+/** 只改写图片 URL 区间；保留其他原文，包括换行、标题、YAML 和代码示例。 */
 export function rewriteMarkdownImageSources(
   markdown: string,
   replaceSource: (source: string) => string,
 ): string {
-  const tree: Root = parser.parse(markdown);
+  const tree = parser.parse(markdown);
   const definitions = new Map<string, Definition>();
-  const imageReferences: ImageReference[] = [];
   const images: Image[] = [];
-
+  const imageReferences: ImageReference[] = [];
   walk(tree, (node) => {
-    if (node.type === 'definition' && typeof node.identifier === 'string') {
-      const key = normalizeIdentifier(node.identifier);
-      if (!definitions.has(key)) definitions.set(key, node);
-    } else if (node.type === 'imageReference') {
-      imageReferences.push(node);
+    if (node.type === 'definition') {
+      if (!definitions.has(node.identifier)) definitions.set(node.identifier, node);
     } else if (node.type === 'image') {
       images.push(node);
+    } else if (node.type === 'imageReference') {
+      imageReferences.push(node);
     }
   });
 
   const replacements: Replacement[] = [];
-  const addReplacement = (
-    node: Image | Definition,
-    destination: { start: number; end: number },
-  ): void => {
-    assertDestinationMatches(markdown, destination, node.url);
-    const replacement = replaceSource(node.url);
-    if (replacement === node.url) return;
+  let destinations: Map<number, Destination> | undefined;
+  const addReplacement = (node: Image | Definition): void => {
+    const value = replaceSource(node.url);
+    if (value === node.url) return;
+    destinations ??= imageDestinations(markdown);
+    const nodeStart = node.position?.start.offset;
+    const nodeEnd = node.position?.end.offset;
+    const destination = nodeStart === undefined ? undefined : destinations.get(nodeStart);
     if (
-      destination.start < 0 ||
+      !destination ||
+      nodeStart === undefined ||
+      destination.nodeEnd !== nodeEnd ||
+      destination.start < nodeStart ||
       destination.end < destination.start ||
-      destination.end > markdown.length
+      destination.end > destination.nodeEnd
     ) {
       throw new Error('Unable to locate Markdown image destination.');
     }
-    replacements.push({ ...destination, value: replacement });
+    replacements.push({ start: destination.start, end: destination.end, value });
   };
-
-  for (const image of images) {
-    const position = nodePosition(image);
-    addReplacement(image, findImageDestination(markdown, position.start, position.end));
-  }
-
+  for (const image of images) addReplacement(image);
   const usedDefinitions = new Set<string>();
   for (const reference of imageReferences) {
-    if (typeof reference.identifier !== 'string') continue;
-    const key = normalizeIdentifier(reference.identifier);
-    if (usedDefinitions.has(key)) continue;
-    const definition = definitions.get(key);
+    if (usedDefinitions.has(reference.identifier)) continue;
+    const definition = definitions.get(reference.identifier);
     if (!definition) continue;
-    usedDefinitions.add(key);
-    const position = nodePosition(definition);
-    addReplacement(definition, findDefinitionDestination(markdown, position.start, position.end));
+    usedDefinitions.add(reference.identifier);
+    addReplacement(definition);
   }
 
   replacements.sort((left, right) => right.start - left.start);

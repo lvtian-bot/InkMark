@@ -76,14 +76,14 @@ function detectImage(data: Buffer): DetectedImage | null {
 
 function safeFileStem(fileName: string): string {
   const rawStem = basename(fileName, extname(fileName));
-  const sanitized = Array.from(rawStem)
+  const cleaned = Array.from(rawStem)
     .map((character) =>
       character.charCodeAt(0) < 32 || '<>:"/\\|?*#%'.includes(character) ? '-' : character,
     )
     .join('')
     .replace(/[.\s]+$/g, '')
-    .trim()
-    .slice(0, 80);
+    .trim();
+  const sanitized = Array.from(cleaned).slice(0, 80).join('');
   return sanitized || 'image';
 }
 
