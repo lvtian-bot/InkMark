@@ -6,6 +6,7 @@ import {
   deleteLine as deleteLineCommand,
   history,
   historyKeymap,
+  isolateHistory,
   redo,
   undo,
 } from '@codemirror/commands';
@@ -250,6 +251,7 @@ export function SourceEditor({
             changes: { from: 0, to: view.state.doc.length, insert: nextDoc },
             selection: { anchor: 0 },
             userEvent: 'input.move',
+            annotations: isolateHistory.of('full'),
           }),
         );
         // 拖动来自大纲按钮，焦点已离开编辑器；交还焦点才能让撤销快捷键立即生效。

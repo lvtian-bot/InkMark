@@ -12,6 +12,8 @@ import {
 } from '../outline-visibility';
 import { canDropOutlineSection, canMoveOutlineSection, moveOutlineSection } from '../outline-move';
 import { isSectionAncestor, resolveDropAnchor, type DropAnchor } from '../outline-sections';
+import { prepareOutlineActions } from '../outline-actions';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import '../styles/outline.css';
 
 const EMPTY_IDS: Set<string> = new Set();
@@ -21,6 +23,14 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
   const activeTabId = useStore((s) => s.activeTabId);
   const viewMode = useStore(selectViewMode);
+  const [contextMenu, setContextMenu] = useState<{
+    tabId: string;
+    mode: typeof viewMode;
+    outline: typeof outline;
+    left: number;
+    top: number;
+    items: ContextMenuItem[];
+  } | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   // 折叠集合与所属标签成对保存:标题 id 按文本生成,不同标签页可能出现同名 id,
   // 读取时若所属标签不是当前标签则视为空集合,避免状态串页
@@ -53,6 +63,20 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   // 拖动结束后浏览器会补发一次 click，用它拦下该次误触发的跳转。
   const suppressNextClickRef = useRef(false);
   const dropSafetyRef = useRef(new Map<string, boolean>());
+
+  useEffect(() => {
+    return useStore.subscribe((state, previous) => {
+      const tab = state.tabs.find((item) => item.id === state.activeTabId);
+      const previousTab = previous.tabs.find((item) => item.id === previous.activeTabId);
+      if (
+        state.activeTabId !== previous.activeTabId ||
+        selectViewMode(state) !== selectViewMode(previous) ||
+        tab?.outline !== previousTab?.outline
+      ) {
+        setContextMenu(null);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const handleScroll = (): void => {
@@ -119,6 +143,36 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
         next.add(id);
       }
       return { tabId: activeTabId, ids: next };
+    });
+  };
+
+  const handleContextMenu = (event: MouseEvent, index: number): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const actions = prepareOutlineActions(index);
+    setContextMenu({
+      tabId: activeTabId,
+      mode: viewMode,
+      outline,
+      left: event.clientX,
+      top: event.clientY,
+      items: [
+        {
+          label: t('outline.promote'),
+          disabled: !actions.can('promote'),
+          onSelect: () => actions.run('promote'),
+        },
+        {
+          label: t('outline.demote'),
+          disabled: !actions.can('demote'),
+          onSelect: () => actions.run('demote'),
+        },
+        {
+          label: t('outline.deleteSection'),
+          disabled: !actions.can('delete'),
+          onSelect: () => actions.run('delete'),
+        },
+      ],
     });
   };
 
@@ -213,6 +267,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
                 displayedActiveId === heading.id ? 'active' : ''
               }${isDragging ? ' dragging' : ''}${marker}`}
               onClick={() => handleClick(heading.pos)}
+              onContextMenu={(event) => handleContextMenu(event, index)}
               title={heading.text}
               draggable
               onDragStart={(event) => handleDragStart(event, index)}
@@ -235,6 +290,17 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
           );
         })}
       </nav>
+      {contextMenu &&
+        contextMenu.tabId === activeTabId &&
+        contextMenu.mode === viewMode &&
+        contextMenu.outline === outline && (
+          <ContextMenu
+            left={contextMenu.left}
+            top={contextMenu.top}
+            items={contextMenu.items}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
     </aside>
   );
 }

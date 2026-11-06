@@ -384,6 +384,9 @@ export const messages: Record<MessageKey, string> = {
 
   'outline.title': 'Outline',
   'outline.empty': 'No outline',
+  'outline.promote': 'Promote',
+  'outline.demote': 'Demote',
+  'outline.deleteSection': 'Delete Section',
 
   'find.noResults': 'No results',
   'find.barAria': 'Find and Replace',
