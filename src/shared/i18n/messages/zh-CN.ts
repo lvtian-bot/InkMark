@@ -466,6 +466,12 @@ export const messages = {
   'font.letterSpacingMedium': '默认',
   'font.letterSpacingWide': '舒展',
 
+  'recovery.found': '发现未保存的内容。是否恢复上次异常退出前的编辑？',
+  'recovery.restore': '恢复',
+  'recovery.later': '暂不恢复',
+  'recovery.acknowledge': '知道了',
+  'recovery.saveFailed': '恢复草稿保存失败，异常退出时可能无法找回未保存内容。请及时保存文档。',
+  'recovery.changed': '原文件已更改，恢复内容将作为新文档打开，请检查后另存。',
   'theme.inkmarkLight': 'InkMark 亮色',
   'theme.inkmarkDark': 'InkMark 暗色',
   'theme.githubLight': 'GitHub 亮色',

@@ -28,6 +28,7 @@ export type { RecentItem, RecentKind } from '../../../shared/recent-items';
 import type { RecentItem } from '../../../shared/recent-items';
 import type { UpdateState } from '../../../shared/update-state';
 import type { SaveAsResponse } from '../../../shared/save-as';
+import type { RecoveryDraft } from '../../../shared/draft-recovery';
 export type { SaveAsResult, SaveAsFailure, SaveAsResponse } from '../../../shared/save-as';
 
 export interface Heading {
@@ -65,6 +66,9 @@ export interface AppInfo {
 }
 
 export interface InkMarkAPI {
+  listRecoveryDrafts: () => Promise<RecoveryDraft[]>;
+  saveRecoveryDraft: (draft: RecoveryDraft) => Promise<void>;
+  removeRecoveryDraft: (id: string) => Promise<void>;
   openFileDialog: () => Promise<string[] | null>;
   saveFile: (
     content: string,

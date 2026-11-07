@@ -17,6 +17,7 @@ import { useTheme } from './hooks/useTheme';
 import { useEditorFont } from './hooks/useEditorFont';
 import { useEditorWidth } from './hooks/useEditorWidth';
 import { useFile } from './hooks/useFile';
+import { useDraftRecovery } from './hooks/useDraftRecovery';
 import { useExport } from './hooks/useExport';
 import { useFileTree } from './hooks/useFileTree';
 import { useResizablePanel } from './hooks/useResizablePanel';
@@ -186,6 +187,7 @@ function AppContent() {
     [updateSourceOutline, updateSourceWordCount],
   );
   const fileOps = useFile(setMarkdown, viewMode, refreshSourceMetadata);
+  useDraftRecovery();
   const { finishReview } = fileOps;
   const { exportDocument: runExport } = useExport();
   const fileTree = useFileTree(activeFilePath);

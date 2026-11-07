@@ -8,6 +8,7 @@ import { buildConflictDiff } from '../conflict-diff';
 import { t } from '../i18n';
 import { tabDisplayName } from '../tab-name';
 import { AUTO_SAVE_DELAY_MS, isAutoSaveEligible } from '../auto-save';
+import { clearRecoveryDraftsBeforeExit } from './useDraftRecovery';
 import {
   clearReviewForTab,
   completeReview,
@@ -783,6 +784,7 @@ export function useFile(
         if (!saved) return false;
       }
     }
+    await clearRecoveryDraftsBeforeExit();
     return true;
   }, [saveTab, flushAutoSave]);
 
