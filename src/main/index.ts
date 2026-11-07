@@ -27,6 +27,7 @@ import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
 import { createWorkspaceAuthorization } from './workspace-authorization';
 import { createImageStorage } from './image-storage';
+import type { SaveAsFailure, SaveAsResponse } from '../shared/save-as';
 import {
   readStableTextFile,
   FileTooLargeError,
@@ -1113,7 +1114,13 @@ ipcMain.handle('file:save', async (event, request: unknown) => {
   return { status: 'ok' as const, mtime };
 });
 
-ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
+function imageCopyFailure(error: unknown): SaveAsFailure | null {
+  return error instanceof Error && 'code' in error && error.code === 'IMAGE_COPY_FAILED'
+    ? { status: 'error', code: 'image-copy-failed', message: error.message }
+    : null;
+}
+
+ipcMain.handle('dialog:saveFileAs', async (event, request: unknown): Promise<SaveAsResponse> => {
   if (!isTrustedRenderer(event) || !isSaveAsRequest(request)) {
     throw new Error('Invalid save-as request.');
   }
@@ -1124,20 +1131,26 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown) => {
   });
   if (result.canceled || !result.filePath) return null;
   const filePath = result.filePath;
-  openedDocuments.add(documentKey(filePath));
-  // 附件目录（<名>.assets）是 Markdown 文档的伴生结构；纯文本/代码文件
-  // 不复制，避免同名无关目录被误当附件搬运。
-  if (sourcePath === null || sourcePath === undefined || isMarkdownDocumentPath(sourcePath)) {
-    imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath);
+  // 仅 Markdown 按图片引用复制附件；文本/代码中的同形语法保持原文。
+  let savedContent = content;
+  try {
+    if (sourcePath === null || sourcePath === undefined || isMarkdownDocumentPath(sourcePath)) {
+      savedContent = imageStorage.copyAssetsForSaveAs(sourcePath ?? null, filePath, content);
+    }
+  } catch (error) {
+    const failure = imageCopyFailure(error);
+    if (failure) return failure;
+    throw error;
   }
   workspaceWatchManager.recordSelfWrite(filePath);
   const mtime = fileWatchManager.performSelfWrite(filePath, () =>
-    atomicWriteFile(filePath, content),
+    atomicWriteFile(filePath, savedContent),
   );
+  openedDocuments.add(documentKey(filePath));
   addRecent(filePath, 'file', { trusted: true });
   // 原生另存对话框选择的目标，其所在目录计入授权（文件树会跟随到新位置）
   approveWorkspaceAroundFile(filePath);
-  return { path: filePath, mtime };
+  return { path: filePath, content: savedContent, mtime };
 });
 
 ipcMain.handle('file:saveReviewed', (event, request: unknown) => {
@@ -1155,51 +1168,60 @@ ipcMain.handle('file:saveReviewed', (event, request: unknown) => {
   });
 });
 
-ipcMain.handle('dialog:saveReviewCopy', async (event, request: unknown) => {
-  if (
-    !isTrustedRenderer(event) ||
-    !isSaveAsRequest(request) ||
-    !isDocumentPath(request.sourcePath)
-  ) {
-    throw new Error('Invalid review copy request.');
-  }
-  const sourcePath = request.sourcePath;
-  if (!mainWindow) return null;
-  const owner = mainWindow;
-  while (!owner.isDestroyed()) {
-    const result = await dialog.showSaveDialog(owner, {
-      defaultPath: join(
-        dirname(sourcePath),
-        `${basename(sourcePath, extname(sourcePath))}-review.md`,
-      ),
-      filters: [{ name: 'Markdown', extensions: ['md'] }],
-    });
-    if (result.canceled || !result.filePath) return null;
-    const filePath = result.filePath;
-    try {
-      // 与普通另存为相同：跨目录复制原文件的附件目录，正文相对路径不改写。
-      imageStorage.copyAssetsForSaveAs(sourcePath, filePath);
-      workspaceWatchManager.recordSelfWrite(filePath);
-      const mtime = fileWatchManager.performSelfWrite(filePath, () =>
-        writeNewReviewCopy(filePath, request.content, sourcePath),
-      );
-      openedDocuments.add(documentKey(filePath));
-      addRecent(filePath, 'file', { trusted: true });
-      approveWorkspaceAroundFile(filePath);
-      return { path: filePath, mtime };
-    } catch (error) {
-      if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
-      if (owner.isDestroyed()) return null;
-      await dialog.showMessageBox(owner, {
-        type: 'info',
-        title: t('review.copyExistsTitle'),
-        message: t('review.copyExistsBody'),
-        buttons: [t('common.ok')],
-      });
+ipcMain.handle(
+  'dialog:saveReviewCopy',
+  async (event, request: unknown): Promise<SaveAsResponse> => {
+    if (
+      !isTrustedRenderer(event) ||
+      !isSaveAsRequest(request) ||
+      !isDocumentPath(request.sourcePath)
+    ) {
+      throw new Error('Invalid review copy request.');
     }
-  }
-  return null;
-});
+    const sourcePath = request.sourcePath;
+    if (!mainWindow) return null;
+    const owner = mainWindow;
+    while (!owner.isDestroyed()) {
+      const result = await dialog.showSaveDialog(owner, {
+        defaultPath: join(
+          dirname(sourcePath),
+          `${basename(sourcePath, extname(sourcePath))}-review.md`,
+        ),
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      const filePath = result.filePath;
+      try {
+        // 与普通另存共用图片引用收集；审阅副本仍必须排他新建。
+        const savedContent = imageStorage.copyAssetsForSaveAs(
+          sourcePath,
+          filePath,
+          request.content,
+        );
+        workspaceWatchManager.recordSelfWrite(filePath);
+        const mtime = fileWatchManager.performSelfWrite(filePath, () =>
+          writeNewReviewCopy(filePath, savedContent, sourcePath),
+        );
+        openedDocuments.add(documentKey(filePath));
+        addRecent(filePath, 'file', { trusted: true });
+        approveWorkspaceAroundFile(filePath);
+        return { path: filePath, content: savedContent, mtime };
+      } catch (error) {
+        const failure = imageCopyFailure(error);
+        if (failure) return failure;
+        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
+        if (owner.isDestroyed()) return null;
+        await dialog.showMessageBox(owner, {
+          type: 'info',
+          title: t('review.copyExistsTitle'),
+          message: t('review.copyExistsBody'),
+          buttons: [t('common.ok')],
+        });
+      }
+    }
+    return null;
+  },
+);
 
 // 导出文档（HTML / PDF）：对话框选目标路径 → 渲染 → 落盘。
 // 渲染链路较重（remark 全家桶），随主进程代码动态加载，首次导出时才载入。

@@ -184,7 +184,7 @@ function installInkmarkApi(
     async (content: string, sourcePath: string): Promise<SaveAsResult | null> => {
       if (sourcePath !== state.originalPath || !state.copyResult) return null;
       state.copyDisk = content;
-      return state.copyResult;
+      return { ...state.copyResult, content };
     },
   );
   const target: TestInkmarkAPI = {
@@ -262,7 +262,7 @@ async function mountScenario(
     copyPath: 'D:/probe-copy.md',
     copyMtime: 4,
     copyDisk: null,
-    copyResult: { path: 'D:/probe-copy.md', mtime: 4 },
+    copyResult: { path: 'D:/probe-copy.md', content: '', mtime: 4 },
     onWatchEvent: null,
     onMenuSave: null,
     onMenuSaveAs: null,

@@ -11,12 +11,13 @@ import type { WorkspaceFileOpResult } from '../shared/workspace-file-name';
 import type { RecentItem } from '../shared/recent-items';
 import type { ShortcutMap } from '../shared/shortcuts';
 import type { UpdateState } from '../shared/update-state';
+import type { SaveAsResponse } from '../shared/save-as';
 
 const api = {
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (content: string, path: string, knownMtime?: number | null, force?: boolean) =>
     ipcRenderer.invoke('file:save', { content, path, knownMtime, force }),
-  saveFileAs: (content: string, sourcePath?: string | null) =>
+  saveFileAs: (content: string, sourcePath?: string | null): Promise<SaveAsResponse> =>
     ipcRenderer.invoke('dialog:saveFileAs', { content, sourcePath }),
   saveReviewedFile: (
     content: string,
@@ -24,7 +25,7 @@ const api = {
     expectedContent: string,
     expectedMtime: number,
   ) => ipcRenderer.invoke('file:saveReviewed', { content, path, expectedContent, expectedMtime }),
-  saveReviewCopy: (content: string, sourcePath: string) =>
+  saveReviewCopy: (content: string, sourcePath: string): Promise<SaveAsResponse> =>
     ipcRenderer.invoke('dialog:saveReviewCopy', { content, sourcePath }),
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
   getRecentFiles: () => ipcRenderer.invoke('recent:get') as Promise<RecentItem[]>,

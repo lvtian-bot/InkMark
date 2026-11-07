@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useStore } from '../stores/useStore';
+import { selectViewMode, useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
@@ -23,7 +23,13 @@ import {
 import { isPathInside } from '../../../shared/file-tree-follow';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import type { EditorState as SourceEditorState } from '@codemirror/state';
-import type { FileResult, FileWatchEvent, OpenFileRejection, ViewMode } from '../types';
+import type {
+  FileResult,
+  FileWatchEvent,
+  OpenFileRejection,
+  SaveAsResult,
+  ViewMode,
+} from '../types';
 
 // 内部流程（重载、冲突比对、审阅基线）只关心拿不拿得到正文；文件被外部
 // 换成过大或非 UTF-8 时按读取失败处理，走既有的缺失/外部改动提示。
@@ -84,6 +90,59 @@ export function useFile(
     return tab?.sourceContent ?? '';
   }, []);
 
+  // 附件复制可能改写图片路径，磁盘正文、标签真源与可见编辑器必须一起接收。
+  // 对话框期间改过正文时，不能把旧快照的路径改写覆盖到新内容或另一个文档上。
+  const applySavedCopy = useCallback(
+    (
+      tabId: string,
+      originalPath: string | null,
+      requestedContent: string,
+      result: SaveAsResult,
+      reviewing = false,
+    ): boolean => {
+      const state = useStore.getState();
+      const current = state.tabs.find((item) => item.id === tabId);
+      if (!current || current.filePath !== originalPath || current.reviewSession !== reviewing) {
+        return false;
+      }
+      const rewritten = result.content !== requestedContent;
+      const editedWhileSaving = current.sourceContent !== requestedContent;
+      if (rewritten && editedWhileSaving) return false;
+      updateTab(tabId, {
+        filePath: result.path,
+        fileName: result.path.split(/[/\\]/).pop()!,
+        sourceContent: editedWhileSaving ? current.sourceContent : result.content,
+        isDirty: editedWhileSaving,
+        fileMtime: result.mtime,
+        externalUpdatePending: false,
+      });
+      setDiskSnapshot(tabId, result.content, result.mtime);
+      missingNotifiedTabIdsRef.current.delete(tabId);
+      autoSaveSuppressedTabIdsRef.current.delete(tabId);
+      if (rewritten) {
+        editorStateCache.dispose(tabId);
+        if (state.activeTabId === tabId) {
+          if (selectViewMode(useStore.getState()) === 'source') {
+            const isTextDoc = resolveDocumentKind(result.path) === 'text';
+            sourceEditorHandle.current?.setValue(result.content, {
+              preserveLineSeparator: isTextDoc,
+              plainText: isTextDoc,
+            });
+            const loaded = sourceEditorHandle.current?.getEditorState();
+            if (loaded) refreshSourceMetadata(loaded);
+          } else {
+            suppressDirtyRef.current = true;
+            if (!stateRef.current.setMarkdown(result.content)) suppressDirtyRef.current = false;
+          }
+        }
+        // 所见即所得装载会同步回调并重新序列化；保留主进程实际写出的原文排版。
+        updateTab(tabId, { sourceContent: result.content, isDirty: false });
+      }
+      return true;
+    },
+    [refreshSourceMetadata, updateTab],
+  );
+
   // 审阅结果只有这一条提交路径：版本未变才保存原件，有变化只允许新建副本。
   // 取消或失败时保持会话与正文，自动保存不能接手写回原文件。
   const saveReviewResult = useCallback(
@@ -107,23 +166,20 @@ export function useFile(
           current.sourceContent === content
         );
       };
-      const savedAs = (path: string, mtime: number): void => {
+      const savedAs = (result: SaveAsResult): void => {
         clearReviewForTab(tabId);
-        updateTab(tabId, {
-          filePath: path,
-          fileName: path.split(/[/\\]/).pop()!,
-          isDirty: getTabMarkdown(tabId) !== content,
-          fileMtime: mtime,
-          externalUpdatePending: false,
-        });
-        setDiskSnapshot(tabId, content, mtime);
+        applySavedCopy(tabId, originalPath, content, result, true);
         completeReview(tabId);
       };
       const saveCopy = async (): Promise<boolean> => {
         if (!isCurrent()) return false;
         const result = await window.inkmark.saveReviewCopy(content, originalPath);
         if (!result || !isCurrent()) return false;
-        savedAs(result.path, result.mtime);
+        if ('status' in result) {
+          await confirmDialog(t('confirm.saveFailed'), result.message, [t('common.ok')]);
+          return false;
+        }
+        savedAs(result);
         return true;
       };
       const offerCopy = async (): Promise<boolean> => {
@@ -175,7 +231,7 @@ export function useFile(
         );
         if (!isCurrent()) return false;
         if (result.status === 'conflict') return await offerCopy();
-        savedAs(originalPath, result.mtime);
+        savedAs({ path: originalPath, content, mtime: result.mtime });
         return true;
       } catch {
         await confirmDialog(t('confirm.saveFailed'), t('review.saveFailedBody'), [t('common.ok')]);
@@ -184,7 +240,7 @@ export function useFile(
         reviewSavesRef.current.delete(tabId);
       }
     },
-    [getTabMarkdown, updateTab],
+    [applySavedCopy, updateTab],
   );
 
   const saveTab = useCallback(
@@ -300,20 +356,15 @@ export function useFile(
         return false;
       }
       if (saveAsResult) {
-        missingNotifiedTabIdsRef.current.delete(tabId);
-        updateTab(tabId, {
-          filePath: saveAsResult.path,
-          fileName: saveAsResult.path.split(/[/\\]/).pop()!,
-          isDirty: getTabMarkdown(tabId) !== content,
-          fileMtime: saveAsResult.mtime,
-          externalUpdatePending: false,
-        });
-        setDiskSnapshot(tabId, content, saveAsResult.mtime);
-        return true;
+        if ('status' in saveAsResult) {
+          await confirmDialog(t('confirm.saveFailed'), saveAsResult.message, [t('common.ok')]);
+          return false;
+        }
+        return applySavedCopy(tabId, tab.filePath, content, saveAsResult);
       }
       return false;
     },
-    [getTabMarkdown, saveReviewResult, updateTab],
+    [applySavedCopy, getTabMarkdown, saveReviewResult, updateTab],
   );
 
   // —— 自动保存 ——
@@ -501,10 +552,11 @@ export function useFile(
       return;
     }
     const content = getTabMarkdown(currentState.activeTabId);
+    const activeTab = currentState.tabs.find((tab) => tab.id === currentState.activeTabId);
+    if (!activeTab) return;
     let result;
     try {
-      const activeTab = currentState.tabs.find((tab) => tab.id === currentState.activeTabId);
-      result = await window.inkmark.saveFileAs(content, activeTab?.filePath);
+      result = await window.inkmark.saveFileAs(content, activeTab.filePath);
     } catch {
       await confirmDialog(t('confirm.saveFailed'), t('confirm.saveFailedGeneric'), [
         t('common.ok'),
@@ -512,19 +564,13 @@ export function useFile(
       return;
     }
     if (result) {
-      missingNotifiedTabIdsRef.current.delete(currentState.activeTabId);
-      // 另存为换了新路径,解除删除流程留下的自动保存抑制——救回的文档
-      // 恢复正常自动保存,否则该标签在本会话内永远不再排期
-      autoSaveSuppressedTabIdsRef.current.delete(currentState.activeTabId);
-      updateTab(currentState.activeTabId, {
-        filePath: result.path,
-        fileName: result.path.split(/[/\\]/).pop()!,
-        isDirty: getTabMarkdown(currentState.activeTabId) !== content,
-        fileMtime: result.mtime,
-      });
-      setDiskSnapshot(currentState.activeTabId, content, result.mtime);
+      if ('status' in result) {
+        await confirmDialog(t('confirm.saveFailed'), result.message, [t('common.ok')]);
+        return;
+      }
+      applySavedCopy(activeTab.id, activeTab.filePath, content, result);
     }
-  }, [getTabMarkdown, saveReviewResult, updateTab]);
+  }, [applySavedCopy, getTabMarkdown, saveReviewResult]);
 
   const closeTab = useCallback(
     async (tabId?: string): Promise<boolean> => {
