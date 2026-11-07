@@ -56,21 +56,23 @@ export function findTextMatches(
     return { matches: [], invalidPattern: true };
   }
   const matches: TextMatch[] = [];
-  // 从范围起点开始搜索，但保留原文供锚点、断言和全字边界判断。
-  pattern.lastIndex = range.from;
+  // 正则把选区作为独立文本，避免候选反复跨越选区末尾。
+  // 原文查找仍使用完整文本判断全字边界。
+  const input = options.regex ? text.slice(range.from, range.to) : text;
+  const offset = options.regex ? range.from : 0;
+  pattern.lastIndex = range.from - offset;
   while (true) {
-    const match = pattern.exec(text);
+    const match = pattern.exec(input);
     if (!match) break;
-    const from = match.index;
+    const from = match.index + offset;
     const to = from + match[0].length;
     if (from > range.to) break;
     const accepted = from >= range.from && to <= range.to;
     // 被选区边界拒绝的候选不能跳过它内部可能合法的匹配。
     // 空匹配也必须主动前进，否则 RegExp.exec 会反复返回同一位置。
     if (!accepted || from === to) {
-      if (from === text.length && !accepted) break;
-      const point = text.codePointAt(from);
-      pattern.lastIndex = from + (point !== undefined && point > 0xffff ? 2 : 1);
+      const point = input.codePointAt(match.index);
+      pattern.lastIndex = match.index + (point !== undefined && point > 0xffff ? 2 : 1);
     }
     if (!accepted) continue;
     const result: TextMatch = { from, to };
@@ -79,12 +81,12 @@ export function findTextMatches(
         text: match[0],
         captures: match.slice(1),
         groups: match.groups,
-        input: text,
-        index: from,
+        input,
+        index: match.index,
       };
     }
     matches.push(result);
-    if (from === text.length && from === to) break;
+    if (match.index === input.length && from === to) break;
   }
   return { matches, invalidPattern: false };
 }

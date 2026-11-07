@@ -121,6 +121,21 @@ describe.each(['wysiwyg', 'source'] as const)('查找替换：%s 模式', (mode)
     expect(editor.state.text).toBe('aX');
   });
 
+  it('正则以选区首尾为边界，仅替换选中的文本', async () => {
+    editor.state.text = 'zaaaaz';
+    editor.state.selection = { from: 2, to: 4 };
+    await mount(mode);
+    await setupSearch('^a+$', 'X');
+    await act(async () => {
+      controller.setUseRegex(true);
+      controller.setInSelection(true);
+    });
+    await flushFrames();
+    expect(controller.matchCount).toBe(1);
+    await act(async () => controller.replaceAll());
+    expect(editor.state.text).toBe('zaXaz');
+  });
+
   it('选区确定后正文意外变化，不使用过期范围替换', async () => {
     await mount(mode);
     await setupSearch('foo', 'bar');

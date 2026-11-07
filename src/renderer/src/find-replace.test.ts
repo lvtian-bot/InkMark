@@ -42,9 +42,9 @@ describe('精确查找与正则替换', () => {
     ).toEqual([{ from: 3, to: 6 }]);
   });
 
-  it('全字边界约束正则分支，保留捕获组和选区外的边界上下文', () => {
+  it('全字边界约束正则分支，并保留捕获组', () => {
     const options = { ...defaults, wholeWord: true, regex: true };
-    const { matches } = findTextMatches('xab ab', '(?<part>a|ab)', options, { from: 1, to: 6 });
+    const { matches } = findTextMatches('xab ab', '(?<part>a|ab)', options);
     expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([{ from: 4, to: 6 }]);
     expect(expandReplacement(matches[0], '$1/$<part>')).toBe('ab/ab');
   });
@@ -88,12 +88,26 @@ describe('精确查找与正则替换', () => {
     expect(findTextMatches('^foo$\nfoo', '^foo$', defaults).matches).toEqual([{ from: 0, to: 5 }]);
   });
 
-  it('限定范围内的正则匹配保留原文上下文，并跳过跨界结果', () => {
+  it('限定范围内的正则使用选区首尾和上下文', () => {
     const options = { ...defaults, regex: true };
     const range = { from: 1, to: 4 };
-    const { matches } = findTextMatches('xabc!', '(?<=x)abc!|(?<=a)bc(?=!)', options, range);
-    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([{ from: 2, to: 4 }]);
-    expect(findTextMatches('xabc!', '^abc$', options, range).matches).toEqual([]);
+    const { matches } = findTextMatches('xabc!', '^abc$', options, range);
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([{ from: 1, to: 4 }]);
+    expect(findTextMatches('xabc!', '(?<=x)abc|abc(?=!)', options, range).matches).toEqual([]);
+    expect(
+      findTextMatches('xabc!', 'abc', { ...defaults, wholeWord: true }, range).matches,
+    ).toEqual([]);
+  });
+
+  it('正则量词在长选区末尾停止，返回文档中的匹配范围', () => {
+    const range = { from: 1, to: 50_001 };
+    const { matches } = findTextMatches(
+      'a'.repeat(100_000),
+      'a+',
+      { ...defaults, regex: true },
+      range,
+    );
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([range]);
   });
 
   it('正则替换支持捕获组、命名捕获组及美元符号', () => {
