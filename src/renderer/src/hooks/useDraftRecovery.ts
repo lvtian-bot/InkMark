@@ -6,9 +6,14 @@ import { tabDocumentPath, useStore, type Tab } from '../stores/useStore';
 import type { RecoveryDraft } from '../../../shared/draft-recovery';
 
 let clearLiveDrafts: () => Promise<void> = async () => undefined;
+let resumeLiveDrafts: () => void = () => undefined;
 
 export function clearRecoveryDraftsBeforeExit(): Promise<void> {
   return clearLiveDrafts();
+}
+
+export function resumeRecoveryDrafts(): void {
+  resumeLiveDrafts();
 }
 
 export function useDraftRecovery(): void {
@@ -153,6 +158,8 @@ export function useDraftRecovery(): void {
       }
     };
     clearLiveDrafts = clearOnExit;
+    const resume = (): void => update(useStore.getState().tabs, []);
+    resumeLiveDrafts = resume;
     update(useStore.getState().tabs, []);
 
     void (async () => {
@@ -207,6 +214,7 @@ export function useDraftRecovery(): void {
       active = false;
       if (warningTimer) clearTimeout(warningTimer);
       if (clearLiveDrafts === clearOnExit) clearLiveDrafts = async () => undefined;
+      if (resumeLiveDrafts === resume) resumeLiveDrafts = () => undefined;
       unsubscribe();
       for (const timer of timers.values()) clearTimeout(timer);
     };

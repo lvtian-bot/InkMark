@@ -9,7 +9,7 @@ export interface ExportDocumentRequest {
   markdown: string;
   /** 导出文件与 <title> 的默认名（标签页显示名，可能带 .md 等扩展名）。 */
   title: string;
-  /** 源文档绝对路径；未落盘的新文档为 null（相对图片无法解析，保持原样）。 */
+  /** 图片解析用的源文档绝对路径；无来源的新文档为 null。 */
   sourcePath: string | null;
 }
 

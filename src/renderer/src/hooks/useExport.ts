@@ -50,7 +50,7 @@ export function useExport() {
         kind,
         markdown: tab.sourceContent,
         title: tabDisplayName(tab, t),
-        sourcePath: tab.filePath,
+        sourcePath: tabDocumentPath(tab),
       });
     } catch {
       result = { status: 'error', message: '' };

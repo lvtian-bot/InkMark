@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveConfirmDialog } from '../confirm-dialog';
 import { setDiskSnapshot } from '../review/review-store';
 import { selectViewMode, useStore } from '../stores/useStore';
-import { clearRecoveryDraftsBeforeExit, useDraftRecovery } from './useDraftRecovery';
+import {
+  clearRecoveryDraftsBeforeExit,
+  resumeRecoveryDrafts,
+  useDraftRecovery,
+} from './useDraftRecovery';
+import { requestUpdateInstall } from '../update-install';
 import type { InkMarkAPI } from '../types';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -34,6 +39,39 @@ function Harness() {
 }
 
 describe('正文草稿恢复', () => {
+  it('更新安装失败后，未保存正文重新进入草稿保存流程', async () => {
+    const save = vi.fn(async () => undefined);
+    const remove = vi.fn(async () => undefined);
+    const api: Partial<InkMarkAPI> = {
+      listRecoveryDrafts: async () => [],
+      saveRecoveryDraft: save,
+      removeRecoveryDraft: remove,
+    };
+    Object.defineProperty(window, 'inkmark', { configurable: true, value: api });
+    await act(async () => root.render(React.createElement(Harness)));
+    const tabId = useStore.getState().addTab({ startPage: false });
+    useStore.getState().updateTab(tabId, { isDirty: true, sourceContent: '尚未保存' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      expect(
+        await requestUpdateInstall({
+          prepareToClose: async () => {
+            await clearRecoveryDraftsBeforeExit();
+            return true;
+          },
+          install: async () => false,
+          resumeRecoveryDrafts,
+        }),
+      ).toBe(false);
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ content: '尚未保存' }));
+  });
   it('编辑时保存草稿，普通保存和进入审阅时清理', async () => {
     const save = vi.fn(async () => undefined);
     const remove = vi.fn(async () => undefined);

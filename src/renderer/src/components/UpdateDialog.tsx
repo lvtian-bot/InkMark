@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { UpdateState } from '../../../shared/update-state';
 import { requestUpdateInstall } from '../update-install';
+import { resumeRecoveryDrafts } from '../hooks/useDraftRecovery';
 import { useI18n } from '../i18n';
 import '../styles/update-dialog.css';
 
@@ -68,6 +69,7 @@ export function UpdateDialog({ onClose, prepareToClose }: UpdateDialogProps) {
     void requestUpdateInstall({
       prepareToClose,
       install: () => window.inkmark.installUpdate(),
+      resumeRecoveryDrafts,
     });
   };
 
