@@ -164,11 +164,13 @@ export function useFindReplace({
       setSelectionMode(false);
       setCanSearchInSelection(false);
       showScope(null);
+      // 标签或模式切换可能恢复缓存的编辑器装饰。关闭查找时也要清理新激活的状态。
+      if (!isOpen) clear();
     }
     if (!isOpen) return;
     const frame = requestAnimationFrame(refresh);
     return () => cancelAnimationFrame(frame);
-  }, [activeTabId, contentRevision, isOpen, refresh, showScope, viewMode]);
+  }, [activeTabId, clear, contentRevision, isOpen, refresh, showScope, viewMode]);
 
   const open = useCallback(
     (withReplace: boolean) => {

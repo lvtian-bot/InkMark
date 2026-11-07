@@ -189,11 +189,13 @@
   border-left-color: #d35908;
 }
 
-.editor-container .inkmark-find-match {
+.editor-container .inkmark-find-match,
+.source-container .inkmark-find-match {
   border-radius: 2px;
   background: color-mix(in srgb, #f0c84b 45%, transparent);
 }
 
-.editor-container .inkmark-find-match.is-active {
+.editor-container .inkmark-find-match.is-active,
+.source-container .inkmark-find-match.is-active {
   background: color-mix(in srgb, #ed943c 70%, transparent);
 }

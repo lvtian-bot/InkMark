@@ -55,10 +55,20 @@ export function findTextMatches(text: string, query: string, options: FindOption
     return { matches: [], invalidPattern: true };
   }
   const matches: TextMatch[] = [];
-  for (const match of text.matchAll(pattern)) {
+  while (true) {
+    const match = pattern.exec(text);
+    if (!match) break;
     const from = match.index;
     const to = from + match[0].length;
-    if (options.wholeWord && !isWholeWord(text, from, to)) continue;
+    const accepted = !options.wholeWord || isWholeWord(text, from, to);
+    // 被边界规则拒绝的候选不能跳过它内部可能合法的匹配。
+    // 空匹配也必须主动前进，否则 RegExp.exec 会反复返回同一位置。
+    if (!accepted || from === to) {
+      if (from === text.length && !accepted) break;
+      const point = text.codePointAt(from);
+      pattern.lastIndex = from + (point !== undefined && point > 0xffff ? 2 : 1);
+    }
+    if (!accepted) continue;
     const result: TextMatch = { from, to };
     if (options.regex) {
       result.regexMatch = {
@@ -70,6 +80,7 @@ export function findTextMatches(text: string, query: string, options: FindOption
       };
     }
     matches.push(result);
+    if (from === text.length && from === to) break;
   }
   return { matches, invalidPattern: false };
 }

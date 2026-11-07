@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from './i18n';
 import { SourceEditor } from './components/SourceEditor';
 import { sourceEditorHandle } from './source-editor-ref';
@@ -21,15 +21,21 @@ describe('源码查找实际编辑器接口', () => {
     const host = document.createElement('div');
     document.body.append(host);
     const root = createRoot(host);
+    const onChange = vi.fn();
     await act(async () =>
       root.render(
         <I18nProvider>
-          <SourceEditor onChange={() => undefined} onFollowLink={() => undefined} />
+          <SourceEditor onChange={onChange} onFollowLink={() => undefined} />
         </I18nProvider>,
       ),
     );
     const handle = sourceEditorHandle.current;
     if (!handle) throw new Error('源码编辑器未挂载');
+    await act(async () => {
+      expect(handle.replaceTextMatches([{ from: 0, to: 0, text: '' }])).toBe(1);
+    });
+    expect(handle.getDocText()).toBe('abc');
+    expect(onChange).not.toHaveBeenCalled();
     await act(async () => handle.showFindMatches([{ from: 0, to: 0 }], 0));
     expect(host.querySelectorAll('.inkmark-find-zero.is-active')).toHaveLength(1);
     await act(async () => {

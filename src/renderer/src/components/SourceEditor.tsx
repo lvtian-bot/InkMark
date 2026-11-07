@@ -318,6 +318,11 @@ export function SourceEditor({
           )
         )
           return 0;
+        // 零宽命中替换为空字符串不会产生文档事务，但仍是成功处理的命中；
+        // 返回成功让调用方继续定位下一处，避免一直停留在同一位置。
+        if (replacements.every(({ from, to, text }) => from === to && text === '')) {
+          return replacements.length;
+        }
         const previousDoc = view.state.doc;
         view.dispatch({
           changes: replacements.map(({ from, to, text }) => ({ from, to, insert: text })),

@@ -132,6 +132,25 @@ describe.each(['wysiwyg', 'source'] as const)('查找替换：%s 模式', (mode)
     expect(editor.showFindScope).toHaveBeenLastCalledWith(null);
   });
 
+  it('关闭查找后切回标签时清除缓存的高亮和选区', async () => {
+    await mount(mode);
+    await setupSearch('foo');
+    await act(async () => controller.setInSelection(true));
+    await flushFrames();
+    await act(async () => root.render(<Harness mode={mode} tab="second" />));
+    await flushFrames();
+    await act(async () => controller.close());
+    vi.clearAllMocks();
+    await act(async () => root.render(<Harness mode={mode} tab="first" />));
+    await flushFrames();
+    expect(editor.showFindScope).toHaveBeenCalledWith(null);
+    if (mode === 'source') {
+      expect(editor.showFindMatches).toHaveBeenLastCalledWith([], -1);
+    } else {
+      expect(editor.showTextMatches).toHaveBeenLastCalledWith([], -1);
+    }
+  });
+
   it('无效正则禁止替换', async () => {
     await mount(mode);
     await setupSearch('[', 'bar');
@@ -153,5 +172,23 @@ describe.each(['wysiwyg', 'source'] as const)('查找替换：%s 模式', (mode)
     expect(controller.matchCount).toBe(2);
     await act(async () => controller.replaceAll());
     expect(editor.state.text).toBe('123:ABC 456:DEF');
+  });
+
+  it('替换零宽匹配为空文本后前进到下一处，再替换其内容', async () => {
+    editor.state.text = 'baaa';
+    editor.state.selection = { from: 0, to: 0 };
+    await mount(mode);
+    await setupSearch('a*');
+    await act(async () => controller.setUseRegex(true));
+    await flushFrames();
+    expect(controller.activeIndex).toBe(0);
+    await act(async () => controller.replaceCurrent());
+    await flushFrames();
+    expect(editor.state.text).toBe('baaa');
+    expect(controller.activeIndex).toBe(1);
+    await act(async () => controller.replaceCurrent());
+    await flushFrames();
+    expect(editor.state.text).toBe('b');
+    expect(editor.replaceTextMatches).toHaveBeenNthCalledWith(2, [{ from: 1, to: 4, text: '' }]);
   });
 });

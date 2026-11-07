@@ -30,6 +30,18 @@ describe('精确查找与正则替换', () => {
     ).toEqual([{ from: 0, to: 2 }]);
   });
 
+  it('全字边界拒绝候选后，仍可找到与它重叠的合法结果', () => {
+    const text = 'xa-a-a ';
+    const options = { ...defaults, wholeWord: true };
+    expect(findTextMatches(text, 'a-a', options).matches).toEqual([{ from: 3, to: 6 }]);
+    expect(
+      findTextMatches(text, 'a-a', { ...options, regex: true }).matches.map(({ from, to }) => ({
+        from,
+        to,
+      })),
+    ).toEqual([{ from: 3, to: 6 }]);
+  });
+
   it('正则无效时报告错误', () => {
     expect(findTextMatches('abc', '[', { ...defaults, regex: true })).toEqual({
       matches: [],
