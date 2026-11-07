@@ -27,6 +27,10 @@ import { createDraftRecovery } from './draft-recovery';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
 import { createWorkspaceAuthorization } from './workspace-authorization';
+import {
+  createDocumentSaveAuthorization,
+  resolveDocumentSaveTarget,
+} from './document-save-authorization';
 import { createImageStorage } from './image-storage';
 import type { SaveAsFailure, SaveAsResponse } from '../shared/save-as';
 import {
@@ -97,12 +101,26 @@ let currentOutlineVisible = true;
 let currentFileTreeVisible = false;
 let currentToolbarVisible = true;
 let currentAlwaysOnTop = false;
-// 本会话内已成功打开或经对话框建立的文档路径：放宽可打开扩展名后，
-// file:save 的写入原语覆盖代码与脚本，沙箱内的渲染层必须先证明
-// 路径经可信流程打开，才可写入（含强制覆盖）。
+// 成功读取是保存的前置条件。能否覆盖还要检查主进程单独维护的权限。
 const openedDocuments = new Set<string>();
 const documentKey = (filePath: string): string =>
   process.platform === 'win32' ? filePath.toLowerCase() : filePath;
+const documentSaveAuthorization = createDocumentSaveAuthorization();
+let saveConfirmationPending = false;
+
+function approveDocumentSave(path: string): void {
+  if (!isDocumentPath(path)) return;
+  const target = resolveDocumentSaveTarget(path);
+  if (target) documentSaveAuthorization.approveFile(target);
+}
+
+function getOpenedSaveTarget(path: string): string | null {
+  if (!openedDocuments.has(documentKey(path))) {
+    throw new Error('Document was not opened in this session.');
+  }
+  const target = resolveDocumentSaveTarget(path);
+  return isDocumentPath(target) ? target : null;
+}
 // 活动标签是否为纯文本/代码文件：由渲染层按标签切换上报，用于禁用
 // 纯文本文件不可用的菜单项（导出、源码模式切换）。
 let currentActiveDocumentIsText = false;
@@ -517,6 +535,7 @@ if (!gotLock) {
       for (const fp of filePaths) {
         // 命令行/文件关联打开属于系统级用户动作，其所在目录计入授权
         approveWorkspaceAroundFile(fp);
+        approveDocumentSave(fp);
         mainWindow.webContents.send('file:open-path', fp);
       }
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -567,6 +586,7 @@ function createWindow(): void {
       for (const fp of pendingFilePaths) {
         // 启动参数携带的文件（文件关联/命令行），同 second-instance 处理授权
         approveWorkspaceAroundFile(fp);
+        approveDocumentSave(fp);
         mainWindow?.webContents.send('file:open-path', fp);
       }
       pendingFilePaths = [];
@@ -656,6 +676,7 @@ function buildRecentMenu(): Electron.MenuItemConstructorOptions[] {
     click: () => {
       // 原生菜单点击是用户动作，其所在目录计入授权
       approveWorkspaceAroundFile(path);
+      approveDocumentSave(path);
       mainWindow?.webContents.send('file:open-path', path);
     },
   }));
@@ -922,8 +943,10 @@ app.whenReady().then(() => {
   // 所在目录，文件夹条目登记自身。
   for (const item of getRecentFiles()) {
     if (item.trusted !== true) continue;
-    if (item.kind === 'folder') workspaceAuthorization.approve(item.path);
-    else approveWorkspaceAroundFile(item.path);
+    if (item.kind === 'folder') {
+      workspaceAuthorization.approve(item.path);
+      documentSaveAuthorization.approveWorkspace(item.path);
+    } else approveWorkspaceAroundFile(item.path);
   }
 
   protocol.handle('inkmark-local', (request) => {
@@ -1102,9 +1125,43 @@ ipcMain.handle('dialog:openFile', async (event) => {
   // 新文件夹后，右键新建/重命名/删除会被误拒
   for (const filePath of result.filePaths) {
     approveWorkspaceAroundFile(filePath);
+    approveDocumentSave(filePath);
   }
   setLastDialogPath(result.filePaths[0]);
   return result.filePaths;
+});
+
+ipcMain.handle('dialog:confirmFileSave', async (event, path: unknown) => {
+  const owner = mainWindow;
+  if (!owner || !isTrustedRenderer(event) || !isDocumentPath(path)) return false;
+  const target = getOpenedSaveTarget(path);
+  if (!target) return false;
+  if (documentSaveAuthorization.isApproved(target)) return true;
+  if (saveConfirmationPending) return false;
+  saveConfirmationPending = true;
+  try {
+    const { response } = await dialog.showMessageBox(owner, {
+      type: 'warning',
+      message: t('confirm.overwriteDisk'),
+      detail: target,
+      buttons: [t('common.cancel'), t('common.save')],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    if (
+      response !== 1 ||
+      owner.isDestroyed() ||
+      !isTrustedRenderer(event) ||
+      resolveDocumentSaveTarget(path) !== target
+    ) {
+      return false;
+    }
+    documentSaveAuthorization.approveFile(target);
+    return true;
+  } finally {
+    saveConfirmationPending = false;
+  }
 });
 
 ipcMain.handle('file:save', async (event, request: unknown) => {
@@ -1112,12 +1169,12 @@ ipcMain.handle('file:save', async (event, request: unknown) => {
     throw new Error('Invalid file save request.');
   }
   const { content, path, knownMtime, force } = request;
-  if (!openedDocuments.has(documentKey(path))) {
-    throw new Error('Document was not opened in this session.');
-  }
+  const target = getOpenedSaveTarget(path);
+  if (!target) throw new Error('Save target is not a regular document.');
+  if (!documentSaveAuthorization.isApproved(target)) return { status: 'authorization-required' };
   if (!force && knownMtime != null) {
     try {
-      const currentMtime = statSync(path).mtimeMs;
+      const currentMtime = statSync(target).mtimeMs;
       if (currentMtime !== knownMtime) {
         return { status: 'conflict' as const };
       }
@@ -1126,7 +1183,7 @@ ipcMain.handle('file:save', async (event, request: unknown) => {
     }
   }
   workspaceWatchManager.recordSelfWrite(path);
-  const mtime = fileWatchManager.performSelfWrite(path, () => atomicWriteFile(path, content));
+  const mtime = fileWatchManager.performSelfWrite(path, () => atomicWriteFile(target, content));
   return { status: 'ok' as const, mtime };
 });
 
@@ -1163,6 +1220,7 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown): Promise<Sav
     atomicWriteFile(filePath, savedContent),
   );
   openedDocuments.add(documentKey(filePath));
+  approveDocumentSave(filePath);
   addRecent(filePath, 'file', { trusted: true });
   // 原生另存对话框选择的目标，其所在目录计入授权（文件树会跟随到新位置）
   approveWorkspaceAroundFile(filePath);
@@ -1173,13 +1231,13 @@ ipcMain.handle('file:saveReviewed', (event, request: unknown) => {
   if (!isTrustedRenderer(event) || !isReviewedFileSaveRequest(request)) {
     throw new Error('Invalid reviewed file save request.');
   }
-  if (!openedDocuments.has(documentKey(request.path))) {
-    throw new Error('Document was not opened in this session.');
-  }
-  return saveReviewedFileVersion(request, () => {
+  const target = getOpenedSaveTarget(request.path);
+  if (!target) return { status: 'conflict' };
+  if (!documentSaveAuthorization.isApproved(target)) return { status: 'authorization-required' };
+  return saveReviewedFileVersion({ ...request, path: target }, () => {
     workspaceWatchManager.recordSelfWrite(request.path);
     return fileWatchManager.performSelfWrite(request.path, () =>
-      atomicWriteFile(request.path, request.content),
+      atomicWriteFile(target, request.content),
     );
   });
 });
@@ -1219,6 +1277,7 @@ ipcMain.handle(
           writeNewReviewCopy(filePath, savedContent, sourcePath),
         );
         openedDocuments.add(documentKey(filePath));
+        approveDocumentSave(filePath);
         addRecent(filePath, 'file', { trusted: true });
         approveWorkspaceAroundFile(filePath);
         return { path: filePath, content: savedContent, mtime };
@@ -1495,6 +1554,7 @@ ipcMain.handle('dialog:openFolder', async (event) => {
   setLastDialogPath(folderPath);
   addRecent(folderPath, 'folder', { trusted: true });
   workspaceAuthorization.approve(folderPath);
+  documentSaveAuthorization.approveWorkspace(folderPath);
   return { path: folderPath };
 });
 
@@ -1603,6 +1663,7 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
   // 渲染层传入打开标签的磁盘基线（有则必校验），防止外部版本未处理时
   // 重命名洗掉基线、让下次保存静默覆盖
   const expectedMtime = typeof request.expectedMtime === 'number' ? request.expectedMtime : null;
+  const previousSaveTarget = resolveDocumentSaveTarget(request.path);
   const result = renameWorkspaceFile(request.path, request.newName, expectedMtime);
   if ('path' in result) {
     workspaceWatchManager.recordSelfWrite(request.path);
@@ -1611,6 +1672,10 @@ ipcMain.handle('workspace:renameFile', (event, request: unknown) => {
     if (openedDocuments.has(documentKey(request.path))) {
       openedDocuments.delete(documentKey(request.path));
       openedDocuments.add(documentKey(result.path));
+    }
+    const newSaveTarget = resolveDocumentSaveTarget(result.path);
+    if (previousSaveTarget && newSaveTarget) {
+      documentSaveAuthorization.moveFile(previousSaveTarget, newSaveTarget);
     }
   }
   return result;

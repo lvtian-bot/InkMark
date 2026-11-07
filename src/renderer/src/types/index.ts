@@ -50,7 +50,8 @@ export interface FileResult {
 export type OpenFileRejection =
   { status: 'too-large' } | { status: 'unsupported-encoding' } | { status: 'symlink' };
 
-export type SaveResult = { status: 'ok'; mtime: number } | { status: 'conflict' };
+export type SaveResult =
+  { status: 'ok'; mtime: number } | { status: 'conflict' } | { status: 'authorization-required' };
 
 export type MtimeResult = { status: 'ok'; mtime: number } | { status: 'error' };
 
@@ -70,6 +71,7 @@ export interface InkMarkAPI {
   saveRecoveryDraft: (draft: RecoveryDraft) => Promise<void>;
   removeRecoveryDraft: (id: string) => Promise<void>;
   openFileDialog: () => Promise<string[] | null>;
+  confirmFileSave: (path: string) => Promise<boolean>;
   saveFile: (
     content: string,
     path: string,
