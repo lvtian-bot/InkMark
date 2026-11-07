@@ -90,6 +90,22 @@ afterEach(async () => {
 });
 
 describe('另存后的正文与标签同步', () => {
+  it('恢复为新文档的内容另存时保留图片来源路径', async () => {
+    const { tabId, saveFileAs } = await mount('source', null);
+    await act(async () => {
+      useStore.getState().updateTab(tabId, {
+        recoveryOriginPath: originalPath,
+        isDirty: true,
+      });
+      await fileOps().saveAs();
+    });
+    expect(saveFileAs).toHaveBeenCalledWith(original, originalPath);
+    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)).toMatchObject({
+      filePath: copiedPath,
+      recoveryOriginPath: null,
+    });
+  });
+
   it('普通另存将改写后的图片路径同步到真源、磁盘基线和真实源码编辑器，再次保存不写回旧路径', async () => {
     const { tabId, saveFile } = await mount();
     await act(async () => fileOps().saveAs());

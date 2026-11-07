@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import type { EditorState } from '@codemirror/state';
-import { useStore } from '../stores/useStore';
+import { tabDocumentPath, useStore } from '../stores/useStore';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import type { Heading } from '../types';
 import { extractSourceHeadings } from '../source-document';
@@ -72,7 +72,7 @@ export function useOutline() {
     const tab = useStore
       .getState()
       .tabs.find((item) => item.id === useStore.getState().activeTabId);
-    return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+    return !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
   };
 
   const updateSourceOutline = useCallback(

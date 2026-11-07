@@ -12,7 +12,7 @@ import {
   Table,
   Undo2,
 } from 'lucide-react';
-import { useStore, selectViewMode } from '../stores/useStore';
+import { useStore, selectViewMode, tabDocumentPath } from '../stores/useStore';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
@@ -41,7 +41,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
   // 纯文本/代码标签没有 Markdown 格式操作，整组隐藏，只留撤销/重做/保存。
   const isTextDoc = useStore((s) => {
     const tab = s.tabs.find((item) => item.id === s.activeTabId);
-    return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+    return !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
   });
   const { t } = useI18n();
 

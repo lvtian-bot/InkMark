@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { useStore } from '../stores/useStore';
+import { tabDocumentPath, useStore } from '../stores/useStore';
 import { confirmDialog } from '../confirm-dialog';
 import { showExportProgress, hideExportProgress } from '../export-progress';
 import { t } from '../i18n';
@@ -26,7 +26,7 @@ export function useExport() {
     if (!tab || tab.isStartPage) return;
 
     // 纯文本/代码文件不参与 Markdown 导出链路，导出结果是错误的 HTML/PDF。
-    if (resolveDocumentKind(tab.filePath) === 'text') {
+    if (resolveDocumentKind(tabDocumentPath(tab)) === 'text') {
       await confirmDialog(t('confirm.exportUnsupportedTitle'), t('confirm.exportUnsupportedBody'), [
         t('common.ok'),
       ]);
@@ -50,7 +50,7 @@ export function useExport() {
         kind,
         markdown: tab.sourceContent,
         title: tabDisplayName(tab, t),
-        sourcePath: tab.filePath,
+        sourcePath: tabDocumentPath(tab),
       });
     } catch {
       result = { status: 'error', message: '' };

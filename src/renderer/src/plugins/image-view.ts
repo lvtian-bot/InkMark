@@ -1,7 +1,7 @@
 import { $view } from '@milkdown/kit/utils';
 import { imageSchema } from '@milkdown/kit/preset/commonmark';
 import { t as translate } from '../i18n';
-import { useStore } from '../stores/useStore';
+import { tabDocumentPath, useStore } from '../stores/useStore';
 
 interface ImageAttributes {
   src?: string;
@@ -11,14 +11,16 @@ interface ImageAttributes {
 
 function getActiveDocumentPath(): string | null {
   const state = useStore.getState();
-  return state.tabs.find((tab) => tab.id === state.activeTabId)?.filePath ?? null;
+  const tab = state.tabs.find((item) => item.id === state.activeTabId);
+  return tab ? tabDocumentPath(tab) : null;
 }
 
 let currentDocumentPath = getActiveDocumentPath();
 const documentPathListeners = new Set<(documentPath: string | null) => void>();
 
 useStore.subscribe((state) => {
-  const nextDocumentPath = state.tabs.find((tab) => tab.id === state.activeTabId)?.filePath ?? null;
+  const tab = state.tabs.find((item) => item.id === state.activeTabId);
+  const nextDocumentPath = tab ? tabDocumentPath(tab) : null;
   if (nextDocumentPath === currentDocumentPath) return;
   currentDocumentPath = nextDocumentPath;
   for (const listener of documentPathListeners) listener(nextDocumentPath);

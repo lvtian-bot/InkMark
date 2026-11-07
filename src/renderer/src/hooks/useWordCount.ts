@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { EditorState } from '@codemirror/state';
-import { useStore } from '../stores/useStore';
+import { tabDocumentPath, useStore } from '../stores/useStore';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import { extractSourceText, serializeDoc } from '../source-document';
 
@@ -60,7 +60,7 @@ export function useWordCount() {
         const tab = useStore
           .getState()
           .tabs.find((item) => item.id === useStore.getState().activeTabId);
-        return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+        return !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
       })();
       scheduleCount(isTextDoc ? serializeDoc(state) : extractSourceText(state), immediate);
     },

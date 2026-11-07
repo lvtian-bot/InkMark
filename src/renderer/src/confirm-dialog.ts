@@ -28,6 +28,10 @@ let promptResolver: ((value: string | null) => void) | null = null;
 
 const listeners = new Set<() => void>();
 
+export function isDialogOpen(): boolean {
+  return current !== null || promptCurrent !== null;
+}
+
 function emit(): void {
   for (const listener of listeners) listener();
 }

@@ -8,7 +8,7 @@ import { sourceEditorHandle, type SourceSelection } from './source-editor-ref';
 import { promptDialog } from './confirm-dialog';
 import { formatDate, formatDateTime } from './datetime-format';
 import { t } from './i18n';
-import { selectViewMode, useStore } from './stores/useStore';
+import { selectViewMode, tabDocumentPath, useStore } from './stores/useStore';
 import { resolveDocumentKind } from '../../shared/openable-document';
 
 /// 源码模式下的编辑结果：新全文 + 新选区。辅助函数只产出这份结果，
@@ -233,7 +233,7 @@ export function runEditorCommand(action: EditorShortcutAction): void {
   // 纯文本/代码文件没有 Markdown 格式操作：工具栏按钮已隐藏，快捷键在此拦下。
   if (
     activeTab &&
-    resolveDocumentKind(activeTab.filePath) === 'text' &&
+    resolveDocumentKind(tabDocumentPath(activeTab)) === 'text' &&
     MARKDOWN_ONLY_ACTIONS.has(action)
   ) {
     return;

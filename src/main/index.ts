@@ -23,6 +23,7 @@ import {
 } from 'fs';
 import { pathToFileURL } from 'url';
 import { createFileWatchManager } from './file-watch-manager';
+import { createDraftRecovery } from './draft-recovery';
 import { createWorkspaceWatchManager } from './workspace-watch-manager';
 import { createWorkspaceDocument, renameWorkspaceFile } from './workspace-file-ops';
 import { createWorkspaceAuthorization } from './workspace-authorization';
@@ -1067,6 +1068,21 @@ ipcMain.handle('clipboard:writeText', (event, request: unknown) => {
 
 // 打开对话框只负责选路径；内容读取、大小/编码校验与最近列表登记统一走
 // file:read，保证对话框打开与文件树、链接跳转走同一套守卫和失败提示。
+ipcMain.handle('draft:list', (event) => {
+  if (!isTrustedRenderer(event)) throw new Error('Untrusted sender');
+  return createDraftRecovery(join(app.getPath('userData'), 'recovery-drafts')).list();
+});
+
+ipcMain.handle('draft:save', (event, value: unknown) => {
+  if (!isTrustedRenderer(event)) throw new Error('Untrusted sender');
+  createDraftRecovery(join(app.getPath('userData'), 'recovery-drafts')).save(value);
+});
+
+ipcMain.handle('draft:remove', (event, id: unknown) => {
+  if (!isTrustedRenderer(event) || typeof id !== 'string') throw new Error('Invalid request');
+  createDraftRecovery(join(app.getPath('userData'), 'recovery-drafts')).remove(id);
+});
+
 ipcMain.handle('dialog:openFile', async (event) => {
   if (!isTrustedRenderer(event)) return null;
   if (!mainWindow) return null;

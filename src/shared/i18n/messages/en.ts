@@ -495,6 +495,17 @@ export const messages: Record<MessageKey, string> = {
   'font.letterSpacingMedium': 'Default',
   'font.letterSpacingWide': 'Wide',
 
+  'recovery.found': 'Unsaved content was found. Restore edits from before the unexpected exit?',
+  'recovery.restore': 'Restore',
+  'recovery.later': 'Not now',
+  'recovery.acknowledge': 'Got it',
+  'recovery.saveFailed':
+    'The recovery draft could not be saved. Unsaved content may be lost if the app exits unexpectedly. Please save your document.',
+  'recovery.cleanupFailed': 'Could not clean up recovery drafts. Try again?',
+  'recovery.retry': 'Retry',
+  'recovery.cancelClose': 'Cancel closing',
+  'recovery.changed':
+    'The original file has changed. The recovered content will open as a new document; review it and save a copy.',
   'theme.inkmarkLight': 'InkMark Light',
   'theme.inkmarkDark': 'InkMark Dark',
   'theme.githubLight': 'GitHub Light',

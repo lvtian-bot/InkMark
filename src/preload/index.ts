@@ -12,8 +12,13 @@ import type { RecentItem } from '../shared/recent-items';
 import type { ShortcutMap } from '../shared/shortcuts';
 import type { UpdateState } from '../shared/update-state';
 import type { SaveAsResponse } from '../shared/save-as';
+import type { RecoveryDraft } from '../shared/draft-recovery';
 
 const api = {
+  listRecoveryDrafts: (): Promise<RecoveryDraft[]> => ipcRenderer.invoke('draft:list'),
+  saveRecoveryDraft: (draft: RecoveryDraft): Promise<void> =>
+    ipcRenderer.invoke('draft:save', draft),
+  removeRecoveryDraft: (id: string): Promise<void> => ipcRenderer.invoke('draft:remove', id),
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
   saveFile: (content: string, path: string, knownMtime?: number | null, force?: boolean) =>
     ipcRenderer.invoke('file:save', { content, path, knownMtime, force }),
