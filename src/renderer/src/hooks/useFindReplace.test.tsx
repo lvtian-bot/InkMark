@@ -109,6 +109,18 @@ describe.each(['wysiwyg', 'source'] as const)('查找替换：%s 模式', (mode)
     expect(editor.state.text).toBe('foo bar foo');
   });
 
+  it('从选区起点搜索，不漏掉与选区外结果重叠的匹配', async () => {
+    editor.state.text = 'aaa';
+    editor.state.selection = { from: 1, to: 3 };
+    await mount(mode);
+    await setupSearch('aa', 'X');
+    await act(async () => controller.setInSelection(true));
+    await flushFrames();
+    expect(controller.matchCount).toBe(1);
+    await act(async () => controller.replaceAll());
+    expect(editor.state.text).toBe('aX');
+  });
+
   it('选区确定后正文意外变化，不使用过期范围替换', async () => {
     await mount(mode);
     await setupSearch('foo', 'bar');
@@ -172,6 +184,20 @@ describe.each(['wysiwyg', 'source'] as const)('查找替换：%s 模式', (mode)
     expect(controller.matchCount).toBe(2);
     await act(async () => controller.replaceAll());
     expect(editor.state.text).toBe('123:ABC 456:DEF');
+  });
+
+  it('零宽替换插入文字后越过刚处理的位置', async () => {
+    editor.state.text = 'aa';
+    editor.state.selection = { from: 0, to: 0 };
+    await mount(mode);
+    await setupSearch('(?=a)', 'X');
+    await act(async () => controller.setUseRegex(true));
+    await flushFrames();
+    await act(async () => controller.replaceCurrent());
+    await flushFrames();
+    expect(editor.state.text).toBe('Xaa');
+    await act(async () => controller.replaceCurrent());
+    expect(editor.state.text).toBe('XaXa');
   });
 
   it('替换零宽匹配为空文本后前进到下一处，再替换其内容', async () => {

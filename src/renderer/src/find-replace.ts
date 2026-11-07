@@ -43,7 +43,12 @@ function isWholeWord(text: string, from: number, to: number): boolean {
   return (!before || !wordCharacter.test(before)) && (!after || !wordCharacter.test(after));
 }
 
-export function findTextMatches(text: string, query: string, options: FindOptions): FindResult {
+export function findTextMatches(
+  text: string,
+  query: string,
+  options: FindOptions,
+  range: { from: number; to: number } = { from: 0, to: text.length },
+): FindResult {
   if (!query) return { matches: [], invalidPattern: false };
   let pattern: RegExp;
   try {
@@ -55,12 +60,16 @@ export function findTextMatches(text: string, query: string, options: FindOption
     return { matches: [], invalidPattern: true };
   }
   const matches: TextMatch[] = [];
+  // 从范围起点开始搜索，但保留原文供锚点、断言和全字边界判断。
+  pattern.lastIndex = range.from;
   while (true) {
     const match = pattern.exec(text);
     if (!match) break;
     const from = match.index;
     const to = from + match[0].length;
-    const accepted = !options.wholeWord || isWholeWord(text, from, to);
+    if (from > range.to) break;
+    const accepted =
+      from >= range.from && to <= range.to && (!options.wholeWord || isWholeWord(text, from, to));
     // 被边界规则拒绝的候选不能跳过它内部可能合法的匹配。
     // 空匹配也必须主动前进，否则 RegExp.exec 会反复返回同一位置。
     if (!accepted || from === to) {

@@ -123,13 +123,18 @@ export function useFindReplace({
       return { matches: [], invalidPattern: false };
     }
     const found: TextMatch[] = [];
+    const scope = inSelection ? selectedScope.current : null;
     for (const segment of segments()) {
-      const result = findTextMatches(segment.text, query, options);
+      const range = scope
+        ? {
+            from: Math.max(0, scope.from - segment.from),
+            to: Math.min(segment.text.length, scope.to - segment.from),
+          }
+        : undefined;
+      if (range && range.from > range.to) continue;
+      const result = findTextMatches(segment.text, query, options, range);
       for (const match of result.matches) {
-        const mapped = { ...match, from: match.from + segment.from, to: match.to + segment.from };
-        const scope = selectedScope.current;
-        if (!inSelection || (scope && mapped.from >= scope.from && mapped.to <= scope.to))
-          found.push(mapped);
+        found.push({ ...match, from: match.from + segment.from, to: match.to + segment.from });
       }
     }
     return { matches: found, invalidPattern: false };
@@ -271,18 +276,10 @@ export function useFindReplace({
         scopeSnapshot.current = snapshot();
         showScope(selectedScope.current);
       }
-      activeMatch.current = all
-        ? null
-        : {
-            from:
-              edits[0].from +
-              edits[0].text.length +
-              (edits[0].from === edits[0].to && !edits[0].text ? 1 : 0),
-            to:
-              edits[0].from +
-              edits[0].text.length +
-              (edits[0].from === edits[0].to && !edits[0].text ? 1 : 0),
-          };
+      const { from, to, text } = edits[0];
+      // 零宽命中会随插入移动到新文字之后，定位时还要越过该位置。
+      const nextAnchor = from + text.length + (from === to ? 1 : 0);
+      activeMatch.current = all ? null : { from: nextAnchor, to: nextAnchor };
       requestAnimationFrame(refresh);
       requestAnimationFrame(() => queryInputRef.current?.focus({ preventScroll: true }));
     },

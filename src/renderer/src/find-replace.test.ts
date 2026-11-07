@@ -78,6 +78,14 @@ describe('精确查找与正则替换', () => {
     expect(findTextMatches('^foo$\nfoo', '^foo$', defaults).matches).toEqual([{ from: 0, to: 5 }]);
   });
 
+  it('限定范围内的正则匹配保留原文上下文，并跳过跨界结果', () => {
+    const options = { ...defaults, regex: true };
+    const range = { from: 1, to: 4 };
+    const { matches } = findTextMatches('xabc!', '(?<=x)abc!|(?<=a)bc(?=!)', options, range);
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([{ from: 2, to: 4 }]);
+    expect(findTextMatches('xabc!', '^abc$', options, range).matches).toEqual([]);
+  });
+
   it('正则替换支持捕获组、命名捕获组及美元符号', () => {
     const [match] = findTextMatches('A 2026-11 B', '(?<year>\\d+)-(\\d+)', {
       ...defaults,
