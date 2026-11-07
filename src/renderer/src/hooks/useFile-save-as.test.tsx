@@ -43,11 +43,16 @@ async function mount(mode: ViewMode = 'source', path: string | null = originalPa
   }));
   const saveReviewCopy = vi.fn<InkMarkAPI['saveReviewCopy']>(saveFileAs);
   const saveFile = vi.fn<InkMarkAPI['saveFile']>(async () => ({ status: 'ok', mtime: 3 }));
+  const confirmFileSave = vi.fn<InkMarkAPI['confirmFileSave']>(async () => false);
+  const saveReviewedFile = vi.fn<InkMarkAPI['saveReviewedFile']>();
   const api: Partial<InkMarkAPI> = {
     platform: 'win32',
     saveFileAs,
     saveReviewCopy,
     saveFile,
+    confirmFileSave,
+    saveReviewedFile,
+    openFilePath: async (path) => ({ path, content: original, mtime: 1 }),
     onFileWatchEvent: () => () => undefined,
     watchFile: () => undefined,
     unwatchFile: () => undefined,
@@ -74,7 +79,15 @@ async function mount(mode: ViewMode = 'source', path: string | null = originalPa
   document.body.appendChild(host);
   root = createRoot(host);
   await act(async () => root?.render(React.createElement(Harness)));
-  return { tabId, saveFileAs, saveReviewCopy, saveFile, setMarkdown };
+  return {
+    tabId,
+    saveFileAs,
+    saveReviewCopy,
+    saveFile,
+    confirmFileSave,
+    saveReviewedFile,
+    setMarkdown,
+  };
 }
 
 afterEach(async () => {
@@ -87,6 +100,59 @@ afterEach(async () => {
   host = undefined;
   operations = undefined;
   vi.restoreAllMocks();
+});
+
+describe('覆盖原文件的授权', () => {
+  it.each([false, true])('首次手动保存需确认，授权结果为 %s', async (approved) => {
+    const { tabId, saveFile, confirmFileSave } = await mount();
+    saveFile.mockResolvedValueOnce({ status: 'authorization-required' });
+    confirmFileSave.mockResolvedValueOnce(approved);
+
+    await act(async () => {
+      useStore.getState().updateTab(tabId, { isDirty: true });
+      await fileOps().save();
+    });
+
+    expect(confirmFileSave).toHaveBeenCalledExactlyOnceWith(originalPath);
+    expect(saveFile).toHaveBeenCalledTimes(approved ? 2 : 1);
+    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)?.isDirty).toBe(!approved);
+  });
+
+  it('自动保存遇到未授权文件时保留未保存状态，不触发确认', async () => {
+    const { tabId, saveFile, confirmFileSave } = await mount();
+    saveFile.mockResolvedValue({ status: 'authorization-required' });
+    await act(async () => {
+      useStore.getState().updateTab(tabId, { isDirty: true });
+      useStore.setState({ autoSave: true });
+    });
+
+    expect(saveFile).toHaveBeenCalled();
+    expect(confirmFileSave).not.toHaveBeenCalled();
+    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)?.isDirty).toBe(true);
+  });
+
+  it('审阅保存也需要授权，取消时保留审阅结果', async () => {
+    const { tabId, saveReviewedFile, confirmFileSave } = await mount();
+    saveReviewedFile.mockResolvedValue({ status: 'authorization-required' });
+    let saving: Promise<void> | undefined;
+    await act(async () => {
+      useStore
+        .getState()
+        .updateTab(tabId, { reviewSession: true, pendingReviewCount: 0, isDirty: true });
+      saving = fileOps().save();
+    });
+    await act(async () => {
+      resolveConfirmDialog(0);
+      await saving;
+    });
+
+    expect(confirmFileSave).toHaveBeenCalledExactlyOnceWith(originalPath);
+    expect(saveReviewedFile).toHaveBeenCalledTimes(1);
+    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)).toMatchObject({
+      reviewSession: true,
+      isDirty: true,
+    });
+  });
 });
 
 describe('另存后的正文与标签同步', () => {

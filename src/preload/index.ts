@@ -20,6 +20,7 @@ const api = {
     ipcRenderer.invoke('draft:save', draft),
   removeRecoveryDraft: (id: string): Promise<void> => ipcRenderer.invoke('draft:remove', id),
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
+  confirmFileSave: (path: string) => ipcRenderer.invoke('dialog:confirmFileSave', path),
   saveFile: (content: string, path: string, knownMtime?: number | null, force?: boolean) =>
     ipcRenderer.invoke('file:save', { content, path, knownMtime, force }),
   saveFileAs: (content: string, sourcePath?: string | null): Promise<SaveAsResponse> =>

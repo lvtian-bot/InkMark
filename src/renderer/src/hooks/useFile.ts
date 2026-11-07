@@ -29,6 +29,7 @@ import type {
   FileWatchEvent,
   OpenFileRejection,
   SaveAsResult,
+  SaveResult,
   ViewMode,
 } from '../types';
 
@@ -51,6 +52,23 @@ async function showOpenRejection(result: OpenFileRejection, path: string): Promi
 
 function filePathKey(path: string): string {
   return window.inkmark.platform === 'win32' ? path.toLowerCase() : path;
+}
+
+async function saveWithAuthorization(
+  path: string,
+  save: () => Promise<SaveResult>,
+  canConfirm: () => boolean,
+): Promise<SaveResult> {
+  const result = await save();
+  if (
+    result.status === 'authorization-required' &&
+    canConfirm() &&
+    (await window.inkmark.confirmFileSave(path)) &&
+    canConfirm()
+  ) {
+    return save();
+  }
+  return result;
 }
 
 export function useFile(
@@ -225,14 +243,20 @@ export function useFile(
           return await offerCopy();
         }
         // 主进程紧邻写入再核验正文与时间，检查确认框期间的新修改。
-        const result = await window.inkmark.saveReviewedFile(
-          content,
+        const result = await saveWithAuthorization(
           originalPath,
-          snapshot.content,
-          snapshot.mtime,
+          () =>
+            window.inkmark.saveReviewedFile(
+              content,
+              originalPath,
+              snapshot.content,
+              snapshot.mtime,
+            ),
+          isCurrent,
         );
         if (!isCurrent()) return false;
         if (result.status === 'conflict') return await offerCopy();
+        if (result.status !== 'ok') return false;
         savedAs({ path: originalPath, content, mtime: result.mtime });
         return true;
       } catch {
@@ -246,7 +270,7 @@ export function useFile(
   );
 
   const saveTab = useCallback(
-    async (tabId: string): Promise<boolean> => {
+    async (tabId: string, automatic = false): Promise<boolean> => {
       const tab = useStore.getState().tabs.find((t) => t.id === tabId);
       if (!tab) return false;
 
@@ -264,10 +288,24 @@ export function useFile(
 
       const content = getTabMarkdown(tabId);
 
-      if (tab.filePath) {
+      const path = tab.filePath;
+      if (path) {
         let result;
         try {
-          result = await window.inkmark.saveFile(content, tab.filePath, tab.fileMtime);
+          result = await saveWithAuthorization(
+            path,
+            () => window.inkmark.saveFile(content, path, tab.fileMtime),
+            () => {
+              if (automatic) return false;
+              const current = useStore.getState().tabs.find((item) => item.id === tabId);
+              return (
+                current?.filePath === path &&
+                !current.reviewSession &&
+                current.fileMtime === tab.fileMtime &&
+                getTabMarkdown(tabId) === content
+              );
+            },
+          );
         } catch {
           await confirmDialog(
             t('confirm.saveFailed'),
@@ -277,20 +315,21 @@ export function useFile(
           return false;
         }
         const afterSave = useStore.getState().tabs.find((item) => item.id === tabId);
-        if (!afterSave || afterSave.reviewSession || afterSave.filePath !== tab.filePath) {
+        if (!afterSave || afterSave.reviewSession || afterSave.filePath !== path) {
           return false;
         }
+        if (result.status === 'authorization-required') return false;
         if (result.status === 'conflict') {
           let diskRead: FileResult | OpenFileRejection | null;
           try {
-            diskRead = await window.inkmark.openFilePath(tab.filePath);
+            diskRead = await window.inkmark.openFilePath(path);
           } catch {
             diskRead = null;
           }
           if (diskRead && 'status' in diskRead) {
             // 磁盘版本已过大或非 UTF-8：说明原因并终止；不带差异对比的
             // 覆盖选项会让用户在不知情下毁掉无法读取的外部新版本。
-            await showOpenRejection(diskRead, tab.filePath);
+            await showOpenRejection(diskRead, path);
             return false;
           }
           const diskVersion = diskRead;
@@ -306,16 +345,12 @@ export function useFile(
           );
           if (choice !== 0) return false;
           const afterConfirm = useStore.getState().tabs.find((item) => item.id === tabId);
-          if (
-            !afterConfirm ||
-            afterConfirm.reviewSession ||
-            afterConfirm.filePath !== tab.filePath
-          ) {
+          if (!afterConfirm || afterConfirm.reviewSession || afterConfirm.filePath !== path) {
             return false;
           }
           let forceResult;
           try {
-            forceResult = await window.inkmark.saveFile(content, tab.filePath, null, true);
+            forceResult = await window.inkmark.saveFile(content, path, null, true);
           } catch {
             await confirmDialog(
               t('confirm.saveFailed'),
@@ -393,7 +428,7 @@ export function useFile(
       await waitForImageUploads();
       // 等待上传期间内容可能已被保存或标签已关闭，保存前再校验一次。
       if (!isEligible()) return;
-      await saveTab(tabId);
+      await saveTab(tabId, true);
     },
     [saveTab],
   );
