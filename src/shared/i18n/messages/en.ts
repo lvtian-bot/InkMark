@@ -7,6 +7,7 @@ export const messages: Record<MessageKey, string> = {
   'common.ok': 'OK',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
+  'imagePreview.open': 'Enlarge image',
   'common.save': 'Save',
   'common.dontSave': "Don't Save",
   'common.insert': 'Insert',
