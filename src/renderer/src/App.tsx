@@ -1063,6 +1063,7 @@ function AppContent() {
     // 全局功能快捷键：用捕获阶段监听，确保在 CodeMirror / ProseMirror 等编辑器 keymap
     // 之前拦截，避免按键被编辑器消费或与编辑器内置按键冲突。
     const handleGlobalShortcuts = (event: KeyboardEvent): void => {
+      if (event.target instanceof Element && event.target.closest('.image-preview-dialog')) return;
       const platform = window.inkmark.platform;
 
       // 打开设置快捷键（在设置弹窗未打开时生效）

@@ -30,7 +30,7 @@ import { upload, uploadConfig } from '@milkdown/plugin-upload';
 import { prism } from '@milkdown/plugin-prism';
 import { Decoration } from '@milkdown/kit/prose/view';
 import { storeLocalImages } from '../image-upload';
-import { imageView } from '../plugins/image-view';
+import { imageView, type PreviewImage } from '../plugins/image-view';
 import {
   getMarkdown as getMarkdownAction,
   replaceAll as replaceAllAction,
@@ -61,6 +61,7 @@ import { linkGesture } from '../plugins/link-gesture';
 import { pickLinkHrefFromClick, isFollowLinkCombo, shouldHintFollowLink } from '../document-link';
 import { expandToLinkBounds } from '../link-selection';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
+import { ImagePreview } from './ImagePreview';
 import { selectAppTheme, selectContentTheme, selectViewMode, useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import '../styles/editor.css';
@@ -123,6 +124,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const [contextMenu, setContextMenu] = useState<MenuSnapshot | null>(null);
+  const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
   const menuSeqRef = useRef(0);
 
   // 链接跳转（与源码模式同一手势）：Ctrl/Cmd+点击跟随链接（文档链接开标签、
@@ -420,7 +422,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           });
         })
         .use(upload)
-        .use(imageView)
+        .use(imageView(setPreviewImage))
         .use(prism)
     );
   }, []);
@@ -877,6 +879,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       onMouseLeave={handleEditorMouseLeave}
     >
       <Milkdown />
+      {previewImage && <ImagePreview image={previewImage} onClose={() => setPreviewImage(null)} />}
       {contextMenu && (
         <ContextMenu
           left={contextMenu.left}

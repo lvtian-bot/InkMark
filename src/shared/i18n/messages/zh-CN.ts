@@ -5,6 +5,7 @@ export const messages = {
   'common.ok': '确定',
   'common.cancel': '取消',
   'common.close': '关闭',
+  'imagePreview.open': '放大图片',
   'common.save': '保存',
   'common.dontSave': '不保存',
   'common.insert': '插入',

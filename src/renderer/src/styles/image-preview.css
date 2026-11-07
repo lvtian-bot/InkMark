@@ -1,0 +1,100 @@
+.editor-image {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.editor-image-zoom,
+.image-preview-close {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.editor-image-zoom {
+  top: 4px;
+  right: 4px;
+  width: 28px;
+  height: 28px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.editor-container.theme-inkmark .editor-image-zoom {
+  top: calc(1em + 4px);
+}
+
+.editor-image-zoom[hidden] {
+  display: none;
+}
+
+.editor-image:hover .editor-image-zoom,
+.editor-image-zoom:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.editor-image-zoom::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  transform: translate(-1px, -1px);
+}
+
+.editor-image-zoom::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 1.5px;
+  background: currentColor;
+  transform: translate(6px, 6px) rotate(45deg);
+}
+
+.image-preview-dialog {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.image-preview-dialog::backdrop {
+  background: rgb(0 0 0 / 86%);
+}
+
+.image-preview-close {
+  top: 44px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+}
+
+.image-preview-viewport {
+  position: absolute;
+  inset: 84px 16px 16px;
+  display: flex;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.image-preview-dialog .image-preview-viewport img {
+  flex: none;
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  border-radius: 0;
+}
