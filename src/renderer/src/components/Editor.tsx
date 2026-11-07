@@ -42,8 +42,13 @@ import type { Node as ProseNode, ResolvedPos } from '@milkdown/kit/prose/model';
 import { editorHandle } from '../editor-ref';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import { isValidTextMatch, type TextMatch } from '../find-replace';
-import { findTextMatchesInDocument } from '../find-replace-doc';
-import { findReplacePlugin, setFindDecorations } from '../find-replace-plugin';
+import { findTextMatchesInDocument, getFindTextSegments } from '../find-replace-doc';
+import {
+  findReplacePlugin,
+  findScopePlugin,
+  setFindDecorations,
+  setFindScope,
+} from '../find-replace-plugin';
 import {
   addTableLine as applyAddTableLine,
   deleteTableLine as applyDeleteTableLine,
@@ -405,6 +410,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         .use(history)
         .use(listener)
         .use(findReplacePlugin)
+        .use(findScopePlugin)
         .use(block)
         .use(clipboard)
         .config((ctx) => {
@@ -766,6 +772,46 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           return findTextMatchesInDocument(view.state.doc, query);
         } catch {
           return [];
+        }
+      },
+      getFindSegments: () => {
+        try {
+          return getFindTextSegments(ed.ctx.get(editorViewCtx).state.doc);
+        } catch {
+          return [];
+        }
+      },
+      getSelection: () => {
+        const selection = ed.ctx.get(editorViewCtx).state.selection;
+        return { from: selection.from, to: selection.to };
+      },
+      showFindScope: (scope) => setFindScope(ed.ctx.get(editorViewCtx), scope),
+      replaceTextMatches: (replacements) => {
+        try {
+          const view = ed.ctx.get(editorViewCtx);
+          if (
+            !replacements.length ||
+            replacements.some(
+              (replacement, index) =>
+                !isValidTextMatch(replacement, view.state.doc.content.size) ||
+                (index > 0 && replacements[index - 1].to > replacement.from),
+            )
+          )
+            return 0;
+          let transaction = closeHistory(view.state.tr);
+          for (let index = replacements.length - 1; index >= 0; index -= 1) {
+            const replacement = replacements[index];
+            transaction = transaction.insertText(
+              replacement.text,
+              replacement.from,
+              replacement.to,
+            );
+          }
+          view.dispatch(transaction.scrollIntoView());
+          return replacements.length;
+        } catch (e) {
+          console.error('replaceTextMatches error:', e);
+          return 0;
         }
       },
       showTextMatches: (matches: readonly TextMatch[], activeIndex: number) => {

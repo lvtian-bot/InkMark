@@ -1,5 +1,10 @@
 import type { EditorState } from '@milkdown/kit/prose/state';
 import type { TextMatch } from './find-replace';
+import type { FindTextSegment } from './find-replace-doc';
+
+export interface TextReplacement extends TextMatch {
+  text: string;
+}
 
 export interface EditorHandle {
   getMarkdown: () => string;
@@ -43,6 +48,10 @@ export interface EditorHandle {
   /// 复制光标所在的整个表格。
   copyTable: () => void;
   findTextMatches: (query: string) => readonly TextMatch[];
+  getFindSegments: () => readonly FindTextSegment[];
+  getSelection: () => TextMatch;
+  showFindScope: (scope: TextMatch | null) => void;
+  replaceTextMatches: (replacements: readonly TextReplacement[]) => number;
   showTextMatches: (matches: readonly TextMatch[], activeIndex: number) => void;
   replaceTextMatch: (match: TextMatch, replacement: string) => boolean;
   replaceAllTextMatches: (matches: readonly TextMatch[], replacement: string) => number;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
-import { EditorView, keymap } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
+import { Decoration, EditorView, keymap, WidgetType, type DecorationSet } from '@codemirror/view';
+import { EditorState, StateEffect, StateField } from '@codemirror/state';
 import {
   defaultKeymap,
   deleteLine as deleteLineCommand,
@@ -32,6 +32,71 @@ import { findLinkHrefAtPos } from '../source-link';
 import { isFollowLinkCombo } from '../document-link';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import '../styles/source-editor.css';
+import type { TextMatch } from '../find-replace';
+
+class FindZeroWidget extends WidgetType {
+  constructor(private readonly active: boolean) {
+    super();
+  }
+  eq(other: FindZeroWidget): boolean {
+    return this.active === other.active;
+  }
+  toDOM(): HTMLElement {
+    const marker = document.createElement('span');
+    marker.className = this.active ? 'inkmark-find-zero is-active' : 'inkmark-find-zero';
+    marker.setAttribute('aria-hidden', 'true');
+    return marker;
+  }
+}
+
+const setFindMatchesEffect = StateEffect.define<{
+  matches: readonly TextMatch[];
+  activeIndex: number;
+}>();
+const findMatchesField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update: (decorations, transaction) => {
+    let next = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (!effect.is(setFindMatchesEffect)) continue;
+      const ranges = effect.value.matches.flatMap((match, index) => {
+        if (match.from < 0 || match.from > match.to || match.to > transaction.newDoc.length)
+          return [];
+        const active = index === effect.value.activeIndex;
+        return [
+          match.from === match.to
+            ? Decoration.widget({ widget: new FindZeroWidget(active) }).range(match.from)
+            : Decoration.mark({
+                class: active ? 'inkmark-find-match is-active' : 'inkmark-find-match',
+              }).range(match.from, match.to),
+        ];
+      });
+      next = Decoration.set(ranges, true);
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+const setFindScopeEffect = StateEffect.define<{ from: number; to: number } | null>();
+const findScopeField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update: (decorations, transaction) => {
+    let next = decorations.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (!effect.is(setFindScopeEffect)) continue;
+      const scope = effect.value;
+      next =
+        scope && scope.from >= 0 && scope.from < scope.to && scope.to <= transaction.newDoc.length
+          ? Decoration.set([
+              Decoration.mark({ class: 'inkmark-find-scope' }).range(scope.from, scope.to),
+            ])
+          : Decoration.none;
+    }
+    return next;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 interface SourceEditorProps {
   onChange: (state: EditorState) => void;
@@ -137,6 +202,8 @@ export function SourceEditor({
           // 会把整篇换行改写；显式声明分隔符后 toString 按原样还原。
           ...(lineSeparator ? [EditorState.lineSeparator.of(lineSeparator)] : []),
           history(),
+          findScopeField,
+          findMatchesField,
           keymap.of([...defaultKeymap, ...historyKeymap]),
           // 文本/代码文件按产品边界不做 Markdown 解析与语法高亮：
           // # 注释、星号等按字面显示，也省去大文件解析开销。
@@ -202,6 +269,9 @@ export function SourceEditor({
         from: view.state.selection.main.from,
         to: view.state.selection.main.to,
       }),
+      showFindScope: (scope) => view.dispatch({ effects: setFindScopeEffect.of(scope) }),
+      showFindMatches: (matches, activeIndex) =>
+        view.dispatch({ effects: setFindMatchesEffect.of({ matches, activeIndex }) }),
       getSelectedText: () => {
         const { from, to } = view.state.selection.main;
         if (from === to) return '';
@@ -234,6 +304,27 @@ export function SourceEditor({
           }),
         );
         suppressRef.current = false;
+      },
+      replaceTextMatches: (replacements) => {
+        if (
+          view.state.readOnly ||
+          !replacements.length ||
+          replacements.some(
+            (replacement, index) =>
+              replacement.from < 0 ||
+              replacement.from > replacement.to ||
+              replacement.to > view.state.doc.length ||
+              (index > 0 && replacements[index - 1].to > replacement.from),
+          )
+        )
+          return 0;
+        const previousDoc = view.state.doc;
+        view.dispatch({
+          changes: replacements.map(({ from, to, text }) => ({ from, to, insert: text })),
+          userEvent: 'input.find-replace',
+          annotations: isolateHistory.of('full'),
+        });
+        return view.state.doc === previousDoc ? 0 : replacements.length;
       },
       notifyChange: () => onChangeRef.current(view.state),
       undo: () => undo(view),

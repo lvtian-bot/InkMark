@@ -389,6 +389,11 @@ export const messages: Record<MessageKey, string> = {
   'outline.deleteSection': 'Delete Section',
 
   'find.noResults': 'No results',
+  'find.matchCase': 'Match Case',
+  'find.wholeWord': 'Match Whole Word',
+  'find.useRegex': 'Use Regular Expression',
+  'find.inSelection': 'Find in Selection',
+  'find.regexError': 'Invalid regular expression',
   'find.barAria': 'Find and Replace',
   'find.findPlaceholder': 'Find',
   'find.findAria': 'Find what',

@@ -371,6 +371,11 @@ export const messages = {
   'outline.deleteSection': '删除章节',
 
   'find.noResults': '无结果',
+  'find.matchCase': '区分大小写',
+  'find.wholeWord': '全字匹配',
+  'find.useRegex': '使用正则表达式',
+  'find.inSelection': '在选定范围内查找',
+  'find.regexError': '正则表达式无效',
   'find.barAria': '查找与替换',
   'find.findPlaceholder': '查找',
   'find.findAria': '查找内容',
