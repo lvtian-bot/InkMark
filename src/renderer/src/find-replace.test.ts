@@ -42,11 +42,21 @@ describe('精确查找与正则替换', () => {
     ).toEqual([{ from: 3, to: 6 }]);
   });
 
+  it('全字边界约束正则分支，保留捕获组和选区外的边界上下文', () => {
+    const options = { ...defaults, wholeWord: true, regex: true };
+    const { matches } = findTextMatches('xab ab', '(?<part>a|ab)', options, { from: 1, to: 6 });
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([{ from: 4, to: 6 }]);
+    expect(expandReplacement(matches[0], '$1/$<part>')).toBe('ab/ab');
+  });
+
   it('正则无效时报告错误', () => {
     expect(findTextMatches('abc', '[', { ...defaults, regex: true })).toEqual({
       matches: [],
       invalidPattern: true,
     });
+    expect(
+      findTextMatches('abc', ')(', { ...defaults, wholeWord: true, regex: true }).invalidPattern,
+    ).toBe(true);
   });
 
   it('零宽匹配可定位和替换，并按 Unicode 码点前进避免无限循环', () => {

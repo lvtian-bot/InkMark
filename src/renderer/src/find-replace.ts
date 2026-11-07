@@ -29,19 +29,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const wordCharacter = /[\p{L}\p{N}\p{M}_]/u;
-
-/** 按 Unicode 字母、数字、组合符和下划线判断单词边界。 */
-function isWholeWord(text: string, from: number, to: number): boolean {
-  const beforeCode =
-    from > 0
-      ? text.codePointAt(from - (from > 1 && /[\uDC00-\uDFFF]/.test(text[from - 1]) ? 2 : 1))
-      : undefined;
-  const afterCode = text.codePointAt(to);
-  const before = beforeCode === undefined ? '' : String.fromCodePoint(beforeCode);
-  const after = afterCode === undefined ? '' : String.fromCodePoint(afterCode);
-  return (!before || !wordCharacter.test(before)) && (!after || !wordCharacter.test(after));
-}
+const wordCharacter = /[\p{L}\p{N}\p{M}_]/u.source;
 
 export function findTextMatches(
   text: string,
@@ -56,6 +44,14 @@ export function findTextMatches(
       options.regex ? query : escapeRegExp(query),
       `gu${options.caseSensitive ? '' : 'i'}${options.regex ? 'm' : ''}`,
     );
+    if (options.wholeWord) {
+      // 先验证原表达式，再加断言，避免包装意外修补无效语法。
+      // 左边界在匹配正文之前检查，避免在单词内部反复扫描同一后缀。
+      pattern = new RegExp(
+        `(?<!${wordCharacter})(?:${pattern.source})(?!${wordCharacter})`,
+        pattern.flags,
+      );
+    }
   } catch {
     return { matches: [], invalidPattern: true };
   }
@@ -68,9 +64,8 @@ export function findTextMatches(
     const from = match.index;
     const to = from + match[0].length;
     if (from > range.to) break;
-    const accepted =
-      from >= range.from && to <= range.to && (!options.wholeWord || isWholeWord(text, from, to));
-    // 被边界规则拒绝的候选不能跳过它内部可能合法的匹配。
+    const accepted = from >= range.from && to <= range.to;
+    // 被选区边界拒绝的候选不能跳过它内部可能合法的匹配。
     // 空匹配也必须主动前进，否则 RegExp.exec 会反复返回同一位置。
     if (!accepted || from === to) {
       if (from === text.length && !accepted) break;
