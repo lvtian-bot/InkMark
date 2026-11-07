@@ -9,6 +9,36 @@ interface FindDecorationUpdate {
 }
 
 const findDecorationKey = new PluginKey<DecorationSet>('inkmark-find-replace');
+const findScopeKey = new PluginKey<DecorationSet>('inkmark-find-scope');
+
+export const findScopePlugin = $prose(
+  () =>
+    new Plugin<DecorationSet>({
+      key: findScopeKey,
+      state: {
+        init: () => DecorationSet.empty,
+        apply: (transaction, decorations) => {
+          const update: { scope: TextMatch | null } | undefined = transaction.getMeta(findScopeKey);
+          if (update) {
+            const { scope } = update;
+            return scope &&
+              scope.from < scope.to &&
+              isValidTextMatch(scope, transaction.doc.content.size)
+              ? DecorationSet.create(transaction.doc, [
+                  Decoration.inline(scope.from, scope.to, { class: 'inkmark-find-scope' }),
+                ])
+              : DecorationSet.empty;
+          }
+          return decorations.map(transaction.mapping, transaction.doc);
+        },
+      },
+      props: { decorations: (state) => findScopeKey.getState(state) ?? DecorationSet.empty },
+    }),
+);
+
+export function setFindScope(view: EditorView, scope: TextMatch | null): void {
+  view.dispatch(view.state.tr.setMeta(findScopeKey, { scope }).setMeta('addToHistory', false));
+}
 
 export const findReplacePlugin = $prose(() => {
   return new Plugin<DecorationSet>({
@@ -20,14 +50,24 @@ export const findReplacePlugin = $prose(() => {
         if (update) {
           const nextDecorations = update.matches
             .filter((match) => isValidTextMatch(match, transaction.doc.content.size))
-            .map((match, index) =>
-              Decoration.inline(match.from, match.to, {
-                class:
-                  index === update.activeIndex
-                    ? 'inkmark-find-match is-active'
-                    : 'inkmark-find-match',
-              }),
-            );
+            .map((match, index) => {
+              const active = index === update.activeIndex;
+              if (match.from === match.to) {
+                return Decoration.widget(
+                  match.from,
+                  () => {
+                    const marker = document.createElement('span');
+                    marker.className = active ? 'inkmark-find-zero is-active' : 'inkmark-find-zero';
+                    marker.setAttribute('aria-hidden', 'true');
+                    return marker;
+                  },
+                  { key: `zero-${match.from}-${active}` },
+                );
+              }
+              return Decoration.inline(match.from, match.to, {
+                class: active ? 'inkmark-find-match is-active' : 'inkmark-find-match',
+              });
+            });
           return DecorationSet.create(transaction.doc, nextDecorations);
         }
 

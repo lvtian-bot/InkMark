@@ -25,7 +25,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: min(420px, calc(100% - 40px));
+  width: min(530px, calc(100% - 40px));
   padding: 8px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -38,6 +38,58 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.find-replace-options {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.find-replace-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 600 12px var(--font-family);
+  cursor: pointer;
+}
+
+.find-replace-option:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.find-replace-option[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text-primary);
+}
+
+.find-replace-option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.find-replace-option:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.find-replace-whole-word {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.find-replace-error {
+  color: #c34b55;
+  font-size: 12px;
 }
 
 .find-replace-input-wrap {
@@ -120,11 +172,30 @@
   flex: 0 0 30px;
 }
 
-.editor-container .inkmark-find-match {
+.inkmark-find-scope {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.inkmark-find-zero {
+  display: inline-block;
+  height: 1em;
+  width: 0;
+  border-left: 2px solid #c89306;
+  vertical-align: text-bottom;
+  pointer-events: none;
+}
+
+.inkmark-find-zero.is-active {
+  border-left-color: #d35908;
+}
+
+.editor-container .inkmark-find-match,
+.source-container .inkmark-find-match {
   border-radius: 2px;
   background: color-mix(in srgb, #f0c84b 45%, transparent);
 }
 
-.editor-container .inkmark-find-match.is-active {
+.editor-container .inkmark-find-match.is-active,
+.source-container .inkmark-find-match.is-active {
   background: color-mix(in srgb, #ed943c 70%, transparent);
 }

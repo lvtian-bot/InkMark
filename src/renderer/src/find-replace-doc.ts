@@ -1,6 +1,40 @@
 import type { EditorState as ProseMirrorEditorState } from '@milkdown/kit/prose/state';
 import { findLiteralMatches, type TextMatch } from './find-replace';
 
+export interface FindTextSegment {
+  from: number;
+  text: string;
+}
+
+/** 每段由位置连续的文本组成，行内格式不会切断，原子节点和块边界会切断。 */
+export function getFindTextSegments(doc: ProseMirrorEditorState['doc']): FindTextSegment[] {
+  const segments: FindTextSegment[] = [];
+  doc.descendants((block, blockPos) => {
+    if (!block.isTextblock) return true;
+    let text = '';
+    let from = 0;
+    let expectedNextPos: number | null = null;
+    const flush = (): void => {
+      if (text) segments.push({ from, text });
+      text = '';
+      expectedNextPos = null;
+    };
+    block.descendants((child, relativePos) => {
+      if (!child.isText || !child.text) return true;
+      const absolutePos = blockPos + 1 + relativePos;
+      if (expectedNextPos !== null && absolutePos !== expectedNextPos) flush();
+      if (!text) from = absolutePos;
+      text += child.text;
+      expectedNextPos = absolutePos + child.nodeSize;
+      return false;
+    });
+    flush();
+    if (block.content.size === 0) segments.push({ from: blockPos + 1, text: '' });
+    return false;
+  });
+  return segments;
+}
+
 /**
  * 在 ProseMirror 文档中查找所有命中 `query` 的位置，返回绝对文档位置区间。
  *

@@ -1,10 +1,125 @@
 import { describe, expect, it } from 'vitest';
 import {
   findLiteralMatches,
+  findTextMatches,
+  expandReplacement,
   findMatchAtOrAfter,
   isValidTextMatch,
   stepMatchIndex,
 } from './find-replace';
+
+describe('精确查找与正则替换', () => {
+  const defaults = { caseSensitive: false, wholeWord: false, regex: false };
+
+  it('可以区分大小写，普通模式将特殊字符视为原文', () => {
+    expect(
+      findTextMatches('Foo foo f.o fxo', 'foo', { ...defaults, caseSensitive: true }).matches,
+    ).toEqual([{ from: 4, to: 7 }]);
+    expect(findTextMatches('f.o fxo', 'f.o', defaults).matches).toEqual([{ from: 0, to: 3 }]);
+  });
+
+  it('全字匹配考虑中英文及其他 Unicode 字符', () => {
+    expect(
+      findTextMatches('app apple app 中文 中文字', 'app', { ...defaults, wholeWord: true }).matches,
+    ).toEqual([
+      { from: 0, to: 3 },
+      { from: 10, to: 13 },
+    ]);
+    expect(
+      findTextMatches('中文 中文字', '中文', { ...defaults, wholeWord: true }).matches,
+    ).toEqual([{ from: 0, to: 2 }]);
+  });
+
+  it('全字边界拒绝候选后，仍可找到与它重叠的合法结果', () => {
+    const text = 'xa-a-a ';
+    const options = { ...defaults, wholeWord: true };
+    expect(findTextMatches(text, 'a-a', options).matches).toEqual([{ from: 3, to: 6 }]);
+    expect(
+      findTextMatches(text, 'a-a', { ...options, regex: true }).matches.map(({ from, to }) => ({
+        from,
+        to,
+      })),
+    ).toEqual([{ from: 3, to: 6 }]);
+  });
+
+  it('全字边界约束正则分支，并保留捕获组', () => {
+    const options = { ...defaults, wholeWord: true, regex: true };
+    const { matches } = findTextMatches('xab ab', '(?<part>a|ab)', options);
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([{ from: 4, to: 6 }]);
+    expect(expandReplacement(matches[0], '$1/$<part>')).toBe('ab/ab');
+  });
+
+  it('正则无效时报告错误', () => {
+    expect(findTextMatches('abc', '[', { ...defaults, regex: true })).toEqual({
+      matches: [],
+      invalidPattern: true,
+    });
+    expect(
+      findTextMatches('abc', ')(', { ...defaults, wholeWord: true, regex: true }).invalidPattern,
+    ).toBe(true);
+  });
+
+  it('零宽匹配可定位和替换，并按 Unicode 码点前进避免无限循环', () => {
+    const matches = findTextMatches('a😀b', '(?=(.))|$', { ...defaults, regex: true }).matches;
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([
+      { from: 0, to: 0 },
+      { from: 1, to: 1 },
+      { from: 3, to: 3 },
+      { from: 4, to: 4 },
+    ]);
+    expect(expandReplacement(matches[1], '<$1>')).toBe('<😀>');
+    expect(expandReplacement(matches[3], '<$1>')).toBe('<>');
+  });
+
+  it('正则行首行尾匹配每一行，原文模式仍按字面匹配', () => {
+    const text = 'Foo\nfoo\nbar';
+    const opts = { ...defaults, regex: true };
+    expect(
+      findTextMatches(text, '^foo$', opts).matches.map(({ from, to }) => ({ from, to })),
+    ).toEqual([
+      { from: 0, to: 3 },
+      { from: 4, to: 7 },
+    ]);
+    expect(
+      findTextMatches(text, '^foo$', { ...opts, caseSensitive: true }).matches.map(
+        ({ from, to }) => ({ from, to }),
+      ),
+    ).toEqual([{ from: 4, to: 7 }]);
+    expect(findTextMatches('^foo$\nfoo', '^foo$', defaults).matches).toEqual([{ from: 0, to: 5 }]);
+  });
+
+  it('限定范围内的正则使用选区首尾和上下文', () => {
+    const options = { ...defaults, regex: true };
+    const range = { from: 1, to: 4 };
+    const { matches } = findTextMatches('xabc!', '^abc$', options, range);
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([{ from: 1, to: 4 }]);
+    expect(findTextMatches('xabc!', '(?<=x)abc|abc(?=!)', options, range).matches).toEqual([]);
+    expect(
+      findTextMatches('xabc!', 'abc', { ...defaults, wholeWord: true }, range).matches,
+    ).toEqual([]);
+  });
+
+  it('正则量词在长选区末尾停止，返回文档中的匹配范围', () => {
+    const range = { from: 1, to: 50_001 };
+    const { matches } = findTextMatches(
+      'a'.repeat(100_000),
+      'a+',
+      { ...defaults, regex: true },
+      range,
+    );
+    expect(matches.map(({ from, to }) => ({ from, to }))).toEqual([range]);
+  });
+
+  it('正则替换支持捕获组、命名捕获组及美元符号', () => {
+    const [match] = findTextMatches('A 2026-11 B', '(?<year>\\d+)-(\\d+)', {
+      ...defaults,
+      regex: true,
+    }).matches;
+    expect(expandReplacement(match, '$2/$<year> $$ $&')).toBe('11/2026 $ 2026-11');
+    expect(expandReplacement(match, '$1 $3 $12')).toBe('2026 $3 20262');
+    expect(expandReplacement({ from: 0, to: 1 }, '$1')).toBe('$1');
+  });
+});
 
 describe('findLiteralMatches', () => {
   it('returns nothing for an empty query', () => {
@@ -80,8 +195,12 @@ describe('isValidTextMatch', () => {
     expect(isValidTextMatch({ from: 8, to: 10 }, size)).toBe(true); // to == size is allowed
   });
 
-  it('rejects empty, reversed, negative or out-of-bounds ranges', () => {
-    expect(isValidTextMatch({ from: 0, to: 0 }, size)).toBe(false);
+  it('accepts zero-width matches including at the document end', () => {
+    expect(isValidTextMatch({ from: 0, to: 0 }, size)).toBe(true);
+    expect(isValidTextMatch({ from: 10, to: 10 }, size)).toBe(true);
+  });
+
+  it('rejects reversed, negative or out-of-bounds ranges', () => {
     expect(isValidTextMatch({ from: 3, to: 1 }, size)).toBe(false);
     expect(isValidTextMatch({ from: -1, to: 3 }, size)).toBe(false);
     expect(isValidTextMatch({ from: 8, to: 12 }, size)).toBe(false);

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Replace, ReplaceAll, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, Replace, ReplaceAll, TextSelect, X } from 'lucide-react';
 import type { FindReplaceController } from '../hooks/useFindReplace';
 import { useI18n } from '../i18n';
 import '../styles/find-replace.css';
@@ -10,21 +10,31 @@ interface FindReplaceBarProps {
 export function FindReplaceBar({ controller }: FindReplaceBarProps) {
   const {
     activeIndex,
+    canSearchInSelection,
     close,
+    inSelection,
+    matchCase,
     matchCount,
     next,
     previous,
     query,
     queryInputRef,
+    regexError,
     replaceAll,
     replaceCurrent,
     replacement,
     setQuery,
+    setInSelection,
+    setMatchCase,
     setReplacement,
+    setUseRegex,
+    setWholeWord,
     showReplace,
+    useRegex,
+    wholeWord,
   } = controller;
   const { t } = useI18n();
-  const hasMatch = matchCount > 0;
+  const hasMatch = matchCount > 0 && !regexError;
   const matchSummary = query
     ? hasMatch
       ? `${activeIndex + 1} / ${matchCount}`
@@ -52,8 +62,51 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
             spellCheck={false}
           />
           <span className={`find-replace-count ${query && !hasMatch ? 'is-empty' : ''}`}>
-            {matchSummary}
+            {regexError ? '' : matchSummary}
           </span>
+        </div>
+        <div className="find-replace-options">
+          <button
+            className="find-replace-option"
+            type="button"
+            aria-pressed={matchCase}
+            title={t('find.matchCase')}
+            aria-label={t('find.matchCase')}
+            onClick={() => setMatchCase(!matchCase)}
+          >
+            Aa
+          </button>
+          <button
+            className="find-replace-option find-replace-whole-word"
+            type="button"
+            aria-pressed={wholeWord}
+            title={t('find.wholeWord')}
+            aria-label={t('find.wholeWord')}
+            onClick={() => setWholeWord(!wholeWord)}
+          >
+            ab
+          </button>
+          <button
+            className="find-replace-option"
+            type="button"
+            aria-pressed={useRegex}
+            title={t('find.useRegex')}
+            aria-label={t('find.useRegex')}
+            onClick={() => setUseRegex(!useRegex)}
+          >
+            .*
+          </button>
+          <button
+            className="find-replace-option"
+            type="button"
+            aria-pressed={inSelection}
+            disabled={!canSearchInSelection && !inSelection}
+            title={t('find.inSelection')}
+            aria-label={t('find.inSelection')}
+            onClick={() => setInSelection(!inSelection)}
+          >
+            <TextSelect size={16} />
+          </button>
         </div>
         <button
           className="find-replace-icon-button"
@@ -85,6 +138,11 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
           <X size={16} />
         </button>
       </div>
+      {regexError && (
+        <div className="find-replace-error" role="alert">
+          {t('find.regexError')}
+        </div>
+      )}
       {showReplace && (
         <div className="find-replace-row">
           <input

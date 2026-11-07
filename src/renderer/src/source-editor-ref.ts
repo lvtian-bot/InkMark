@@ -1,5 +1,7 @@
 import type { EditorState } from '@codemirror/state';
 import type { ReviewChunk } from './review/review-extension';
+import type { TextReplacement } from './editor-ref';
+import type { TextMatch } from './find-replace';
 
 export interface SourceSelection {
   from: number;
@@ -29,6 +31,8 @@ export interface SourceEditorHandle {
   focus: () => void;
   /// Current selection as character offsets.
   getSelection: () => SourceSelection;
+  showFindScope: (scope: SourceSelection | null) => void;
+  showFindMatches: (matches: readonly TextMatch[], activeIndex: number) => void;
   /// Get current selected text as a string.
   getSelectedText: () => string;
   /// Set selection (caret when from === to) and focus.
@@ -43,6 +47,7 @@ export interface SourceEditorHandle {
   /// Replace [from, to) with `text` WITHOUT firing the normal change callback.
   /// Used by find/replace which manages its own dirty/refresh signalling.
   replaceRangeQuiet: (from: number, to: number, text: string) => void;
+  replaceTextMatches: (replacements: readonly TextReplacement[]) => number;
   notifyChange: () => void;
   /// Undo / redo (history is managed by CodeMirror).
   undo: () => void;

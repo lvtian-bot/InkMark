@@ -8,8 +8,14 @@ import { replaceAll } from '@milkdown/kit/utils';
 import { closeHistory, undo } from '@milkdown/kit/prose/history';
 import { replaceMarkdownUndoable } from './components/Editor';
 import { frontmatter } from './plugins/frontmatter';
-import { findReplacePlugin, setFindDecorations } from './find-replace-plugin';
-import { findTextMatchesInDocument } from './find-replace-doc';
+import {
+  findReplacePlugin,
+  findScopePlugin,
+  setFindDecorations,
+  setFindScope,
+} from './find-replace-plugin';
+import { findTextMatchesInDocument, getFindTextSegments } from './find-replace-doc';
+import { findTextMatches } from './find-replace';
 
 async function bootWithFind(markdown: string) {
   const root = document.createElement('div');
@@ -21,6 +27,7 @@ async function bootWithFind(markdown: string) {
     .use(history)
     .use(frontmatter)
     .use(findReplacePlugin)
+    .use(findScopePlugin)
     .create();
   await editor.action(replaceAll(markdown));
   const view = editor.ctx.get(editorViewCtx);
@@ -28,6 +35,32 @@ async function bootWithFind(markdown: string) {
 }
 
 describe('findTextMatchesInDocument (real Milkdown schema)', () => {
+  it('segments join adjacent formatting but separate blocks and inline atoms', async () => {
+    const { editor, view } = await bootWithFind('**bold**plain ![alt](x.png) tail\n\nsecond');
+    const segments = getFindTextSegments(view.state.doc);
+    expect(segments.map(({ text }) => text)).toEqual(['boldplain ', ' tail', 'second']);
+    for (const { from, text } of segments) {
+      expect(view.state.doc.textBetween(from, from + text.length, '')).toBe(text);
+    }
+    await editor.destroy();
+  });
+
+  it('exposes the empty paragraph position for zero-width search', async () => {
+    const { editor, view } = await bootWithFind('');
+    expect(getFindTextSegments(view.state.doc)).toEqual([{ from: 1, text: '' }]);
+    await editor.destroy();
+  });
+
+  it('treats inline atom boundaries as separate search segments', async () => {
+    const { editor, view } = await bootWithFind('a![alt](x.png)b');
+    const segments = getFindTextSegments(view.state.doc);
+    expect(segments.map(({ text }) => text)).toEqual(['a', 'b']);
+    const options = { caseSensitive: false, wholeWord: false, regex: true };
+    expect(
+      segments.flatMap(({ text }) => findTextMatches(text, '^', options).matches),
+    ).toHaveLength(2);
+    await editor.destroy();
+  });
   it('大纲移动与移动前后的输入分别撤销', async () => {
     const { editor, view } = await bootWithFind('# A\n\n# B');
     view.dispatch(closeHistory(view.state.tr));
@@ -87,6 +120,27 @@ describe('findTextMatchesInDocument (real Milkdown schema)', () => {
 });
 
 describe('find-replace decorations', () => {
+  it('shows a zero-width match and inserts at it as an undoable edit', async () => {
+    const { editor, view } = await bootWithFind('abc');
+    setFindDecorations(view, [{ from: 1, to: 1 }], 0);
+    expect(view.dom.querySelectorAll('.inkmark-find-zero.is-active')).toHaveLength(1);
+    view.dispatch(closeHistory(view.state.tr).insertText('X', 1, 1));
+    expect(view.state.doc.textContent).toBe('Xabc');
+    expect(undo(view.state, view.dispatch)).toBe(true);
+    expect(view.state.doc.textContent).toBe('abc');
+    await editor.destroy();
+  });
+  it('shows and clears selected scope independently from search matches', async () => {
+    const { editor, view } = await bootWithFind('foo bar');
+    setFindScope(view, { from: 1, to: 8 });
+    expect(view.dom.querySelectorAll('.inkmark-find-scope').length).toBeGreaterThan(0);
+    setFindDecorations(view, findTextMatchesInDocument(view.state.doc, 'foo'), 0);
+    expect(view.dom.querySelectorAll('.inkmark-find-scope').length).toBeGreaterThan(0);
+    setFindScope(view, null);
+    expect(view.dom.querySelectorAll('.inkmark-find-scope')).toHaveLength(0);
+    expect(view.dom.querySelectorAll('.inkmark-find-match')).toHaveLength(1);
+    await editor.destroy();
+  });
   it('renders one decoration per match and marks the active one', async () => {
     const { view, editor } = await bootWithFind('foo bar\n\nfoo baz');
     const matches = findTextMatchesInDocument(view.state.doc, 'foo');
