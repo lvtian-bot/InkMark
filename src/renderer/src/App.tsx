@@ -24,7 +24,7 @@ import { useResizablePanel } from './hooks/useResizablePanel';
 import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
 import { useWordCount } from './hooks/useWordCount';
-import { useStore } from './stores/useStore';
+import { tabDocumentPath, useStore } from './stores/useStore';
 import { I18nProvider, t as tt, useI18n } from './i18n';
 import { tabDisplayName } from './tab-name';
 import { isThemeId } from './types';
@@ -129,7 +129,7 @@ function AppContent() {
   const viewMode = useStore(selectViewMode);
   const activeTabIsText = useStore((s) => {
     const tab = s.tabs.find((item) => item.id === s.activeTabId);
-    return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+    return !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
   });
   const setViewMode = useStore((s) => s.setViewMode);
   const activeReviewSession = useStore(
@@ -197,8 +197,8 @@ function AppContent() {
   const handleFollowLink = useCallback(
     (href: string) => {
       const state = useStore.getState();
-      const sourceFilePath =
-        state.tabs.find((tab) => tab.id === state.activeTabId)?.filePath ?? null;
+      const sourceTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+      const sourceFilePath = sourceTab ? tabDocumentPath(sourceTab) : null;
       void followDocumentLinkHref(href, sourceFilePath, {
         resolveDocumentLink: (request) => window.inkmark.resolveDocumentLink(request),
         openFilePath: async (path) => {
@@ -564,7 +564,7 @@ function AppContent() {
     // 目标模式按目标标签同步推导：布局 effect 早于 viewModeRef 的被动更新，
     // 直接读 ref 会拿到旧模式，把纯文本内容先装进所见即所得再经序列化搬运。
     const targetMode =
-      newTab && resolveDocumentKind(newTab.filePath) === 'text'
+      newTab && resolveDocumentKind(tabDocumentPath(newTab)) === 'text'
         ? 'source'
         : useStore.getState().viewMode;
     // 旧标签此前展示用的模式：切到纯文本标签会强制源码，两个模式可能不同，
@@ -582,7 +582,7 @@ function AppContent() {
       const sourceContent =
         captureMode === 'source'
           ? (sourceEditorHandle.current?.getValue() ?? oldTab?.sourceContent ?? '')
-          : oldTab && resolveDocumentKind(oldTab.filePath) === 'text'
+          : oldTab && resolveDocumentKind(tabDocumentPath(oldTab)) === 'text'
             ? // 文本旧标签的内容从未装入所见即所得编辑器（批量打开时展示
               // 模式也可能尚未切换）：其中的空白不代表正文，回退用已存正文。
               (oldTab.sourceContent ?? '')
@@ -594,7 +594,7 @@ function AppContent() {
         const state = editorHandle.current.getEditorState();
         // 文本旧标签不同步所见即所得缓存：其中的空白状态会在类型切回时
         // 被误恢复成编辑器内容。
-        if (state && oldTab && resolveDocumentKind(oldTab.filePath) !== 'text') {
+        if (state && oldTab && resolveDocumentKind(tabDocumentPath(oldTab)) !== 'text') {
           editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
         }
       }
@@ -605,7 +605,7 @@ function AppContent() {
 
     // 文本/代码目标不装载隐藏的所见即所得编辑器：内容不会被展示，
     // 整篇 Markdown 解析只是开销，接近上限的大文件会拖慢切换。
-    if (resolveDocumentKind(newTab.filePath) !== 'text') {
+    if (resolveDocumentKind(tabDocumentPath(newTab)) !== 'text') {
       const savedState = editorStateCache.restore(newTabId, 'wysiwyg', newTab.sourceContent);
       if (savedState) {
         editorHandle.current.setEditorState(savedState);
@@ -621,8 +621,8 @@ function AppContent() {
         sourceEditorHandle.current?.setEditorState(savedSourceState);
       } else {
         sourceEditorHandle.current?.setValue(newTab.sourceContent, {
-          preserveLineSeparator: resolveDocumentKind(newTab.filePath) === 'text',
-          plainText: resolveDocumentKind(newTab.filePath) === 'text',
+          preserveLineSeparator: resolveDocumentKind(tabDocumentPath(newTab)) === 'text',
+          plainText: resolveDocumentKind(tabDocumentPath(newTab)) === 'text',
         });
       }
     }
@@ -691,7 +691,7 @@ function AppContent() {
       const tab = useStore.getState().tabs.find((item) => item.id === tabId);
       // 审阅块按 sourceContent 定位。进入审阅不得用所见即所得的重新
       // 序列化结果替换原文，否则换行/格式变化会使待审块失效。
-      const tabIsText = !!tab && resolveDocumentKind(tab.filePath) === 'text';
+      const tabIsText = !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
       const md = tab?.reviewSession
         ? tab.sourceContent
         : tabIsText
@@ -707,8 +707,8 @@ function AppContent() {
         sourceEditorHandle.current?.setEditorState(sourceState);
       } else {
         sourceEditorHandle.current?.setValue(md, {
-          preserveLineSeparator: tab ? resolveDocumentKind(tab.filePath) === 'text' : false,
-          plainText: tab ? resolveDocumentKind(tab.filePath) === 'text' : false,
+          preserveLineSeparator: tab ? resolveDocumentKind(tabDocumentPath(tab)) === 'text' : false,
+          plainText: tab ? resolveDocumentKind(tabDocumentPath(tab)) === 'text' : false,
         });
       }
     } else {
@@ -778,7 +778,7 @@ function AppContent() {
     const state = useStore.getState();
     const tab = state.tabs.find((item) => item.id === state.activeTabId);
     if (!tab) return;
-    const isText = resolveDocumentKind(tab.filePath) === 'text';
+    const isText = resolveDocumentKind(tabDocumentPath(tab)) === 'text';
     const prev = prevKindRef.current;
     prevKindRef.current = { tabId: tab.id, isText };
     // 仅同一标签的类型变化（重命名）需要重建：跨标签切换由标签切换

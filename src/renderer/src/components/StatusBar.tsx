@@ -10,7 +10,7 @@ import {
 import { formatComboForDisplay, toDisplayPlatform } from '../../../shared/shortcuts';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import { useI18n } from '../i18n';
-import { useStore, selectViewMode } from '../stores/useStore';
+import { useStore, selectViewMode, tabDocumentPath } from '../stores/useStore';
 import '../styles/status-bar.css';
 
 interface StatusBarProps {
@@ -59,7 +59,7 @@ export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const isSourceMode = viewMode === 'source';
   const isPlainTextTab = useStore((s) => {
     const tab = s.tabs.find((item) => item.id === s.activeTabId);
-    return !!tab && resolveDocumentKind(tab.filePath) === 'text';
+    return !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
   });
   const autoSave = useStore((s) => s.autoSave);
   const setAutoSave = useStore((s) => s.setAutoSave);

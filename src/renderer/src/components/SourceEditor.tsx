@@ -15,7 +15,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
 import { resolveDocumentKind } from '../../../shared/openable-document';
-import { selectAppTheme, selectContentTheme, useStore } from '../stores/useStore';
+import { selectAppTheme, selectContentTheme, tabDocumentPath, useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { serializeDoc } from '../source-document';
 import { useI18n } from '../i18n';
@@ -176,7 +176,8 @@ export function SourceEditor({
     const initialDoc = initialTab?.sourceContent ?? '';
     // 挂载即可能是文本文件（懒加载晚于打开流程，句柄注入会被跳过）：
     // 初始化同样按内容保留 CRLF，否则首次编辑保存会把换行改写成 LF。
-    const initialIsText = !!initialTab && resolveDocumentKind(initialTab.filePath) === 'text';
+    const initialIsText =
+      !!initialTab && resolveDocumentKind(tabDocumentPath(initialTab)) === 'text';
     const initialSeparator = initialIsText && initialDoc.includes('\r\n') ? '\r\n' : undefined;
 
     const state = createState(initialDoc, initialSeparator, initialIsText);

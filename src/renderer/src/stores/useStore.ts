@@ -21,6 +21,8 @@ import { resolveDocumentKind } from '../../../shared/openable-document';
 export interface Tab {
   id: string;
   filePath: string | null;
+  /** 恢复为新文档时用于判断类型和解析原文相对附件，不作为保存目标。 */
+  recoveryOriginPath?: string | null;
   fileName: string;
   isDirty: boolean;
   isStartPage: boolean;
@@ -47,6 +49,7 @@ interface InkMarkState extends AppSettings {
 
   addTab: (init?: {
     filePath?: string | null;
+    recoveryOriginPath?: string | null;
     content?: string;
     fileMtime?: number | null;
     /** 显式指定是否显示开始页；缺省时按调用方传入的 startPageOnLaunch 决定。 */
@@ -89,12 +92,15 @@ export const selectAppTheme = (s: AppSettings): AppTheme => parseThemeId(s.theme
 export const selectContentTheme = (s: AppSettings): ContentTheme =>
   parseThemeId(s.themeId).contentTheme;
 
+export const tabDocumentPath = (tab: Tab): string | null =>
+  tab.filePath ?? tab.recoveryOriginPath ?? null;
+
 // viewMode 存的是用户对 Markdown 文档的偏好；纯文本/代码文件固定源码模式，
 // 由这个选择器派生出当前实际生效的模式。切换到文本标签不改写偏好，
 // 切回 Markdown 标签自动恢复原模式。
 export const selectViewMode = (s: InkMarkState): ViewMode => {
   const tab = s.tabs.find((item) => item.id === s.activeTabId);
-  return tab && resolveDocumentKind(tab.filePath) === 'text' ? 'source' : s.viewMode;
+  return tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text' ? 'source' : s.viewMode;
 };
 
 let lastToggleViewModeTime = 0;
@@ -109,6 +115,7 @@ function nextTabId(): string {
 function createTab(
   init?: {
     filePath?: string | null;
+    recoveryOriginPath?: string | null;
     content?: string;
     fileMtime?: number | null;
     startPage?: boolean;
@@ -120,6 +127,7 @@ function createTab(
   return {
     id: nextTabId(),
     filePath,
+    recoveryOriginPath: init?.recoveryOriginPath ?? null,
     fileName: filePath ? filePath.split(/[/\\]/).pop()! : isStartPage ? '欢迎' : '新建文档',
     isDirty: false,
     isStartPage,
@@ -302,7 +310,7 @@ export const useStore = create<InkMarkState>((set, get) => ({
     const activeTab = s.tabs.find((tab) => tab.id === s.activeTabId);
     // 纯文本/代码文件固定源码模式：快捷键与菜单入口在此拦下，
     // 与有效模式（selectViewMode）的派生规则保持一致。
-    if (activeTab && resolveDocumentKind(activeTab.filePath) === 'text') return;
+    if (activeTab && resolveDocumentKind(tabDocumentPath(activeTab)) === 'text') return;
     // 审阅视图只存在于源码模式：处理完后仍要确认保存，会话结束前不切换。
     // 被锁定拒绝的切换不消耗防抖窗口，待审清零后可立即切换。
     if (s.viewMode !== 'wysiwyg') {

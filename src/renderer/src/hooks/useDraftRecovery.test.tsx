@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveConfirmDialog } from '../confirm-dialog';
 import { setDiskSnapshot } from '../review/review-store';
-import { useStore } from '../stores/useStore';
+import { selectViewMode, useStore } from '../stores/useStore';
 import { clearRecoveryDraftsBeforeExit, useDraftRecovery } from './useDraftRecovery';
 import type { InkMarkAPI } from '../types';
 
@@ -96,7 +96,11 @@ describe('正文草稿恢复', () => {
       await Promise.resolve();
     });
     const tab = useStore.getState().tabs.find((item) => item.sourceContent === draft.content);
-    expect(tab).toMatchObject({ filePath: null, isDirty: true });
+    expect(tab).toMatchObject({
+      filePath: null,
+      recoveryOriginPath: draft.filePath,
+      isDirty: true,
+    });
   });
 
   it('恢复未命名草稿，正常退出前删除本次会话草稿', async () => {
@@ -126,5 +130,68 @@ describe('正文草稿恢复', () => {
       await clearRecoveryDraftsBeforeExit();
     });
     expect(remove).toHaveBeenCalledWith(draft.id);
+  });
+
+  it('恢复发生外部变化的代码文件时保持源码模式', async () => {
+    const draft = {
+      id: 'code-1',
+      filePath: 'D:/note.ts',
+      fileMtime: 1,
+      baseContent: 'old',
+      content: 'const x = 1;',
+    };
+    const api: Partial<InkMarkAPI> = {
+      listRecoveryDrafts: async () => [draft],
+      saveRecoveryDraft: async () => undefined,
+      removeRecoveryDraft: async () => undefined,
+      openFilePath: async () => ({ path: draft.filePath, mtime: 2, content: 'changed' }),
+    };
+    Object.defineProperty(window, 'inkmark', { configurable: true, value: api });
+    await act(async () => root.render(React.createElement(Harness)));
+    await act(async () => {
+      resolveConfirmDialog(0);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      resolveConfirmDialog(0);
+      await Promise.resolve();
+    });
+    const state = useStore.getState();
+    expect(state.tabs.find((tab) => tab.id === state.activeTabId)).toMatchObject({
+      filePath: null,
+      recoveryOriginPath: draft.filePath,
+      sourceContent: draft.content,
+    });
+    expect(selectViewMode(state)).toBe('source');
+  });
+
+  it('无关状态变化不会重复写草稿，清理失败后退出可重试', async () => {
+    const save = vi.fn(async () => undefined);
+    const remove = vi.fn().mockRejectedValueOnce(new Error('busy')).mockResolvedValue(undefined);
+    const api: Partial<InkMarkAPI> = {
+      listRecoveryDrafts: async () => [],
+      saveRecoveryDraft: save,
+      removeRecoveryDraft: remove,
+    };
+    Object.defineProperty(window, 'inkmark', { configurable: true, value: api });
+    await act(async () => root.render(React.createElement(Harness)));
+    const tabId = useStore.getState().addTab({ startPage: false });
+    useStore.getState().updateTab(tabId, { sourceContent: 'text', isDirty: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    useStore.getState().updateTab(tabId, { wordCount: 8 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    useStore.getState().updateTab(tabId, { isDirty: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await clearRecoveryDraftsBeforeExit();
+    });
+    expect(remove).toHaveBeenCalledTimes(2);
   });
 });

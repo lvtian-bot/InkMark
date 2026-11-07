@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { selectViewMode, useStore } from '../stores/useStore';
+import { selectViewMode, tabDocumentPath, useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
@@ -111,6 +111,7 @@ export function useFile(
       if (rewritten && editedWhileSaving) return false;
       updateTab(tabId, {
         filePath: result.path,
+        recoveryOriginPath: null,
         fileName: result.path.split(/[/\\]/).pop()!,
         sourceContent: editedWhileSaving ? current.sourceContent : result.content,
         isDirty: editedWhileSaving,
@@ -347,7 +348,7 @@ export function useFile(
 
       let saveAsResult;
       try {
-        saveAsResult = await window.inkmark.saveFileAs(content, tab.filePath);
+        saveAsResult = await window.inkmark.saveFileAs(content, tabDocumentPath(tab));
       } catch {
         await confirmDialog(
           t('confirm.saveFailed'),
@@ -557,7 +558,7 @@ export function useFile(
     if (!activeTab) return;
     let result;
     try {
-      result = await window.inkmark.saveFileAs(content, activeTab.filePath);
+      result = await window.inkmark.saveFileAs(content, tabDocumentPath(activeTab));
     } catch {
       await confirmDialog(t('confirm.saveFailed'), t('confirm.saveFailedGeneric'), [
         t('common.ok'),
@@ -784,7 +785,18 @@ export function useFile(
         if (!saved) return false;
       }
     }
-    await clearRecoveryDraftsBeforeExit();
+    for (;;) {
+      try {
+        await clearRecoveryDraftsBeforeExit();
+        break;
+      } catch {
+        const choice = await confirmDialog(t('confirm.saveFailed'), t('recovery.cleanupFailed'), [
+          t('recovery.retry'),
+          t('recovery.cancelClose'),
+        ]);
+        if (choice !== 0) return false;
+      }
+    }
     return true;
   }, [saveTab, flushAutoSave]);
 

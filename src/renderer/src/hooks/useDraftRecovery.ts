@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { confirmDialog, isDialogOpen } from '../confirm-dialog';
 import { t } from '../i18n';
 import { getDiskSnapshot, setDiskSnapshot } from '../review/review-store';
-import { useStore, type Tab } from '../stores/useStore';
+import { tabDocumentPath, useStore, type Tab } from '../stores/useStore';
 import type { RecoveryDraft } from '../../../shared/draft-recovery';
 
 let clearLiveDrafts: () => Promise<void> = async () => undefined;
@@ -17,6 +17,7 @@ export function useDraftRecovery(): void {
     const ids = new Map<string, string>();
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
     const operations = new Map<string, Promise<void>>();
+    const pendingRemoval = new Set<string>();
     let failureReported = false;
     let warningTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -49,13 +50,27 @@ export function useDraftRecovery(): void {
       timers.delete(tabId);
     };
 
+    const removeDraft = (id: string): void => {
+      pendingRemoval.add(id);
+      enqueue(id, async () => {
+        try {
+          await window.inkmark.removeRecoveryDraft(id);
+          pendingRemoval.delete(id);
+        } catch (error) {
+          pendingRemoval.add(id);
+          throw error;
+        }
+      });
+    };
+
     const update = (tabs: Tab[], previousTabs: Tab[]): void => {
       const byId = new Map(tabs.map((tab) => [tab.id, tab]));
+      const previousById = new Map(previousTabs.map((tab) => [tab.id, tab]));
       for (const old of previousTabs) {
         if (!byId.has(old.id)) {
           cancel(old.id);
           const id = ids.get(old.id);
-          if (id) enqueue(id, () => window.inkmark.removeRecoveryDraft(id));
+          if (id) removeDraft(id);
           ids.delete(old.id);
         }
       }
@@ -66,11 +81,24 @@ export function useDraftRecovery(): void {
           cancel(tab.id);
           const id = ids.get(tab.id);
           if (id) {
-            enqueue(id, () => window.inkmark.removeRecoveryDraft(id));
+            removeDraft(id);
             ids.delete(tab.id);
           }
           continue;
         }
+        const previous = previousById.get(tab.id);
+        if (
+          ids.has(tab.id) &&
+          previous?.isDirty &&
+          !previous.isStartPage &&
+          !previous.reviewSession &&
+          previous.pendingReviewCount === 0 &&
+          previous.sourceContent === tab.sourceContent &&
+          previous.filePath === tab.filePath &&
+          previous.recoveryOriginPath === tab.recoveryOriginPath &&
+          previous.fileMtime === tab.fileMtime
+        )
+          continue;
         if (!ids.has(tab.id)) ids.set(tab.id, crypto.randomUUID());
         if (timers.has(tab.id)) continue;
         const timer = setTimeout(() => {
@@ -88,7 +116,7 @@ export function useDraftRecovery(): void {
           const baseline = getDiskSnapshot(current.id);
           const draft: RecoveryDraft = {
             id,
-            filePath: current.filePath,
+            filePath: tabDocumentPath(current),
             fileMtime: current.fileMtime,
             baseContent: baseline?.content ?? null,
             content: current.sourceContent,
@@ -113,9 +141,16 @@ export function useDraftRecovery(): void {
     const clearOnExit = async (): Promise<void> => {
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
-      for (const id of ids.values()) enqueue(id, () => window.inkmark.removeRecoveryDraft(id));
-      ids.clear();
-      await Promise.all(operations.values());
+      for (const id of ids.values()) pendingRemoval.add(id);
+      const removals = [...pendingRemoval];
+      for (const id of removals) removeDraft(id);
+      try {
+        await Promise.all(removals.map((id) => operations.get(id)));
+        ids.clear();
+      } catch (error) {
+        update(useStore.getState().tabs, []);
+        throw error;
+      }
     };
     clearLiveDrafts = clearOnExit;
     update(useStore.getState().tabs, []);
@@ -149,7 +184,7 @@ export function useDraftRecovery(): void {
           draft.baseContent !== null &&
           file.mtime === draft.fileMtime &&
           file.content === draft.baseContent;
-        if (file && !same && !alreadyOpen) {
+        if (file && !same && !alreadyOpen && draft.baseContent !== null) {
           await confirmDialog(t('confirm.unsavedChanges'), t('recovery.changed'), [
             t('recovery.acknowledge'),
           ]);
@@ -158,6 +193,7 @@ export function useDraftRecovery(): void {
         const tabId = useStore.getState().addTab({
           startPage: false,
           filePath: same ? file.path : null,
+          recoveryOriginPath: same ? null : draft.filePath,
           fileMtime: same ? file.mtime : null,
           content: draft.content,
         });
