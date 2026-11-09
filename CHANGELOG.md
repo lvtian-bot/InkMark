@@ -2,6 +2,11 @@
 
 所有显著变更都记录在本文件中，格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## 0.2.9（2026-11-09）
+### 🐛 修复
+- 修复 Windows 安装后无法启动
+
+**完整对比**: [v0.2.8...v0.2.9](https://github.com/lvtian-bot/InkMark/compare/v0.2.8...v0.2.9)
 ## 0.2.8（2026-11-07）
 ### ✨ 新增
 - 大纲支持拖动整节移动章节
