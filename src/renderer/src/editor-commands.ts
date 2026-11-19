@@ -27,6 +27,7 @@ interface SourceLine {
 
 interface LineChange extends SourceLine {
   readonly replacement: string;
+  readonly bodyLength: number;
 }
 
 interface ListPrefix {
@@ -86,29 +87,24 @@ function parseTaskPrefix(list: ListPrefix): { checked: boolean; body: string } |
   return { checked: match[1].toLowerCase() === '[x]', body: match[3] };
 }
 
+function withPrefix(line: SourceLine, prefix: string, body: string): LineChange {
+  return { ...line, replacement: prefix + body, bodyLength: body.length };
+}
+
 function mapPosition(position: number, changes: readonly LineChange[]): number {
   let delta = 0;
   for (const change of changes) {
     if (position < change.from) return position + delta;
     if (position <= change.to) {
       const oldOffset = position - change.from;
-      const oldText = change.text;
-      const newText = change.replacement;
-      let suffixLength = 0;
-      while (
-        suffixLength < oldText.length &&
-        suffixLength < newText.length &&
-        oldText[oldText.length - suffixLength - 1] === newText[newText.length - suffixLength - 1]
-      ) {
-        suffixLength += 1;
-      }
-      const oldPrefixLength = oldText.length - suffixLength;
-      const newPrefixLength = newText.length - suffixLength;
+      const oldPrefixLength = change.text.length - change.bodyLength;
+      const newPrefixLength = change.replacement.length - change.bodyLength;
+      // 正文起点随正文移动，空列表项的输入位置也在标记之后。
       const newOffset =
-        oldOffset <= oldPrefixLength
+        oldOffset < oldPrefixLength
           ? Math.min(oldOffset, newPrefixLength)
           : newPrefixLength + oldOffset - oldPrefixLength;
-      return change.from + delta + Math.min(newOffset, newText.length);
+      return change.from + delta + newOffset;
     }
     delta += change.replacement.length - (change.to - change.from);
   }
@@ -157,9 +153,9 @@ function toggleLinePrefix(prefix: string): SourceEdit | null {
     if (!line.text.trim()) {
       if (nonEmpty.length === 0) {
         const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
-        return { ...line, replacement: `${indent}${prefix}` };
+        return withPrefix(line, indent + prefix, '');
       }
-      return { ...line, replacement: line.text };
+      return withPrefix(line, '', line.text);
     }
     const parsed = parseListPrefix(line.text);
     if (allUnordered && parsed) {
@@ -168,16 +164,13 @@ function toggleLinePrefix(prefix: string): SourceEdit | null {
           ? '\n'
           : '';
       const task = parseTaskPrefix(parsed);
-      return {
-        ...line,
-        replacement: `${separator}${task ? task.body : parsed.body}`,
-      };
+      return withPrefix(line, separator, task ? task.body : parsed.body);
     }
     if (parsed) {
-      return { ...line, replacement: `${parsed.indent}${prefix}${parsed.body}` };
+      return withPrefix(line, parsed.indent + prefix, parsed.body);
     }
     const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
-    return { ...line, replacement: `${indent}${prefix}${line.text.slice(indent.length)}` };
+    return withPrefix(line, indent + prefix, line.text.slice(indent.length));
   });
   return applyLineChanges(text, selection.from, selection.to, changes);
 }
@@ -203,16 +196,14 @@ function setHeadingLevel(level: number): SourceEdit | null {
     return match?.[2].length === level;
   });
   const changes: LineChange[] = lines.map((line) => {
-    if (!line.text.trim()) return { ...line, replacement: line.text };
+    if (!line.text.trim()) return withPrefix(line, '', line.text);
     const match = headingPrefixPattern.exec(line.text);
     const indent = match?.[1] ?? line.text.match(/^[ \t]*/)?.[0] ?? '';
     const body = match?.[4] ?? line.text.slice(indent.length);
     if (match && match[2].length === level && !allTargetHeadings) {
-      return { ...line, replacement: line.text };
+      return withPrefix(line, '', line.text);
     }
-    const replacement =
-      allTargetHeadings && match ? `${indent}${body}` : `${indent}${'#'.repeat(level)} ${body}`;
-    return { ...line, replacement };
+    return withPrefix(line, allTargetHeadings ? indent : `${indent}${'#'.repeat(level)} `, body);
   });
   return applyLineChanges(text, selection.from, selection.to, changes);
 }
@@ -234,20 +225,19 @@ function toggleTaskPrefix(): SourceEdit | null {
     if (!line.text.trim()) {
       if (nonEmpty.length === 0) {
         const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
-        return { ...line, replacement: `${indent}- [ ] ` };
+        return withPrefix(line, `${indent}- [ ] `, '');
       }
-      return { ...line, replacement: line.text };
+      return withPrefix(line, '', line.text);
     }
     const parsed = parseListPrefix(line.text);
     if (!parsed) {
       const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
-      return { ...line, replacement: `${indent}- [ ] ${line.text.slice(indent.length)}` };
+      return withPrefix(line, `${indent}- [ ] `, line.text.slice(indent.length));
     }
     const task = parseTaskPrefix(parsed);
-    if (allTasks && task)
-      return { ...line, replacement: `${parsed.indent}${parsed.marker} ${task.body}` };
-    if (task) return { ...line, replacement: line.text };
-    return { ...line, replacement: `${parsed.indent}${parsed.marker} [ ] ${parsed.body}` };
+    if (allTasks && task) return withPrefix(line, `${parsed.indent}${parsed.marker} `, task.body);
+    if (task) return withPrefix(line, '', line.text);
+    return withPrefix(line, `${parsed.indent}${parsed.marker} [ ] `, parsed.body);
   });
   return applyLineChanges(text, selection.from, selection.to, changes);
 }

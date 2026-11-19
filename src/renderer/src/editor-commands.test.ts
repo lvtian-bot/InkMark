@@ -109,10 +109,12 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     let handle = makeSourceHandle('title', 0, 0);
     runEditorCommand('heading2');
     expect(handle.recorded[0].text).toBe('## title');
+    expect(handle.recorded[0].selection).toEqual({ from: 3, to: 3 });
 
     handle = makeSourceHandle('## title', 3, 3);
     runEditorCommand('heading2');
     expect(handle.recorded[0].text).toBe('title');
+    expect(handle.recorded[0].selection).toEqual({ from: 0, to: 0 });
   });
 
   it('标题：不同级别之间切换', () => {
@@ -183,6 +185,7 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     const handle = makeSourceHandle('', 0, 0);
     runEditorCommand('bulletList');
     expect(handle.recorded[0].text).toBe('- ');
+    expect(handle.recorded[0].selection).toEqual({ from: 2, to: 2 });
   });
 
   it('无序列表：取消任务列表时同时移除复选框', () => {
@@ -221,6 +224,29 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     const handle = makeSourceHandle('', 0, 0);
     runEditorCommand('taskList');
     expect(handle.recorded[0].text).toBe('- [ ] ');
+    expect(handle.recorded[0].selection).toEqual({ from: 6, to: 6 });
+  });
+
+  it('选中正文后加列表，只选中原文字，保留下一行', () => {
+    const { recorded } = makeSourceHandle('甲\n乙', 0, 2);
+    runEditorCommand('bulletList');
+    expect(recorded[0]).toEqual({ text: '- 甲\n乙', selection: { from: 2, to: 4 } });
+  });
+
+  it('缩进中插入列表时，光标留在原来的缩进位置', () => {
+    const { recorded } = makeSourceHandle('  正文', 1, 1);
+    runEditorCommand('bulletList');
+    expect(recorded[0]).toEqual({ text: '  - 正文', selection: { from: 1, to: 1 } });
+  });
+
+  it('列表项切换任务格式时，光标跟随原正文起点', () => {
+    let handle = makeSourceHandle('  - 事项', 4, 4);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0]).toEqual({ text: '  - [ ] 事项', selection: { from: 8, to: 8 } });
+
+    handle = makeSourceHandle('  - [x] 事项', 8, 8);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0]).toEqual({ text: '  - 事项', selection: { from: 4, to: 4 } });
   });
 
   it('任务列表：选区覆盖的多行一起转为待办，保留已有完成状态', () => {
