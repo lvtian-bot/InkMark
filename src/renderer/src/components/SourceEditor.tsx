@@ -17,6 +17,7 @@ import { tags } from '@lezer/highlight';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import { selectAppTheme, selectContentTheme, tabDocumentPath, useStore } from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
+import { sourceBackspaceKeymap, sourceListKeymap } from '../source-list-keymap';
 import { serializeDoc } from '../source-document';
 import { useI18n } from '../i18n';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
@@ -204,6 +205,7 @@ export function SourceEditor({
           history(),
           findScopeField,
           findMatchesField,
+          sourceBackspaceKeymap,
           keymap.of([...defaultKeymap, ...historyKeymap]),
           // 文本/代码文件按产品边界不做 Markdown 解析与语法高亮：
           // # 注释、星号等按字面显示，也省去大文件解析开销。
@@ -211,6 +213,7 @@ export function SourceEditor({
             ? []
             : [
                 markdown({ base: markdownLanguage, codeLanguages: languages }),
+                sourceListKeymap,
                 syntaxHighlighting(fadedMarksHighlight),
                 syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
               ]),

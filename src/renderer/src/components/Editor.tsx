@@ -14,9 +14,6 @@ import {
   toggleStrongCommand,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
-  wrapInHeadingCommand,
-  wrapInBulletListCommand,
-  wrapInOrderedListCommand,
   createCodeBlockCommand,
   toggleLinkCommand,
 } from '@milkdown/kit/preset/commonmark';
@@ -38,7 +35,8 @@ import {
 } from '@milkdown/kit/utils';
 import { TextSelection } from '@milkdown/kit/prose/state';
 import { closeHistory } from '@milkdown/kit/prose/history';
-import type { Node as ProseNode, ResolvedPos } from '@milkdown/kit/prose/model';
+import type { Node as ProseNode } from '@milkdown/kit/prose/model';
+import { deleteEditorLines } from '../delete-editor-lines';
 import { editorHandle } from '../editor-ref';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
 import { isValidTextMatch, type TextMatch } from '../find-replace';
@@ -54,6 +52,11 @@ import {
   deleteTableLine as applyDeleteTableLine,
 } from '../plugins/table-edit';
 import { wrapInTaskListCommand, taskList } from '../plugins/task-list';
+import {
+  toggleBulletListCommand,
+  toggleHeadingCommand,
+  toggleOrderedListCommand,
+} from '../plugins/list-format';
 import { listKeymap } from '../plugins/list-keymap';
 import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
@@ -400,6 +403,9 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         .use(gfm)
         .use(frontmatter)
         .use(taskList)
+        .use(toggleBulletListCommand)
+        .use(toggleOrderedListCommand)
+        .use(toggleHeadingCommand)
         .use(listKeymap)
         .use(listMarker)
         .use(breaks)
@@ -641,21 +647,21 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       },
       wrapHeading: (level: number) => {
         try {
-          ed.action(callCommand(wrapInHeadingCommand.key, level));
+          ed.action(callCommand(toggleHeadingCommand.key, level));
         } catch (e) {
           console.error('wrapHeading error:', e);
         }
       },
       wrapBulletList: () => {
         try {
-          ed.action(callCommand(wrapInBulletListCommand.key));
+          ed.action(callCommand(toggleBulletListCommand.key));
         } catch (e) {
           console.error('wrapBulletList error:', e);
         }
       },
       wrapOrderedList: () => {
         try {
-          ed.action(callCommand(wrapInOrderedListCommand.key));
+          ed.action(callCommand(toggleOrderedListCommand.key));
         } catch (e) {
           console.error('wrapOrderedList error:', e);
         }
@@ -703,32 +709,8 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       deleteLine: () => {
         try {
           const view = ed.ctx.get(editorViewCtx);
-          const { $from, $to } = view.state.selection;
-
-          // 删除单元 = 光标所在文本块（源码里的一「行」）；位于列表项内时升级为
-          // 整个列表项。表格单元格内的段落不删，避免破坏表格结构。
-          const unitAt = (pos: ResolvedPos): { start: number; end: number } | null => {
-            for (let d = 1; d <= pos.depth; d++) {
-              const name = pos.node(d).type.name;
-              if (name === 'table' || name === 'table_row' || name === 'table_cell') {
-                return null;
-              }
-            }
-            const parentDepth =
-              pos.depth >= 2 && pos.node(pos.depth - 1).type.name === 'list_item'
-                ? pos.depth - 1
-                : pos.depth;
-            return { start: pos.before(parentDepth), end: pos.after(parentDepth) };
-          };
-
-          // 选区两端各自计算删除单元，统一删掉覆盖的区间（跨选多块时一起删）。
-          const fromUnit = unitAt($from);
-          const toUnit = unitAt($to);
-          if (!fromUnit || !toUnit) return;
-          const start = Math.min(fromUnit.start, toUnit.start);
-          const end = Math.max(fromUnit.end, toUnit.end);
-          if (start >= end) return;
-          view.dispatch(view.state.tr.delete(start, end).scrollIntoView());
+          const tr = deleteEditorLines(view.state);
+          if (tr) view.dispatch(tr);
         } catch (e) {
           console.error('deleteLine error:', e);
         }

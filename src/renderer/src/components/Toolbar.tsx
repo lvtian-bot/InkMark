@@ -68,7 +68,13 @@ export function Toolbar({ onSave }: ToolbarProps) {
   };
 
   return (
-    <div className={`toolbar toolbar-width-${toolbarWidth}`}>
+    <div
+      className={`toolbar toolbar-width-${toolbarWidth}`}
+      onMouseDown={(event) => {
+        // 鼠标点击格式按钮时保留正文焦点，连续设置格式后可直接输入。
+        if (event.button === 0) event.preventDefault();
+      }}
+    >
       <div className="toolbar-group">
         <button className="toolbar-btn" onClick={handleUndo} title={t('toolbar.undo')}>
           <Undo2 size={16} />

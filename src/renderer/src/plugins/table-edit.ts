@@ -133,6 +133,20 @@ function placeCursor(tr: Transaction, tableStart: number, row: number, col: numb
   tr.setSelection(TextSelection.near(tr.doc.resolve(cellStart + 1)));
 }
 
+/// Enter 沿当前列向下；末行才增加一行。Tab 从末格换到新行首列。
+export function navigateTable(state: EditorState, ctx: Ctx, vertical: boolean): Transaction | null {
+  const rect = currentTable(state);
+  if (!rect) return null;
+  if (vertical && rect.bottom < rect.map.height) {
+    const tr = state.tr;
+    placeCursor(tr, rect.tableStart, rect.bottom, rect.left);
+    return tr.scrollIntoView();
+  }
+  const tr = addTableLine(state, ctx, 'row', 'after');
+  if (tr && !vertical) placeCursor(tr, rect.tableStart, rect.bottom, 0);
+  return tr?.scrollIntoView() ?? null;
+}
+
 /// 在 WYSIWYG 模式插入一行/列。方向相对于光标所在行/列。
 /// 返回 null 表示光标不在表格中。
 export function addTableLine(

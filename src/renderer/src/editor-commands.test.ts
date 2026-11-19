@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EditorState } from '@codemirror/state';
+import { markdown } from '@codemirror/lang-markdown';
 
 // editor-ref / source-editor-ref 是模块级单例容器，mock 成可注入的 { current }
 // 以便用例内替换为记录调用的 stub；i18n 与确认弹窗同样 mock，隔离语言与对话框。
@@ -31,6 +33,11 @@ function makeSourceHandle(
   const recorded: RecordedEdit[] = [];
   sourceEditorHandle.current = {
     getValue: () => (recorded.length ? recorded[recorded.length - 1].text : text),
+    getEditorState: () =>
+      EditorState.create({
+        doc: recorded.length ? recorded[recorded.length - 1].text : text,
+        extensions: [markdown()],
+      }),
     getSelection: () => ({ from, to }),
     replaceRange: (rangeFrom: number, rangeTo: number, value: string) => {
       const base = recorded.length ? recorded[recorded.length - 1].text : text;
@@ -48,6 +55,13 @@ function makeSourceHandle(
 
 const initialViewMode = useStore.getState().viewMode;
 
+it('空白首行设置标题时保留第二行正文', () => {
+  const { recorded } = makeSourceHandle('\n正文', 0, 0);
+  runEditorCommand('heading2');
+  expect(recorded[0].text).toBe('## \n正文');
+  expect(recorded[0].selection).toEqual({ from: 3, to: 3 });
+});
+
 beforeEach(() => {
   useStore.setState({ viewMode: 'source' });
 });
@@ -64,15 +78,15 @@ describe('runEditorCommand 源码模式：行内标记', () => {
     const { recorded } = makeSourceHandle('plain text', 0, 11);
     runEditorCommand('bold');
     expect(recorded[0].text).toBe('**plain text**');
-    // 与工具栏原行为一致：包裹后选区折叠到内容起始处
-    expect(recorded[0].selection).toEqual({ from: 2, to: 2 });
+    // 包裹后仍选中原文字，便于连续叠加其他格式。
+    expect(recorded[0].selection).toEqual({ from: 2, to: 13 });
   });
 
   it('已包裹时再执行去掉标记（切换语义）', () => {
     const { recorded } = makeSourceHandle('**plain text**', 2, 12);
     runEditorCommand('bold');
     expect(recorded[0].text).toBe('plain text');
-    expect(recorded[0].selection).toEqual({ from: 0, to: 0 });
+    expect(recorded[0].selection).toEqual({ from: 0, to: 10 });
   });
 
   it('斜体与删除线使用各自标记', () => {
@@ -95,16 +109,66 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     let handle = makeSourceHandle('title', 0, 0);
     runEditorCommand('heading2');
     expect(handle.recorded[0].text).toBe('## title');
+    expect(handle.recorded[0].selection).toEqual({ from: 3, to: 3 });
 
     handle = makeSourceHandle('## title', 3, 3);
     runEditorCommand('heading2');
     expect(handle.recorded[0].text).toBe('title');
+    expect(handle.recorded[0].selection).toEqual({ from: 0, to: 0 });
   });
 
   it('标题：不同级别之间切换', () => {
     const handle = makeSourceHandle('## title', 3, 3);
     runEditorCommand('heading3');
     expect(handle.recorded[0].text).toBe('### title');
+  });
+
+  it('标题：混合级别选区统一设置为目标级别', () => {
+    const text = '## one\n### two';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('## one\n## two');
+  });
+
+  it('标题：选区内全是目标级别时统一取消，空行保持为空行', () => {
+    const text = '## one\n\n## two';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('one\n\ntwo');
+  });
+
+  it('标题：取消目标级别时移除全部标题分隔空格', () => {
+    const text = '##  one';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('one');
+  });
+
+  it('标题：带空行的普通段落批量设置时不生成空标题', () => {
+    const text = 'one\n\ntwo';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('## one\n\n## two');
+  });
+
+  it('标题：带空白行的普通段落批量设置时保留空白字符', () => {
+    const text = 'one\n \t\ntwo';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('## one\n \t\n## two');
+  });
+
+  it('标题：只选多行空白时保持空白，不连续生成空标题', () => {
+    const handle = makeSourceHandle('\n\n', 0, 2);
+    runEditorCommand('heading2');
+    expect(handle.recorded).toHaveLength(0);
+  });
+
+  it('标题：混选时保留已有目标级别的额外分隔空格', () => {
+    const text = '##  one\n### two';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('##  one\n## two');
   });
 
   it('无序列表：加前缀与去前缀', () => {
@@ -117,10 +181,78 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     expect(handle.recorded[0].text).toBe('item');
   });
 
+  it('无序列表：空文档也能创建空列表项', () => {
+    const handle = makeSourceHandle('', 0, 0);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('- ');
+    expect(handle.recorded[0].selection).toEqual({ from: 2, to: 2 });
+  });
+
+  it('无序列表：取消任务列表时同时移除复选框', () => {
+    const handle = makeSourceHandle('- [x] 已完成', 6, 6);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('已完成');
+  });
+
+  it('无序列表：加前缀时保留选区内文字偏移和末尾', () => {
+    const handle = makeSourceHandle('item', 1, 4);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('- item');
+    expect(handle.recorded[0].selection).toEqual({ from: 3, to: 6 });
+  });
+
+  it('无序列表：选区覆盖的多行一起切换并保留选区', () => {
+    const handle = makeSourceHandle('- 甲\n- 乙\n- 丙', 0, 7);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('甲\n\n乙\n- 丙');
+    expect(handle.recorded[0].selection).toEqual({ from: 0, to: 4 });
+  });
+
+  it('无序列表：混合普通行、已有列表和缩进时逐行转换', () => {
+    const handle = makeSourceHandle('* 甲\n1. 乙\n  丙', 0, 13);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('- 甲\n- 乙\n  - 丙');
+  });
+
   it('任务列表：普通行转为待办', () => {
     const handle = makeSourceHandle('item', 0, 0);
     runEditorCommand('taskList');
     expect(handle.recorded[0].text).toBe('- [ ] item');
+  });
+
+  it('任务列表：空文档也能创建空待办项', () => {
+    const handle = makeSourceHandle('', 0, 0);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0].text).toBe('- [ ] ');
+    expect(handle.recorded[0].selection).toEqual({ from: 6, to: 6 });
+  });
+
+  it('选中正文后加列表，只选中原文字，保留下一行', () => {
+    const { recorded } = makeSourceHandle('甲\n乙', 0, 2);
+    runEditorCommand('bulletList');
+    expect(recorded[0]).toEqual({ text: '- 甲\n乙', selection: { from: 2, to: 4 } });
+  });
+
+  it('缩进中插入列表时，光标留在原来的缩进位置', () => {
+    const { recorded } = makeSourceHandle('  正文', 1, 1);
+    runEditorCommand('bulletList');
+    expect(recorded[0]).toEqual({ text: '  - 正文', selection: { from: 1, to: 1 } });
+  });
+
+  it('列表项切换任务格式时，光标跟随原正文起点', () => {
+    let handle = makeSourceHandle('  - 事项', 4, 4);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0]).toEqual({ text: '  - [ ] 事项', selection: { from: 8, to: 8 } });
+
+    handle = makeSourceHandle('  - [x] 事项', 8, 8);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0]).toEqual({ text: '  - 事项', selection: { from: 4, to: 4 } });
+  });
+
+  it('任务列表：选区覆盖的多行一起转为待办，保留已有完成状态', () => {
+    const handle = makeSourceHandle('- [x] 已完成\n- 待办', 0, 16);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0].text).toBe('- [x] 已完成\n- [ ] 待办');
   });
 
   it('代码块：行首插入围栏并把光标放进代码体', () => {
