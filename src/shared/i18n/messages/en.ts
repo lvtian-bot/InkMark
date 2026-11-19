@@ -253,6 +253,7 @@ export const messages: Record<MessageKey, string> = {
   'toolbar.italic': 'Italic',
   'toolbar.strikethrough': 'Strikethrough',
   'toolbar.inlineCode': 'Inline Code',
+  'toolbar.toParagraph': 'Convert to paragraph',
   'toolbar.heading1': 'Heading 1',
   'toolbar.heading2': 'Heading 2',
   'toolbar.heading3': 'Heading 3',

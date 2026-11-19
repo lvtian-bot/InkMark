@@ -1,0 +1,71 @@
+import { EditorSelection, Prec } from '@codemirror/state';
+import { ensureSyntaxTree } from '@codemirror/language';
+import { keymap, type Command } from '@codemirror/view';
+
+/** 只处理语法树中的列表标记。缩进代码、围栏及普通字符仍由源码编辑器处理。 */
+function listExit(key: 'Backspace' | 'Enter'): Command {
+  return ({ state, dispatch }) => {
+    const { main, ranges } = state.selection;
+    if (!main.empty || ranges.length !== 1 || state.readOnly) return false;
+    const line = state.doc.lineAt(main.head);
+    const prefix = /^([ \t]*)(?:[-+*]|\d+[.)])([ \t]+)/.exec(line.text);
+    if (!prefix) return false;
+    const markStart = line.from + prefix[1].length;
+    const tree = ensureSyntaxTree(state, line.to, 40);
+    const mark = tree?.resolveInner(markStart + 1, -1);
+    const item = mark?.parent;
+    if (mark?.name !== 'ListMark' || mark.from !== markStart || item?.name !== 'ListItem')
+      return false;
+    const markerEnd = line.from + prefix[0].length;
+    const taskPrefix = /^\[[ xX]\](?:[ \t]+|$)/.exec(line.text.slice(prefix[0].length));
+    const bodyStart = markerEnd + (taskPrefix?.[0].length ?? 0);
+    const caret = main.head;
+    if (key === 'Enter') {
+      if (caret !== line.to || bodyStart !== line.to) return false;
+    } else if (caret !== bodyStart && caret !== markerEnd) return false;
+
+    let parent = item.parent;
+    while (parent && parent.name !== 'ListItem') parent = parent.parent;
+    const parentIndent = parent ? parent.from - state.doc.lineAt(parent.from).from : 0;
+    const unindent = parent ? prefix[1].length - parentIndent : prefix[0].length;
+    const previous = line.number > 1 ? state.doc.line(line.number - 1).text.trim() : '';
+    const insert = !parent && previous ? '\n' : '';
+    const remove = parent ? Math.max(0, unindent) : bodyStart - line.from;
+    const changes = [{ from: line.from, to: line.from + remove, insert }];
+
+    // 按相同层级移动子项、续行与代码块，保留正文内部相对缩进。
+    for (let pos = line.to + 1; pos < item.to;) {
+      const child = state.doc.lineAt(pos);
+      const indent = /^[ \t]*/.exec(child.text)?.[0].length ?? 0;
+      if (indent && unindent > 0)
+        changes.push({ from: pos, to: pos + Math.min(indent, unindent), insert: '' });
+      pos = child.to + 1;
+    }
+    // 段落之后的 2. 等有序标记需要一个空行才能开始新的列表。
+    if (
+      !parent &&
+      line.number < state.doc.lines &&
+      /^\s*\d+[.)][ \t]/.test(state.doc.line(line.number + 1).text)
+    ) {
+      changes.push({ from: line.to, to: line.to, insert: '\n' });
+      changes.sort((a, b) => a.from - b.from);
+    }
+    dispatch(
+      state.update({
+        changes,
+        selection: EditorSelection.cursor(parent ? caret - remove : line.from + insert.length),
+        userEvent: key === 'Enter' ? 'input' : 'delete.backward',
+      }),
+    );
+    return true;
+  };
+}
+
+export const sourceListBackspace = listExit('Backspace');
+export const sourceListEnter = listExit('Enter');
+export const sourceListKeymap = Prec.highest(
+  keymap.of([
+    { key: 'Backspace', run: sourceListBackspace },
+    { key: 'Enter', run: sourceListEnter },
+  ]),
+);

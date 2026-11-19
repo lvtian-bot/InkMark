@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EditorState } from '@codemirror/state';
+import { markdown } from '@codemirror/lang-markdown';
 
 // editor-ref / source-editor-ref 是模块级单例容器，mock 成可注入的 { current }
 // 以便用例内替换为记录调用的 stub；i18n 与确认弹窗同样 mock，隔离语言与对话框。
@@ -11,6 +13,7 @@ vi.mock('./confirm-dialog', () => ({
 }));
 
 import { runEditorCommand } from './editor-commands';
+import { convertSourceToParagraph } from './editor-commands';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle } from './source-editor-ref';
 import { useStore } from './stores/useStore';
@@ -31,6 +34,11 @@ function makeSourceHandle(
   const recorded: RecordedEdit[] = [];
   sourceEditorHandle.current = {
     getValue: () => (recorded.length ? recorded[recorded.length - 1].text : text),
+    getEditorState: () =>
+      EditorState.create({
+        doc: recorded.length ? recorded[recorded.length - 1].text : text,
+        extensions: [markdown()],
+      }),
     getSelection: () => ({ from, to }),
     replaceRange: (rangeFrom: number, rangeTo: number, value: string) => {
       const base = recorded.length ? recorded[recorded.length - 1].text : text;
@@ -48,6 +56,12 @@ function makeSourceHandle(
 
 const initialViewMode = useStore.getState().viewMode;
 
+it('空白首行设置标题时保留第二行正文', () => {
+  const { recorded } = makeSourceHandle('\n正文', 0, 0);
+  runEditorCommand('heading2');
+  expect(recorded[0].text).toBe('## \n正文');
+});
+
 beforeEach(() => {
   useStore.setState({ viewMode: 'source' });
 });
@@ -64,15 +78,15 @@ describe('runEditorCommand 源码模式：行内标记', () => {
     const { recorded } = makeSourceHandle('plain text', 0, 11);
     runEditorCommand('bold');
     expect(recorded[0].text).toBe('**plain text**');
-    // 与工具栏原行为一致：包裹后选区折叠到内容起始处
-    expect(recorded[0].selection).toEqual({ from: 2, to: 2 });
+    // 包裹后仍选中原文字，便于连续叠加其他格式。
+    expect(recorded[0].selection).toEqual({ from: 2, to: 13 });
   });
 
   it('已包裹时再执行去掉标记（切换语义）', () => {
     const { recorded } = makeSourceHandle('**plain text**', 2, 12);
     runEditorCommand('bold');
     expect(recorded[0].text).toBe('plain text');
-    expect(recorded[0].selection).toEqual({ from: 0, to: 0 });
+    expect(recorded[0].selection).toEqual({ from: 0, to: 10 });
   });
 
   it('斜体与删除线使用各自标记', () => {
@@ -117,10 +131,67 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     expect(handle.recorded[0].text).toBe('item');
   });
 
+  it('无序列表：空文档也能创建空列表项', () => {
+    const handle = makeSourceHandle('', 0, 0);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('- ');
+  });
+
+  it('无序列表：取消任务列表时同时移除复选框', () => {
+    const handle = makeSourceHandle('- [x] 已完成', 6, 6);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('已完成');
+  });
+
+  it('无序列表：加前缀时保留选区内文字偏移和末尾', () => {
+    const handle = makeSourceHandle('item', 1, 4);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('- item');
+    expect(handle.recorded[0].selection).toEqual({ from: 3, to: 6 });
+  });
+
+  it('无序列表：选区覆盖的多行一起切换并保留选区', () => {
+    const handle = makeSourceHandle('- 甲\n- 乙\n- 丙', 0, 7);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('甲\n\n乙\n- 丙');
+    expect(handle.recorded[0].selection).toEqual({ from: 0, to: 4 });
+  });
+
+  it('无序列表：混合普通行、已有列表和缩进时逐行转换', () => {
+    const handle = makeSourceHandle('* 甲\n1. 乙\n  丙', 0, 13);
+    runEditorCommand('bulletList');
+    expect(handle.recorded[0].text).toBe('- 甲\n- 乙\n  - 丙');
+  });
+
   it('任务列表：普通行转为待办', () => {
     const handle = makeSourceHandle('item', 0, 0);
     runEditorCommand('taskList');
     expect(handle.recorded[0].text).toBe('- [ ] item');
+  });
+
+  it('任务列表：空文档也能创建空待办项', () => {
+    const handle = makeSourceHandle('', 0, 0);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0].text).toBe('- [ ] ');
+  });
+
+  it('任务列表：选区覆盖的多行一起转为待办，保留已有完成状态', () => {
+    const handle = makeSourceHandle('- [x] 已完成\n- 待办', 0, 16);
+    runEditorCommand('taskList');
+    expect(handle.recorded[0].text).toBe('- [x] 已完成\n- [ ] 待办');
+  });
+
+  it('转为正文：移除选中行的列表、标题和引用前缀', () => {
+    const handle = makeSourceHandle('- [ ] 甲\n  - 乙\n## 丙', 0, 19);
+    convertSourceToParagraph();
+    expect(handle.recorded[0].text).toBe('甲\n\n乙\n\n丙');
+    expect(handle.recorded[0].selection).toEqual({ from: 0, to: 8 });
+  });
+
+  it('转为正文：普通复选框文字和代码内容保持原样', () => {
+    const handle = makeSourceHandle('[x] 示例\n```\n- 命令\n```', 0, 24);
+    convertSourceToParagraph();
+    expect(handle.recorded[0].text).toBe('[x] 示例\n```\n- 命令\n```');
   });
 
   it('代码块：行首插入围栏并把光标放进代码体', () => {

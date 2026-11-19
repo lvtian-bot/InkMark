@@ -6,6 +6,7 @@ import {
   Italic,
   Link2,
   List,
+  Pilcrow,
   Redo2,
   Save,
   Strikethrough,
@@ -16,7 +17,7 @@ import { useStore, selectViewMode, tabDocumentPath } from '../stores/useStore';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
-import { runEditorCommand } from '../editor-commands';
+import { runEditorCommand, convertSourceToParagraph } from '../editor-commands';
 import {
   DEFAULT_EDITOR_SHORTCUT_MAP,
   formatComboForDisplay,
@@ -68,7 +69,13 @@ export function Toolbar({ onSave }: ToolbarProps) {
   };
 
   return (
-    <div className={`toolbar toolbar-width-${toolbarWidth}`}>
+    <div
+      className={`toolbar toolbar-width-${toolbarWidth}`}
+      onMouseDown={(event) => {
+        // 鼠标点击格式按钮时保留正文焦点，连续设置格式后可直接输入。
+        if (event.button === 0) event.preventDefault();
+      }}
+    >
       <div className="toolbar-group">
         <button className="toolbar-btn" onClick={handleUndo} title={t('toolbar.undo')}>
           <Undo2 size={16} />
@@ -110,6 +117,16 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
           </div>
           <div className="toolbar-group">
+            <button
+              className="toolbar-btn"
+              title={t('toolbar.toParagraph')}
+              aria-label={t('toolbar.toParagraph')}
+              onClick={() =>
+                isWysiwyg ? editorHandle.current?.toParagraph() : convertSourceToParagraph()
+              }
+            >
+              <Pilcrow size={16} />
+            </button>
             <button
               className="toolbar-btn toolbar-heading"
               onClick={() => runEditorCommand('heading1')}

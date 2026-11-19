@@ -21,7 +21,7 @@ describe('tableKeyAction（纯函数）', () => {
   const base = { key: 'Enter', shiftKey: false, modKey: false, inTable: true };
 
   it('表格内普通 Enter：跳格/加行', () => {
-    expect(tableKeyAction(base)).toBe('next-cell-or-add-row');
+    expect(tableKeyAction(base)).toBe('below');
   });
 
   it('表格内 Shift+Enter：格内硬换行', () => {
@@ -98,14 +98,14 @@ function fireKey(view: any, init: KeyboardEventInit): void {
 }
 
 describe('表格内 Enter/Tab 键位（集成：生产编排）', () => {
-  it('Enter：跳到下一格', async () => {
+  it('Enter：进入下一行同一列', async () => {
     const { view } = await makeEditor(TABLE);
     cursorAtText(view, 'a');
     fireKey(view, { key: 'Enter' });
-    expect(view.state.selection.$from.parent.textContent).toBe('b');
+    expect(view.state.selection.$from.parent.textContent).toBe('c');
   });
 
-  it('Enter：最后一格在表尾新增一行，光标落入新行首格', async () => {
+  it('Enter：最后一格在表尾新增一行，光标落入新行同列', async () => {
     const { view, serializer } = await makeEditor(TABLE);
     cursorAtText(view, 'd');
     fireKey(view, { key: 'Enter' });
@@ -113,7 +113,7 @@ describe('表格内 Enter/Tab 键位（集成：生产编排）', () => {
     const rows = view.state.doc.toJSON().content[0].content;
     expect(rows[0].type).toBe('table_header_row');
     expect(rows.filter((r: any) => r.type === 'table_row')).toHaveLength(2);
-    // 光标在空的新行首格
+    expect(view.state.selection.$from.index(2)).toBe(1);
     expect(view.state.selection.$from.parent.textContent).toBe('');
     // 结果仍是合法 GFM 表格
     const out = serializer(view.state.doc);

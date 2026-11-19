@@ -2,6 +2,7 @@ import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import { liftListItem } from '@milkdown/kit/prose/schema-list';
 import { listItemSchema } from '@milkdown/kit/preset/commonmark';
+import type { Node as ProseNode, ResolvedPos } from '@milkdown/kit/prose/model';
 
 const listKeymapKey = new PluginKey('inkmark-list-keymap');
 
@@ -40,60 +41,38 @@ export function shouldLiftListItemOnBackspace(input: ListItemBackspaceInput): bo
   );
 }
 
-/// ProseMirror ResolvedPos / Node 的最小结构投影，避免直接导入这两个类型
-/// （Milkdown 的 kit 入口未稳定导出 `ResolvedPos`）。真实 ResolvedPos / Node 在
-/// 结构上兼容这两个接口，可作为 `$from` / 列表项节点的最小契约。
-interface ResolvedPosLike {
-  readonly depth: number;
-  readonly pos: number;
-  readonly parentOffset: number;
-  node(depth: number): ListItemNodeLike;
-  start(depth: number): number;
-}
-
-interface ListItemNodeLike {
-  readonly type: unknown;
-  readonly attrs: Record<string, unknown>;
-  readonly textContent: string;
-}
-
 interface ListItemAtCursor {
   depth: number;
-  node: ListItemNodeLike;
+  node: ProseNode;
 }
 
-/// Plugin: rewrite Backspace/Delete at the start of a list item.
-///
-/// Milkdown's commonmark `listItemKeymap` binds Backspace and Delete to
-/// `LiftFirstListItem` (→ `joinBackward`), which merges the current item into
-/// the previous one.  Two interception rules restore the mainstream
-/// backspace-out-of-list behaviour:
-///
-/// - **Backspace at the start of a list item's first block** → lift the item
-///   out of the list (`liftListItem`).  In a nested list this promotes the item
-///   one level up; at the top level it becomes a regular paragraph (the marker
-///   disappears, the cursor stays on the line).  This matches the
-///   "remove the marker first, delete the line on the next press" convention
-///   of Word/Google Docs/Typora/Notion, and keeps task lists and plain lists
-///   consistent.  If `liftListItem` cannot apply (rare), fall through to the
-///   default keymap.
-/// - **Delete at the start of a non-empty *task* item** → delete the first
-///   character instead of lifting/joining, so Delete does what the user
-///   expects: erase the character to the right (joining would inherit the
-///   previous item's `checked` and silently flip this task's state).  Empty
-///   task items and plain list items keep the built-in behaviour.
+// 列表项退格退出一级，Delete 删除光标右侧内容；有子项的父项末尾回车进入子列表。
 export const listKeymapPlugin = $prose((ctx) => {
   const listItemType = listItemSchema.type(ctx);
 
   // Walk up to the nearest list_item ancestor of `$from`; return its depth and
   // node, or null when the cursor is not inside a list item.
-  const findListItem = ($from: ResolvedPosLike): ListItemAtCursor | null => {
+  const findListItem = ($from: ResolvedPos): ListItemAtCursor | null => {
     for (let depth = $from.depth; depth > 0; depth--) {
       const n = $from.node(depth);
       if (n.type === listItemType) return { depth, node: n };
     }
     return null;
   };
+
+  const findNestedList = (item: ProseNode): { node: ProseNode; offset: number } | null => {
+    let offset = 0;
+    for (let index = 0; index < item.childCount; index += 1) {
+      const child = item.child(index);
+      if (child.type.name === 'bullet_list' || child.type.name === 'ordered_list') {
+        return { node: child, offset };
+      }
+      offset += child.nodeSize;
+    }
+    return null;
+  };
+
+  const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
   return new Plugin({
     key: listKeymapKey,
@@ -113,8 +92,7 @@ export const listKeymapPlugin = $prose((ctx) => {
               selectionEmpty: selection.empty,
               parentOffset: $from.parentOffset,
               inListItem: item != null,
-              atFirstBlockInItem:
-                item != null && $from.pos - $from.parentOffset === $from.start(item.depth),
+              atFirstBlockInItem: item != null && $from.index(item.depth) === 0,
             })
           ) {
             // Lift the item out of the list. On success a top-level item
@@ -126,6 +104,47 @@ export const listKeymapPlugin = $prose((ctx) => {
             return dispatched;
           }
           return false;
+        }
+
+        if (event.key === 'Enter') {
+          if (hasModifier || event.shiftKey) return false;
+          if (!(view.state.selection instanceof TextSelection)) return false;
+
+          const { selection } = view.state;
+          if (!selection.empty) return false;
+
+          const { $from } = selection;
+          if ($from.parentOffset !== $from.parent.content.size) return false;
+
+          const item = findListItem($from);
+          if (!item || $from.index(item.depth) !== 0) return false;
+
+          const nestedList = findNestedList(item.node);
+          if (!nestedList) return false;
+
+          const firstItemAttrs =
+            nestedList.node.childCount > 0 ? nestedList.node.child(0).attrs : undefined;
+          const attrs = firstItemAttrs
+            ? {
+                ...firstItemAttrs,
+                // A newly created task is always open. Never copy a checked
+                // state from the first existing child into a new item.
+                checked: firstItemAttrs.checked == null ? null : false,
+              }
+            : undefined;
+          const newItem = listItemType.createAndFill(attrs);
+          if (!newItem) return false;
+
+          // `$from.start(item.depth)` points just inside the list item. Add the
+          // nested item's opening position and the offset of its list node.
+          // Inserting at the list content start keeps existing children under
+          // the same parent and puts the caret in the new first child.
+          const nestedListPos = $from.start(item.depth) + nestedList.offset;
+          const insertPos = nestedListPos + 1;
+          const tr = view.state.tr.insert(insertPos, newItem);
+          tr.setSelection(TextSelection.near(tr.doc.resolve(insertPos + 2)));
+          view.dispatch(tr.scrollIntoView());
+          return true;
         }
 
         if (event.key === 'Delete') {
@@ -140,16 +159,24 @@ export const listKeymapPlugin = $prose((ctx) => {
           if ($from.parentOffset !== 0) return false;
 
           const item = findListItem($from);
-          // Only override *task* items (checked != null). Leave plain lists alone.
-          if (!item || (item.node.attrs.checked as boolean | null) == null) return false;
-          // Empty task item: let the built-in keymap handle the lift.
-          if (item.node.textContent.length === 0) return false;
+          // Keep Delete's ordinary character semantics for every list type.
+          // The built-in list keymap treats Delete at item start like
+          // Backspace, which can merge the item into the previous one.
+          if (!item || $from.index(item.depth) !== 0) return false;
 
-          // Cursor is at the paragraph's first position and the item has text:
-          // delete the first character to the right instead of lifting the whole
-          // list item (which would otherwise inherit the preceding item's
-          // `checked` attr and silently flip this task to done/undone).
-          const tr = view.state.tr.delete($from.pos, $from.pos + 1).scrollIntoView();
+          const firstChild = $from.parent.firstChild;
+          if (!firstChild) return false;
+          const deleteLength = firstChild.isText
+            ? (graphemes
+                .segment($from.parent.textBetween(0, $from.parent.content.size, '', '\uFFFC'))
+                .containing(0)?.segment.length ?? 0)
+            : firstChild.nodeSize;
+          if (deleteLength === 0) return false;
+
+          // Delete one complete grapheme to the right. This preserves the
+          // current item and task state for emoji, combining marks, and CJK
+          // characters represented by more than one UTF-16 code unit.
+          const tr = view.state.tr.delete($from.pos, $from.pos + deleteLength).scrollIntoView();
           view.dispatch(tr);
           return true;
         }

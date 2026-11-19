@@ -3,6 +3,7 @@
 // 撤销/重做/保存不在此列：撤销/重做沿用编辑器库默认，保存走应用功能快捷键链路。
 
 import type { EditorShortcutAction } from '../../shared/shortcuts';
+import type { EditorState } from '@codemirror/state';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle, type SourceSelection } from './source-editor-ref';
 import { promptDialog } from './confirm-dialog';
@@ -10,6 +11,8 @@ import { formatDate, formatDateTime } from './datetime-format';
 import { t } from './i18n';
 import { selectViewMode, tabDocumentPath, useStore } from './stores/useStore';
 import { resolveDocumentKind } from '../../shared/openable-document';
+import { toggleSourceMark } from './source-inline-format';
+import { syntaxTree } from '@codemirror/language';
 
 /// 源码模式下的编辑结果：新全文 + 新选区。辅助函数只产出这份结果，
 /// 统一由 applySourceEdit 落盘到 CodeMirror，保持「计算-写入」分离。
@@ -17,6 +20,25 @@ interface SourceEdit {
   text: string;
   selection: SourceSelection;
 }
+
+interface SourceLine {
+  readonly from: number;
+  readonly to: number;
+  readonly text: string;
+}
+
+interface LineChange extends SourceLine {
+  readonly replacement: string;
+}
+
+interface ListPrefix {
+  readonly indent: string;
+  readonly marker: string;
+  readonly body: string;
+}
+
+const listPrefixPattern = /^([ \t]*)([-+*]|\d+[.)])([ \t]+)(.*)$/;
+const taskPrefixPattern = /^(\[[ xX]\])([ \t]+)(.*)$/;
 
 /// 把一次源码编辑写入编辑器并定位光标。用 quiet 写入（工具栏操作由
 /// React onChange 链路之外的 dispatch 触发，但仍要让 useFile 感知到改动），
@@ -29,112 +51,231 @@ function applySourceEdit(edit: SourceEdit): void {
   handle.setSelection(edit.selection.from, edit.selection.to);
 }
 
-function wrapSelection(before: string, after: string): SourceEdit | null {
+function lineStartAt(text: string, position: number): number {
+  return position === 0 ? 0 : text.lastIndexOf('\n', position - 1) + 1;
+}
+
+function lineEndAt(text: string, position: number): number {
+  const end = text.indexOf('\n', position);
+  return end === -1 ? text.length : end;
+}
+
+function selectedLines(text: string, from: number, to: number): SourceLine[] {
+  const start = lineStartAt(text, from);
+  // A selection ending at a line start does not include the following line.
+  const endPosition = to > from && to > 0 && lineStartAt(text, to) === to ? to - 1 : to;
+  const endStart = lineStartAt(text, endPosition);
+  const lines: SourceLine[] = [];
+  for (let position = start; position <= endStart;) {
+    const end = lineEndAt(text, position);
+    lines.push({ from: position, to: end, text: text.slice(position, end) });
+    if (end >= text.length) break;
+    position = end + 1;
+  }
+  return lines;
+}
+
+function parseListPrefix(line: string): ListPrefix | null {
+  const match = listPrefixPattern.exec(line);
+  if (!match) return null;
+  return { indent: match[1], marker: match[2], body: match[4] };
+}
+
+function parseTaskPrefix(list: ListPrefix): { checked: boolean; body: string } | null {
+  const match = taskPrefixPattern.exec(list.body);
+  if (!match) return null;
+  return { checked: match[1].toLowerCase() === '[x]', body: match[3] };
+}
+
+function lineStructure(
+  state: EditorState,
+  line: SourceLine,
+): { hasStructure: boolean; isCode: boolean } {
+  let hasStructure = false;
+  let isCode = false;
+  syntaxTree(state).iterate({
+    from: line.from,
+    to: line.to,
+    enter: (node) => {
+      if (node.name === 'ListMark' || node.name === 'HeaderMark' || node.name === 'QuoteMark') {
+        hasStructure = true;
+      }
+      if (node.name === 'CodeBlock' || node.name === 'FencedCode') isCode = true;
+    },
+  });
+  return { hasStructure, isCode };
+}
+
+function mapPosition(position: number, changes: readonly LineChange[]): number {
+  let delta = 0;
+  for (const change of changes) {
+    if (position < change.from) return position + delta;
+    if (position <= change.to) {
+      const oldOffset = position - change.from;
+      const oldText = change.text;
+      const newText = change.replacement;
+      let suffixLength = 0;
+      while (
+        suffixLength < oldText.length &&
+        suffixLength < newText.length &&
+        oldText[oldText.length - suffixLength - 1] === newText[newText.length - suffixLength - 1]
+      ) {
+        suffixLength += 1;
+      }
+      const oldPrefixLength = oldText.length - suffixLength;
+      const newPrefixLength = newText.length - suffixLength;
+      const newOffset =
+        oldOffset <= oldPrefixLength
+          ? Math.min(oldOffset, newPrefixLength)
+          : newPrefixLength + oldOffset - oldPrefixLength;
+      return change.from + delta + Math.min(newOffset, newText.length);
+    }
+    delta += change.replacement.length - (change.to - change.from);
+  }
+  return position + delta;
+}
+
+function applyLineChanges(
+  text: string,
+  from: number,
+  to: number,
+  changes: readonly LineChange[],
+): SourceEdit {
+  let result = '';
+  let cursor = 0;
+  for (const change of changes) {
+    result += text.slice(cursor, change.from) + change.replacement;
+    cursor = change.to;
+  }
+  result += text.slice(cursor);
+  return {
+    text: result,
+    selection: { from: mapPosition(from, changes), to: mapPosition(to, changes) },
+  };
+}
+
+function wrapSelection(marker: string): SourceEdit | null {
   const handle = sourceEditorHandle.current;
   if (!handle) return null;
   const text = handle.getValue();
   const { from, to } = handle.getSelection();
-  const selected = text.slice(from, to);
-
-  const beforeCtx = text.slice(Math.max(0, from - before.length), from);
-  const afterCtx = text.slice(to, Math.min(text.length, to + after.length));
-
-  if (beforeCtx === before && afterCtx === after) {
-    // 已包裹 → 去掉标记
-    return {
-      text: text.slice(0, from - before.length) + selected + text.slice(to + after.length),
-      selection: { from: from - before.length, to: from - before.length },
-    };
-  }
-  return {
-    text: text.slice(0, from) + before + selected + after + text.slice(to),
-    selection: { from: from + before.length, to: from + before.length },
-  };
+  return toggleSourceMark(text, from, to, marker);
 }
 
 function toggleLinePrefix(prefix: string): SourceEdit | null {
   const handle = sourceEditorHandle.current;
   if (!handle) return null;
   const text = handle.getValue();
-  const { from } = handle.getSelection();
-  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-  const lineEnd = text.indexOf('\n', from);
-  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
-  const line = text.slice(lineStart, lineEndPos);
-
-  if (line.startsWith(prefix)) {
-    const newLine = line.slice(prefix.length);
-    return {
-      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-      selection: {
-        from: Math.max(lineStart, from - prefix.length),
-        to: Math.max(lineStart, from - prefix.length),
-      },
-    };
-  }
-  return {
-    text: text.slice(0, lineStart) + prefix + line + text.slice(lineEndPos),
-    selection: { from: from + prefix.length, to: from + prefix.length },
-  };
+  const selection = handle.getSelection();
+  const lines = selectedLines(text, selection.from, selection.to);
+  const nonEmpty = lines.filter((line) => line.text.trim() !== '');
+  const allUnordered = nonEmpty.every((line) => {
+    const parsed = parseListPrefix(line.text);
+    return parsed?.marker.length === 1;
+  });
+  const changes: LineChange[] = lines.map((line) => {
+    if (!line.text.trim()) {
+      if (nonEmpty.length === 0) {
+        const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
+        return { ...line, replacement: `${indent}${prefix}` };
+      }
+      return { ...line, replacement: line.text };
+    }
+    const parsed = parseListPrefix(line.text);
+    if (allUnordered && parsed) {
+      const separator =
+        line.from > 0 && text.slice(lineStartAt(text, line.from - 1), line.from - 1).length > 0
+          ? '\n'
+          : '';
+      const task = parseTaskPrefix(parsed);
+      return {
+        ...line,
+        replacement: `${separator}${task ? task.body : parsed.body}`,
+      };
+    }
+    if (parsed) {
+      return { ...line, replacement: `${parsed.indent}${prefix}${parsed.body}` };
+    }
+    const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
+    return { ...line, replacement: `${indent}${prefix}${line.text.slice(indent.length)}` };
+  });
+  return applyLineChanges(text, selection.from, selection.to, changes);
 }
 
 function setHeadingLevel(level: number): SourceEdit | null {
   const handle = sourceEditorHandle.current;
   if (!handle) return null;
   const text = handle.getValue();
-  const { from } = handle.getSelection();
-  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-  const lineEnd = text.indexOf('\n', from);
-  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
-  const line = text.slice(lineStart, lineEndPos);
-
-  const match = line.match(/^(#{1,6})\s(.*)$/);
-  const currentLevel = match ? match[1].length : 0;
-  const body = match ? match[2] : line;
-
-  const newLine = currentLevel === level ? body : `${'#'.repeat(level)} ${body}`;
-  const delta = newLine.length - line.length;
-  return {
-    text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-    selection: { from: Math.max(lineStart, from + delta), to: Math.max(lineStart, from + delta) },
-  };
+  const selection = handle.getSelection();
+  const changes: LineChange[] = selectedLines(text, selection.from, selection.to).map((line) => {
+    const match = /^([ \t]*)(#{1,6})[ \t]+(.*)$/.exec(line.text);
+    const indent = match?.[1] ?? line.text.match(/^[ \t]*/)?.[0] ?? '';
+    const currentLevel = match?.[2].length ?? 0;
+    const body = match?.[3] ?? line.text.slice(indent.length);
+    const replacement =
+      match && currentLevel === level
+        ? `${indent}${body}`
+        : `${indent}${'#'.repeat(level)} ${body}`;
+    return { ...line, replacement };
+  });
+  return applyLineChanges(text, selection.from, selection.to, changes);
 }
 
 function toggleTaskPrefix(): SourceEdit | null {
   const handle = sourceEditorHandle.current;
   if (!handle) return null;
   const text = handle.getValue();
-  const { from } = handle.getSelection();
-  const lineStart = text.lastIndexOf('\n', from - 1) + 1;
-  const lineEnd = text.indexOf('\n', from);
-  const lineEndPos = lineEnd === -1 ? text.length : lineEnd;
-  const line = text.slice(lineStart, lineEndPos);
+  const selection = handle.getSelection();
+  const lines = selectedLines(text, selection.from, selection.to);
+  const nonEmpty = lines.filter((line) => line.text.trim() !== '');
+  const allTasks =
+    nonEmpty.length > 0 &&
+    nonEmpty.every((line) => {
+      const parsed = parseListPrefix(line.text);
+      return parsed != null && parseTaskPrefix(parsed) != null;
+    });
+  const changes: LineChange[] = lines.map((line) => {
+    if (!line.text.trim()) {
+      if (nonEmpty.length === 0) {
+        const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
+        return { ...line, replacement: `${indent}- [ ] ` };
+      }
+      return { ...line, replacement: line.text };
+    }
+    const parsed = parseListPrefix(line.text);
+    if (!parsed) {
+      const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
+      return { ...line, replacement: `${indent}- [ ] ${line.text.slice(indent.length)}` };
+    }
+    const task = parseTaskPrefix(parsed);
+    if (allTasks && task)
+      return { ...line, replacement: `${parsed.indent}${parsed.marker} ${task.body}` };
+    if (task) return { ...line, replacement: line.text };
+    return { ...line, replacement: `${parsed.indent}${parsed.marker} [ ] ${parsed.body}` };
+  });
+  return applyLineChanges(text, selection.from, selection.to, changes);
+}
 
-  const taskMatch = line.match(/^(\s*)([-*+])\s\[[ xX]\]\s(.*)$/);
-  if (taskMatch) {
-    const newLine = `${taskMatch[1]}${taskMatch[2]} ${taskMatch[3]}`;
-    const delta = lineStart + taskMatch[1].length + 2;
-    const newSel = Math.min(Math.max(from - 4, delta), lineStart + newLine.length);
-    return {
-      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-      selection: { from: newSel, to: newSel },
-    };
-  }
-
-  const listMatch = line.match(/^(\s*)([-*+])\s(.*)$/);
-  if (listMatch) {
-    const newLine = `${listMatch[1]}${listMatch[2]} [ ] ${listMatch[3]}`;
-    return {
-      text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-      selection: { from: from + 4, to: from + 4 },
-    };
-  }
-
-  const newLine = `- [ ] ${line}`;
-  return {
-    text: text.slice(0, lineStart) + newLine + text.slice(lineEndPos),
-    selection: { from: from + 6, to: from + 6 },
-  };
+/** Converts the selected source lines to top-level ordinary paragraphs. */
+export function convertSourceToParagraph(): void {
+  const handle = sourceEditorHandle.current;
+  if (!handle) return;
+  const text = handle.getValue();
+  const selection = handle.getSelection();
+  const state = handle.getEditorState();
+  const changes: LineChange[] = selectedLines(text, selection.from, selection.to).map((line) => {
+    const structure = lineStructure(state, line);
+    if (!structure.hasStructure || structure.isCode) return { ...line, replacement: line.text };
+    const withoutQuote = line.text.replace(/^[ \t]*>[ \t]?/, '');
+    const withoutHeading = withoutQuote.replace(/^[ \t]*#{1,6}[ \t]+/, '');
+    const withoutList = withoutHeading.replace(/^[ \t]*(?:[-+*]|\d+[.)])[ \t]+/, '');
+    const withoutTask = withoutList.replace(/^\[[ xX]\][ \t]+/, '');
+    const previousLine =
+      line.from > 0 ? text.slice(lineStartAt(text, line.from - 1), line.from - 1) : '';
+    const separator = structure.hasStructure && previousLine.length > 0 ? '\n' : '';
+    return { ...line, replacement: `${separator}${withoutTask}` };
+  });
+  applySourceEdit(applyLineChanges(text, selection.from, selection.to, changes));
 }
 
 function insertSourceCodeBlock(): void {
@@ -248,7 +389,7 @@ export function runEditorCommand(action: EditorShortcutAction): void {
       else if (action === 'strike') editorHandle.current?.toggleStrike();
       else editorHandle.current?.toggleInlineCode();
     } else {
-      const edit = wrapSelection(mark[0], mark[1]);
+      const edit = wrapSelection(mark[0]);
       if (edit) applySourceEdit(edit);
     }
     return;
