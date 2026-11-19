@@ -1,74 +1,68 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
-import { EditorState, EditorSelection } from '@codemirror/state';
-import { markdown } from '@codemirror/lang-markdown';
-import { EditorView } from '@codemirror/view';
-import { sourceListBackspace, sourceListEnter, sourceListKeymap } from './source-list-keymap';
+import { afterEach, describe, expect, it } from 'vitest';
+import { EditorSelection, EditorState } from '@codemirror/state';
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { defaultKeymap } from '@codemirror/commands';
+import { EditorView, keymap, runScopeHandlers } from '@codemirror/view';
+import { sourceBackspaceKeymap, sourceListKeymap } from './source-list-keymap';
 
-function applyCommand(
-  doc: string,
-  position: number,
-  command: typeof sourceListBackspace | typeof sourceListEnter,
-): EditorState {
+let editor: EditorView | undefined;
+afterEach(() => {
+  editor?.destroy();
+  editor = undefined;
+});
+
+function openSource(doc: string, from: number, to = from, plainText = false) {
   const state = EditorState.create({
     doc,
-    extensions: [markdown(), sourceListKeymap],
+    selection: EditorSelection.single(from, to),
+    extensions: [
+      sourceBackspaceKeymap,
+      keymap.of(defaultKeymap),
+      ...(plainText ? [] : [markdown({ base: markdownLanguage }), sourceListKeymap]),
+    ],
   });
-  const root = document.createElement('div');
-  const view = new EditorView({ state, parent: root });
-  view.dispatch({ selection: EditorSelection.cursor(position) });
-  command(view);
-  const nextState = view.state;
-  view.destroy();
-  return nextState;
+  const view = new EditorView({ state });
+  editor = view;
+  return view;
+}
+
+function press(view: EditorView, key: string) {
+  expect(runScopeHandlers(view, new KeyboardEvent('keydown', { key }), 'editor')).toBe(true);
+  return view.state.doc.toString();
 }
 
 describe('源码模式列表按键', () => {
-  it('顶层列表项行首退格转成独立正文，并避免并入上一项', () => {
-    const state = applyCommand('- 甲\n- 乙', 6, sourceListBackspace);
-    expect(state.doc.toString()).toBe('- 甲\n\n乙');
-    expect(state.selection.main.from).toBe(5);
+  it.each([
+    ['- 事项', '事项', '-事项', '事项'],
+    ['- 甲\n- 乙\n- 丙', '乙', '- 甲\n-乙\n- 丙', '- 甲\n乙\n- 丙'],
+    ['- 父\n    - 子', '子', '- 父\n    -子', '- 父\n    子'],
+    ['12. 事项', '事项', '12.事项', '12事项'],
+    ['- [x] 待办', '待办', '- [x]待办', '- [x待办'],
+    ['> 引文', '引文', '>引文', '引文'],
+  ])('退格只删除光标前的一个字符：%s', (doc, cursor, first, second) => {
+    const start = doc.indexOf(cursor);
+    const view = openSource(doc, start);
+    expect(press(view, 'Backspace')).toBe(first);
+    expect(press(view, 'Backspace')).toBe(second);
+    expect(view.state.selection.main.head).toBe(start - 2);
   });
 
-  it('嵌套列表项行首退格提升一级并保留列表标记', () => {
-    const state = applyCommand('- 父项\n  - 子项', 9, sourceListBackspace);
-    expect(state.doc.toString()).toBe('- 父项\n- 子项');
-    expect(state.selection.main.from).toBe(7);
+  it.each([true, false])('缩进区一次只删除一个空格，纯文本模式 %s', (plainText) => {
+    const view = openSource('    正文', 4, 4, plainText);
+    expect(press(view, 'Backspace')).toBe('   正文');
   });
 
-  it('按语法父项缩进提升，不固定假设两格空格', () => {
-    const state = applyCommand('1. 父项\n    - 子项', 12, sourceListBackspace);
-    expect(state.doc.toString()).toBe('1. 父项\n- 子项');
+  it('已有选区时删除所选内容', () => {
+    const view = openSource('- [x] 事项', 2, 6);
+    expect(press(view, 'Backspace')).toBe('- 事项');
   });
 
-  it('提升带子项的列表项时同步移动其后代缩进', () => {
-    const state = applyCommand('- 父项\n    - 子项\n        - 孙项', 11, sourceListBackspace);
-    expect(state.doc.toString()).toBe('- 父项\n- 子项\n    - 孙项');
-  });
-
-  it('空列表项回车立即结束列表', () => {
-    const state = applyCommand('- 甲\n- ', 6, sourceListEnter);
-    expect(state.doc.toString()).toBe('- 甲\n\n');
-    expect(state.selection.main.from).toBe(5);
-  });
-
-  it('在任务文字前退格同时移除复选框，空任务回车后直接写正文', () => {
-    const text = '- [x] 已完成\n- [ ] 待处理';
-    const state = applyCommand(text, text.indexOf('待处理'), sourceListBackspace);
-    expect(state.doc.toString()).toBe('- [x] 已完成\n\n待处理');
-    const empty = '- 已完成\n- [ ] ';
-    const typing = applyCommand(empty, empty.length, sourceListEnter);
-    const next = typing.update(typing.replaceSelection('正文')).state;
-    expect(next.doc.toString()).toBe('- 已完成\n\n正文');
-  });
-
-  it('顶层退格时让下一条非一开头的编号继续构成列表', () => {
-    const state = applyCommand('1. 甲\n2. 乙', 3, sourceListBackspace);
-    expect(state.doc.toString()).toBe('甲\n\n2. 乙');
-  });
-
-  it('代码围栏中的伪列表不触发列表退格', () => {
-    const state = applyCommand('```\n- 命令\n```', 7, sourceListBackspace);
-    expect(state.doc.toString()).toBe('```\n- 命令\n```');
+  it.each(['- ', '- [ ] '])('空列表项按回车后直接写正文：%s', (prefix) => {
+    const doc = '- 甲\n' + prefix;
+    const view = openSource(doc, doc.length);
+    expect(press(view, 'Enter')).toBe('- 甲\n\n');
+    view.dispatch(view.state.replaceSelection('正文'));
+    expect(view.state.doc.toString()).toBe('- 甲\n\n正文');
   });
 });

@@ -9,7 +9,6 @@ import { TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { taskList } from './task-list';
 import {
-  toParagraphCommand,
   toggleBulletListCommand,
   toggleHeadingCommand,
   toggleOrderedListCommand,
@@ -30,8 +29,7 @@ async function createEditor(markdown = '') {
     .use(taskList)
     .use(toggleBulletListCommand)
     .use(toggleOrderedListCommand)
-    .use(toggleHeadingCommand)
-    .use(toParagraphCommand);
+    .use(toggleHeadingCommand);
   const instance = await editor.create();
   const view = instance.ctx.get(editorViewCtx);
   const doc = instance.ctx.get(parserCtx)(markdown);
@@ -129,46 +127,6 @@ describe('所见即所得格式切换', () => {
         activeEditor.view.state.selection.to,
       ),
     ).toBe('甲');
-  });
-
-  it('将嵌套列表转正文时保留子项内容并解除当前层级', async () => {
-    activeEditor = await createEditor('- 父\n  - 子甲\n  - 子乙');
-    placeSelection(activeEditor.view, '父');
-    activeEditor.commands.call(toParagraphCommand.key);
-    expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe('父\n\n* 子甲\n* 子乙\n');
-  });
-
-  it('嵌套子项转正文时逐级提升到顶层', async () => {
-    activeEditor = await createEditor('- 父\n  - 子甲\n    - 孙');
-    placeSelection(activeEditor.view, '子甲');
-    activeEditor.commands.call(toParagraphCommand.key);
-    expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe('* 父\n\n子甲\n\n* 孙\n');
-  });
-
-  it('转正文选区结束在下一项开头时不提升下一项', async () => {
-    activeEditor = await createEditor('- 甲\n- 乙\n- 丙');
-    placeSelectionBefore(activeEditor.view, '甲', '乙');
-    activeEditor.commands.call(toParagraphCommand.key);
-    expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe('甲\n\n* 乙\n* 丙\n');
-  });
-
-  it('混合标题和列表全选转正文时分别处理两种块', async () => {
-    activeEditor = await createEditor('# 标题\n\n- 项目\n  - 子项\n- 未选');
-    placeSelection(activeEditor.view, '标题', '项目');
-    activeEditor.commands.call(toParagraphCommand.key);
-    expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe(
-      '标题\n\n项目\n\n* 子项\n\n- 未选\n',
-    );
-  });
-
-  it('转正文时保留未选嵌套任务的勾选状态', async () => {
-    activeEditor = await createEditor('# 标题\n\n- [x] 项目\n  - [ ] 子项\n- [ ] 未选');
-    placeSelection(activeEditor.view, '标题', '项目');
-    activeEditor.commands.call(toParagraphCommand.key);
-    const markdown = activeEditor.serialize(activeEditor.view.state.doc);
-    expect(markdown).not.toContain('[x] 项目');
-    expect(markdown).toContain('[ ] 子项');
-    expect(markdown).toContain('[ ] 未选');
   });
 
   it('同级标题再次点击会切回正文', async () => {

@@ -6,7 +6,6 @@ import {
   Italic,
   Link2,
   List,
-  Pilcrow,
   Redo2,
   Save,
   Strikethrough,
@@ -17,7 +16,7 @@ import { useStore, selectViewMode, tabDocumentPath } from '../stores/useStore';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
-import { runEditorCommand, convertSourceToParagraph } from '../editor-commands';
+import { runEditorCommand } from '../editor-commands';
 import {
   DEFAULT_EDITOR_SHORTCUT_MAP,
   formatComboForDisplay,
@@ -117,16 +116,6 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
           </div>
           <div className="toolbar-group">
-            <button
-              className="toolbar-btn"
-              title={t('toolbar.toParagraph')}
-              aria-label={t('toolbar.toParagraph')}
-              onClick={() =>
-                isWysiwyg ? editorHandle.current?.toParagraph() : convertSourceToParagraph()
-              }
-            >
-              <Pilcrow size={16} />
-            </button>
             <button
               className="toolbar-btn toolbar-heading"
               onClick={() => runEditorCommand('heading1')}

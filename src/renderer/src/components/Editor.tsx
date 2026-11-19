@@ -56,7 +56,6 @@ import {
   toggleBulletListCommand,
   toggleHeadingCommand,
   toggleOrderedListCommand,
-  toParagraphCommand,
 } from '../plugins/list-format';
 import { listKeymap } from '../plugins/list-keymap';
 import { frontmatter } from '../plugins/frontmatter';
@@ -407,7 +406,6 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         .use(toggleBulletListCommand)
         .use(toggleOrderedListCommand)
         .use(toggleHeadingCommand)
-        .use(toParagraphCommand)
         .use(listKeymap)
         .use(listMarker)
         .use(breaks)
@@ -652,13 +650,6 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           ed.action(callCommand(toggleHeadingCommand.key, level));
         } catch (e) {
           console.error('wrapHeading error:', e);
-        }
-      },
-      toParagraph: () => {
-        try {
-          ed.action(callCommand(toParagraphCommand.key));
-        } catch (e) {
-          console.error('toParagraph error:', e);
         }
       },
       wrapBulletList: () => {

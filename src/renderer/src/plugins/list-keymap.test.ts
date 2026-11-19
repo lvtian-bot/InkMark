@@ -118,15 +118,20 @@ describe('列表键位真实编辑器接缝', () => {
   });
 
   it('多项顶层列表的首字退格会把当前项提升为独立正文', async () => {
-    const { instance, view, serialize } = await makeEditor('- A\n- B');
+    const { instance, view, serialize } = await makeEditor('- A\n- B\n- C');
     placeCursor(view, 'B');
 
     expect(fireKey(view, { key: 'Backspace' })).toBe(true);
     expect(view.state.doc.toJSON().content.map((node: any) => node.type)).toEqual([
       'bullet_list',
       'paragraph',
+      'bullet_list',
     ]);
-    expect(serialize(view.state.doc)).toContain('B');
+    const reopened = instance.ctx.get(parserCtx)(serialize(view.state.doc));
+    expect(reopened.child(1).type.name).toBe('paragraph');
+    expect(reopened.child(1).textContent).toBe('B');
+    expect(reopened.child(0).textContent).toBe('A');
+    expect(reopened.child(2).textContent).toBe('C');
     await instance.destroy();
   });
 

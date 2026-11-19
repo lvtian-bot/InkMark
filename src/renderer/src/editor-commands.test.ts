@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { markdown } from '@codemirror/lang-markdown';
 
 // editor-ref / source-editor-ref 是模块级单例容器，mock 成可注入的 { current }
 // 以便用例内替换为记录调用的 stub；i18n 与确认弹窗同样 mock，隔离语言与对话框。
@@ -13,7 +13,6 @@ vi.mock('./confirm-dialog', () => ({
 }));
 
 import { runEditorCommand } from './editor-commands';
-import { convertSourceToParagraph } from './editor-commands';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle } from './source-editor-ref';
 import { useStore } from './stores/useStore';
@@ -179,53 +178,6 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     const handle = makeSourceHandle('- [x] 已完成\n- 待办', 0, 16);
     runEditorCommand('taskList');
     expect(handle.recorded[0].text).toBe('- [x] 已完成\n- [ ] 待办');
-  });
-
-  it('转为正文：移除选中行的列表、标题和引用前缀', () => {
-    const handle = makeSourceHandle('- [ ] 甲\n  - 乙\n## 丙', 0, 19);
-    convertSourceToParagraph();
-    expect(handle.recorded[0].text).toBe('甲\n\n乙\n\n丙');
-    expect(handle.recorded[0].selection).toEqual({ from: 0, to: 8 });
-  });
-
-  it('转为正文：普通复选框文字和代码内容保持原样', () => {
-    const handle = makeSourceHandle('[x] 示例\n```\n- 命令\n```', 0, 24);
-    convertSourceToParagraph();
-    expect(handle.recorded[0].text).toBe('[x] 示例\n```\n- 命令\n```');
-  });
-
-  it('转为正文后，未选中的第二个编号仍是独立列表，光标留在正文', () => {
-    const handle = makeSourceHandle('1. 甲\n2. 乙', 3, 3);
-    convertSourceToParagraph();
-    expect(handle.recorded[0]).toEqual({ text: '甲\n\n2. 乙', selection: { from: 0, to: 0 } });
-  });
-
-  it.each(['# [x] 发布', '> [x] 发布', '# - [x] 发布'])('转正文保留 %s 中的字面标记', (source) => {
-    const handle = makeSourceHandle(source, source.length, source.length);
-    convertSourceToParagraph();
-    expect(handle.recorded[0].text).toBe(source.slice(2));
-  });
-
-  it.each([
-    ['- 父\n    - 子', 'BulletList'],
-    ['- 父\n\n    2. 子', 'OrderedList'],
-  ])('转换父项时保留未选子项的列表结构 %s', (source, listKind) => {
-    const handle = makeSourceHandle(source, 2, 2);
-    expect(
-      markdownLanguage.parser.parse(source).topNode.lastChild?.lastChild?.lastChild?.name,
-    ).toBe(listKind);
-    convertSourceToParagraph();
-    const doc = markdownLanguage.parser.parse(handle.recorded[0].text).topNode;
-    expect(doc.firstChild?.name).toBe('Paragraph');
-    expect(doc.firstChild?.nextSibling?.name).toBe(listKind);
-    expect(handle.recorded[0].text).toContain('子');
-  });
-
-  it('父子两项一起转正文时，未选的孙项和后续子项各自保留', () => {
-    const source = '- 父\n  - 子\n    - 孙\n  - 后续';
-    const handle = makeSourceHandle(source, 2, source.indexOf('子') + 1);
-    convertSourceToParagraph();
-    expect(handle.recorded[0].text).toBe('父\n\n子\n- 孙\n- 后续');
   });
 
   it('代码块：行首插入围栏并把光标放进代码体', () => {

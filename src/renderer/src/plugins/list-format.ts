@@ -20,11 +20,6 @@ interface SelectedListItem {
   readonly pos: number;
 }
 
-interface ParagraphOperation {
-  readonly kind: 'heading' | 'list-item';
-  readonly pos: number;
-}
-
 function selectedTextBlocks(state: EditorState): SelectedTextBlock[] {
   const { selection } = state;
   if (selection.empty) {
@@ -123,30 +118,6 @@ function appendTransactionSteps(target: Transaction, source: Transaction): void 
   for (const step of source.steps) target.step(step);
 }
 
-function liftListItemAt(
-  state: EditorState,
-  itemPos: number,
-  listItemType: NodeType,
-): Transaction | null {
-  const item = state.doc.nodeAt(itemPos);
-  if (!item || item.type !== listItemType) return null;
-
-  let firstTextPosition: number | null = null;
-  state.doc.nodesBetween(itemPos + 1, itemPos + item.nodeSize - 1, (node, pos) => {
-    if (firstTextPosition == null && node.isTextblock) firstTextPosition = pos + 1;
-  });
-  if (firstTextPosition == null) return null;
-
-  const scopedState = state.apply(
-    state.tr.setSelection(TextSelection.create(state.doc, firstTextPosition)),
-  );
-  const capture: { value: Transaction | null } = { value: null };
-  const lifted = liftListItem(listItemType)(scopedState, (tr: Transaction) => {
-    capture.value = tr;
-  });
-  return lifted && capture.value ? capture.value : null;
-}
-
 function toggleList(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
@@ -208,59 +179,6 @@ export const toggleHeadingCommand = $command('ToggleHeading', (ctx) => (level?: 
     return true;
   };
 });
-
-export const toParagraphCommand = $command(
-  'ToParagraph',
-  (ctx) => () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
-    const listItemType = listItemSchema.type(ctx);
-    const paragraphType = paragraphSchema.type(ctx);
-    const headingType = headingSchema.type(ctx);
-    const operations = new Map<string, ParagraphOperation>();
-    for (const block of selectedTextBlocks(state)) {
-      const item = listItemForBlock(state, block, listItemType);
-      if (item) {
-        operations.set(`list-item:${item.pos}`, { kind: 'list-item', pos: item.pos });
-      } else if (block.node.type === headingType) {
-        operations.set(`heading:${block.pos}`, { kind: 'heading', pos: block.pos });
-      }
-    }
-    const orderedOperations = [...operations.values()].sort((left, right) => right.pos - left.pos);
-    if (orderedOperations.length === 0) return false;
-    if (!dispatch) return true;
-
-    const paragraph = state.tr;
-    let workingState = state;
-    for (const operation of orderedOperations) {
-      if (operation.kind === 'heading') {
-        const block = workingState.doc.nodeAt(operation.pos);
-        if (
-          !block ||
-          block.type !== headingType ||
-          !canReplaceBlock(workingState, { node: block, pos: operation.pos }, paragraphType)
-        ) {
-          continue;
-        }
-        const converted = workingState.tr.setNodeMarkup(operation.pos, paragraphType, {});
-        appendTransactionSteps(paragraph, converted);
-        workingState = workingState.apply(converted);
-        continue;
-      }
-
-      let currentItemPosition: number | null = operation.pos;
-      while (currentItemPosition != null) {
-        const lifted = liftListItemAt(workingState, currentItemPosition, listItemType);
-        if (!lifted || lifted.steps.length === 0) break;
-        appendTransactionSteps(paragraph, lifted);
-        workingState = workingState.apply(lifted);
-        const currentItem = selectedListItems(workingState, listItemType)[0];
-        currentItemPosition = currentItem?.pos ?? null;
-      }
-    }
-    if (paragraph.steps.length === 0) return false;
-    dispatch(paragraph.scrollIntoView());
-    return true;
-  },
-);
 
 export const toggleTaskListCommand = $command(
   'ToggleTaskList',

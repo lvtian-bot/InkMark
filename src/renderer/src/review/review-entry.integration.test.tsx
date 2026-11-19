@@ -118,7 +118,6 @@ function createEditorHandle(
     toggleStrike: () => undefined,
     toggleInlineCode: () => undefined,
     wrapHeading: () => undefined,
-    toParagraph: () => undefined,
     wrapBulletList: () => undefined,
     wrapOrderedList: () => undefined,
     wrapTaskList: () => undefined,

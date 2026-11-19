@@ -243,7 +243,6 @@ export const messages = {
   'toolbar.italic': '斜体',
   'toolbar.strikethrough': '删除线',
   'toolbar.inlineCode': '行内代码',
-  'toolbar.toParagraph': '转为正文',
   'toolbar.heading1': '一级标题',
   'toolbar.heading2': '二级标题',
   'toolbar.heading3': '三级标题',

@@ -29,7 +29,6 @@ export interface EditorHandle {
   toggleStrike: () => void;
   toggleInlineCode: () => void;
   wrapHeading: (level: number) => void;
-  toParagraph: () => void;
   wrapBulletList: () => void;
   wrapOrderedList: () => void;
   wrapTaskList: () => void;

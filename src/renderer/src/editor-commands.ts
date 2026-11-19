@@ -3,7 +3,6 @@
 // 撤销/重做/保存不在此列：撤销/重做沿用编辑器库默认，保存走应用功能快捷键链路。
 
 import type { EditorShortcutAction } from '../../shared/shortcuts';
-import type { EditorState } from '@codemirror/state';
 import { editorHandle } from './editor-ref';
 import { sourceEditorHandle, type SourceSelection } from './source-editor-ref';
 import { promptDialog } from './confirm-dialog';
@@ -12,7 +11,6 @@ import { t } from './i18n';
 import { selectViewMode, tabDocumentPath, useStore } from './stores/useStore';
 import { resolveDocumentKind } from '../../shared/openable-document';
 import { toggleSourceMark } from './source-inline-format';
-import { syntaxTree } from '@codemirror/language';
 
 /// 源码模式下的编辑结果：新全文 + 新选区。辅助函数只产出这份结果，
 /// 统一由 applySourceEdit 落盘到 CodeMirror，保持「计算-写入」分离。
@@ -85,51 +83,6 @@ function parseTaskPrefix(list: ListPrefix): { checked: boolean; body: string } |
   const match = taskPrefixPattern.exec(list.body);
   if (!match) return null;
   return { checked: match[1].toLowerCase() === '[x]', body: match[3] };
-}
-
-/** 只消费语法树标出的行首标记，保留标题和引文里的字面量。 */
-function paragraphSourceLine(state: EditorState, line: SourceLine) {
-  let bodyStart = line.from;
-  let bodyEnd = line.to;
-  let listContentStart = -1;
-  let itemEnd = -1;
-  let hasPrefix = false;
-  syntaxTree(state).iterate({
-    from: line.from,
-    to: line.to,
-    enter(ref) {
-      if (ref.name !== 'ListMark' && ref.name !== 'QuoteMark' && ref.name !== 'HeaderMark') return;
-      if (ref.from < line.from || ref.to > line.to) return;
-      if (
-        ref.name === 'HeaderMark' &&
-        ref.node.parent?.name.startsWith('ATXHeading') &&
-        ref.node.parent.firstChild?.from !== ref.from
-      ) {
-        bodyEnd = ref.from;
-        while (bodyEnd > bodyStart && /[ \t]/.test(line.text[bodyEnd - line.from - 1])) bodyEnd--;
-        return;
-      }
-      if (
-        ref.from < bodyStart ||
-        /\S/.test(line.text.slice(bodyStart - line.from, ref.from - line.from))
-      )
-        return;
-      hasPrefix = true;
-      bodyStart = ref.to;
-      while (bodyStart < bodyEnd && /[ \t]/.test(line.text[bodyStart - line.from])) bodyStart++;
-      if (ref.name === 'ListMark') {
-        listContentStart = bodyStart;
-        itemEnd = ref.node.parent?.to ?? -1;
-      }
-    },
-  });
-  const body = line.text.slice(bodyStart - line.from, bodyEnd - line.from);
-  return {
-    hasPrefix,
-    text: listContentStart === bodyStart ? body.replace(/^\[[ xX]\](?:[ \t]+|$)/, '') : body,
-    indent: listContentStart >= 0 ? listContentStart - line.from : 0,
-    itemEnd,
-  };
 }
 
 function mapPosition(position: number, changes: readonly LineChange[]): number {
@@ -280,50 +233,6 @@ function toggleTaskPrefix(): SourceEdit | null {
     return { ...line, replacement: `${parsed.indent}${parsed.marker} [ ] ${parsed.body}` };
   });
   return applyLineChanges(text, selection.from, selection.to, changes);
-}
-
-/** Converts the selected source lines to top-level ordinary paragraphs. */
-export function convertSourceToParagraph(): void {
-  const handle = sourceEditorHandle.current;
-  if (!handle) return;
-  const text = handle.getValue();
-  const selection = handle.getSelection();
-  const state = handle.getEditorState();
-  const promoted: { end: number; indent: number }[] = [];
-  const changes: LineChange[] = selectedLines(text, selection.from, selection.to).map((line) => {
-    const result = paragraphSourceLine(state, line);
-    if (!result.hasPrefix) return { ...line, replacement: line.text };
-    if (result.itemEnd > line.to) promoted.push({ end: result.itemEnd, indent: result.indent });
-    const previousLine = line.from > 0 ? state.doc.lineAt(line.from - 1).text : '';
-    return { ...line, replacement: (previousLine.trim() ? '\n' : '') + result.text };
-  });
-
-  const last = changes.at(-1);
-  if (last && last.to < text.length) {
-    const firstUnselected = last.to + 1;
-    const end = promoted.reduce((max, item) => Math.max(max, item.end), firstUnselected);
-    for (let pos = firstUnselected; pos === firstUnselected || pos < end;) {
-      const next = state.doc.lineAt(pos);
-      const indent = promoted.reduce(
-        (max, item) => (pos < item.end ? Math.max(max, item.indent) : max),
-        0,
-      );
-      const spaces = next.text.match(/^[ \t]*/)?.[0].length ?? 0;
-      let replacement = next.text.slice(Math.min(spaces, indent));
-      // 正文之后从非 1 开始的有序列表需要空行分隔。
-      if (pos === firstUnselected && last.text !== last.replacement) {
-        const prefix = parseListPrefix(next.text);
-        if (prefix && /^\d/.test(prefix.marker) && Number(prefix.marker.slice(0, -1)) !== 1) {
-          const mark = syntaxTree(state).resolveInner(next.from + prefix.indent.length + 1, -1);
-          if (mark.name === 'ListMark' && mark.parent?.parent?.name === 'OrderedList')
-            replacement = '\n' + replacement;
-        }
-      }
-      if (replacement !== next.text) changes.push({ ...next, replacement });
-      pos = next.to + 1;
-    }
-  }
-  applySourceEdit(applyLineChanges(text, selection.from, selection.to, changes));
 }
 
 function insertSourceCodeBlock(): void {
