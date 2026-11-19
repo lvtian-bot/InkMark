@@ -4,8 +4,10 @@
   height: 36px;
   background: var(--tab-bar-bg);
   border-bottom: 1px solid var(--border-color);
-  padding: 0 4px 0 4px;
-  padding-right: 140px;
+  padding-left: 4px;
+  padding-right: calc(
+    100% - env(titlebar-area-width, calc(100% - 140px)) - env(titlebar-area-x, 0px) + 8px
+  );
   flex-shrink: 0;
   user-select: none;
   -webkit-app-region: drag;
@@ -25,7 +27,6 @@
   cursor: pointer;
   border-radius: 6px;
   flex-shrink: 0;
-  margin-right: 2px;
   -webkit-app-region: no-drag;
 }
 

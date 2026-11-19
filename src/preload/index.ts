@@ -182,8 +182,8 @@ const api = {
   syncLanguage: (language: string, systemLanguage: string) => {
     ipcRenderer.send('language:sync', language, systemLanguage);
   },
-  popupMenu: (pos?: { x: number; y: number }) => {
-    ipcRenderer.send('menu:popup', pos);
+  popupMenu: (anchor: { right: number; bottom: number; menuWidth: number }) => {
+    ipcRenderer.send('menu:popup', anchor);
   },
   execClipboardCommand: (action: 'cut' | 'copy' | 'paste' | 'pasteAndMatchStyle' | 'selectAll') =>
     ipcRenderer.invoke('clipboard:exec', action) as Promise<boolean>,
