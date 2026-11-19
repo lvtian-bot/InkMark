@@ -20,6 +20,11 @@ interface SelectedListItem {
   readonly pos: number;
 }
 
+interface ParagraphOperation {
+  readonly kind: 'heading' | 'list-item';
+  readonly pos: number;
+}
+
 function selectedTextBlocks(state: EditorState): SelectedTextBlock[] {
   const { selection } = state;
   if (selection.empty) {
@@ -118,6 +123,30 @@ function appendTransactionSteps(target: Transaction, source: Transaction): void 
   for (const step of source.steps) target.step(step);
 }
 
+function liftListItemAt(
+  state: EditorState,
+  itemPos: number,
+  listItemType: NodeType,
+): Transaction | null {
+  const item = state.doc.nodeAt(itemPos);
+  if (!item || item.type !== listItemType) return null;
+
+  let firstTextPosition: number | null = null;
+  state.doc.nodesBetween(itemPos + 1, itemPos + item.nodeSize - 1, (node, pos) => {
+    if (firstTextPosition == null && node.isTextblock) firstTextPosition = pos + 1;
+  });
+  if (firstTextPosition == null) return null;
+
+  const scopedState = state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, firstTextPosition)),
+  );
+  const capture: { value: Transaction | null } = { value: null };
+  const lifted = liftListItem(listItemType)(scopedState, (tr: Transaction) => {
+    capture.value = tr;
+  });
+  return lifted && capture.value ? capture.value : null;
+}
+
 function toggleList(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
@@ -186,47 +215,49 @@ export const toParagraphCommand = $command(
     const listItemType = listItemSchema.type(ctx);
     const paragraphType = paragraphSchema.type(ctx);
     const headingType = headingSchema.type(ctx);
-    const items = selectedListItems(state, listItemType);
-
-    if (items.length > 0) {
-      // A nested item needs one lift per list level. Accumulate all lift
-      // steps in one transaction so the action remains one undoable edit.
-      const lifted = state.tr;
-      let liftedState = scopeStateToBlocks(state, selectedTextBlocks(state));
-      let liftedAny = false;
-      while (selectedListItems(liftedState, listItemType).length > 0) {
-        const liftCapture: { value: Transaction | null } = { value: null };
-        const liftedResult = liftListItem(listItemType)(liftedState, (tr: Transaction) => {
-          liftCapture.value = tr;
-        });
-        if (!liftedResult || !liftCapture.value) break;
-        const nextLift: Transaction = liftCapture.value;
-        if (nextLift.steps.length === 0) break;
-        for (const step of nextLift.steps) lifted.step(step);
-        liftedState = liftedState.apply(nextLift);
-        liftedAny = true;
+    const operations = new Map<string, ParagraphOperation>();
+    for (const block of selectedTextBlocks(state)) {
+      const item = listItemForBlock(state, block, listItemType);
+      if (item) {
+        operations.set(`list-item:${item.pos}`, { kind: 'list-item', pos: item.pos });
+      } else if (block.node.type === headingType) {
+        operations.set(`heading:${block.pos}`, { kind: 'heading', pos: block.pos });
       }
-      if (!liftedAny) return false;
-
-      const finalState = liftedState;
-      for (const block of selectedTextBlocks(finalState)) {
-        if (block.node.type === headingType && canReplaceBlock(finalState, block, paragraphType)) {
-          // `liftedState` has the same document shape as `lifted`, but its
-          // positions are already current after the accumulated steps.
-          lifted.setNodeMarkup(block.pos, paragraphType, {});
-        }
-      }
-      dispatch?.(lifted.scrollIntoView());
-      return true;
     }
+    const orderedOperations = [...operations.values()].sort((left, right) => right.pos - left.pos);
+    if (orderedOperations.length === 0) return false;
+    if (!dispatch) return true;
 
-    const blocks = selectedTextBlocks(state).filter(
-      (block) => block.node.type === headingType && canReplaceBlock(state, block, paragraphType),
-    );
-    if (blocks.length === 0) return false;
-    const tr = state.tr;
-    for (const block of blocks) tr.setNodeMarkup(block.pos, paragraphType, {});
-    dispatch?.(tr.scrollIntoView());
+    const paragraph = state.tr;
+    let workingState = state;
+    for (const operation of orderedOperations) {
+      if (operation.kind === 'heading') {
+        const block = workingState.doc.nodeAt(operation.pos);
+        if (
+          !block ||
+          block.type !== headingType ||
+          !canReplaceBlock(workingState, { node: block, pos: operation.pos }, paragraphType)
+        ) {
+          continue;
+        }
+        const converted = workingState.tr.setNodeMarkup(operation.pos, paragraphType, {});
+        appendTransactionSteps(paragraph, converted);
+        workingState = workingState.apply(converted);
+        continue;
+      }
+
+      let currentItemPosition: number | null = operation.pos;
+      while (currentItemPosition != null) {
+        const lifted = liftListItemAt(workingState, currentItemPosition, listItemType);
+        if (!lifted || lifted.steps.length === 0) break;
+        appendTransactionSteps(paragraph, lifted);
+        workingState = workingState.apply(lifted);
+        const currentItem = selectedListItems(workingState, listItemType)[0];
+        currentItemPosition = currentItem?.pos ?? null;
+      }
+    }
+    if (paragraph.steps.length === 0) return false;
+    dispatch(paragraph.scrollIntoView());
     return true;
   },
 );

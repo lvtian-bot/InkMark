@@ -275,6 +275,18 @@ export function convertSourceToParagraph(): void {
     const separator = structure.hasStructure && previousLine.length > 0 ? '\n' : '';
     return { ...line, replacement: `${separator}${withoutTask}` };
   });
+  const last = changes.at(-1);
+  if (last && last.text !== last.replacement && last.to < text.length) {
+    const next = state.doc.lineAt(last.to + 1);
+    const prefix = parseListPrefix(next.text);
+    if (prefix && /^\d/.test(prefix.marker) && Number(prefix.marker.slice(0, -1)) !== 1) {
+      const mark = syntaxTree(state).resolveInner(next.from + prefix.indent.length + 1, -1);
+      if (mark.name === 'ListMark' && mark.parent?.parent?.name === 'OrderedList') {
+        // 正文之后从非 1 开始的有序列表需要空行分隔。
+        changes.push({ from: next.from, to: next.from, text: '', replacement: '\n' });
+      }
+    }
+  }
   applySourceEdit(applyLineChanges(text, selection.from, selection.to, changes));
 }
 

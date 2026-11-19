@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { markdownLanguage } from '@codemirror/lang-markdown';
+import { describe, expect, it, vi } from 'vitest';
 import { toggleSourceMark } from './source-inline-format';
 
 describe('源码格式与原文字选区', () => {
@@ -29,5 +30,30 @@ describe('源码格式与原文字选区', () => {
     expect(toggleSourceMark(text, 2, text.length, '**').text).toBe(
       '- **甲**\n- **乙**\n\n## **小结**',
     );
+  });
+
+  it('全选带收尾井号的 ATX 标题和正文时保留标题结构', () => {
+    const text = '## 标题 ##\n\n正文';
+    expect(toggleSourceMark(text, 0, text.length, '**').text).toBe('## **标题** ##\n\n**正文**');
+  });
+
+  it('引文内跨行取消已有加粗时不重复插入星号', () => {
+    const text = '> **foo\n> bar**';
+    const result = toggleSourceMark(text, text.indexOf('foo'), text.indexOf('bar') + 3, '**');
+    expect(result.text).toBe('> foo\n> bar');
+    expect(result.text.slice(result.selection.from, result.selection.to)).toBe('foo\n> bar');
+  });
+
+  it('全选多段时只解析一次完整文档', () => {
+    const text = Array.from({ length: 1000 }, (_, index) => `第${index}段`).join('\n\n');
+    const parseSpy = vi.spyOn(markdownLanguage.parser, 'parse');
+    try {
+      const result = toggleSourceMark(text, 0, text.length, '**');
+      expect(result.text).toContain('**第0段**');
+      expect(result.text).toContain('**第19段**');
+      expect(parseSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      parseSpy.mockRestore();
+    }
   });
 });

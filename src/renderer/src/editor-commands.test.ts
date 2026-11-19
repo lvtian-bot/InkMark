@@ -194,6 +194,12 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     expect(handle.recorded[0].text).toBe('[x] 示例\n```\n- 命令\n```');
   });
 
+  it('转为正文后，未选中的第二个编号仍是独立列表，光标留在正文', () => {
+    const handle = makeSourceHandle('1. 甲\n2. 乙', 3, 3);
+    convertSourceToParagraph();
+    expect(handle.recorded[0]).toEqual({ text: '甲\n\n2. 乙', selection: { from: 0, to: 0 } });
+  });
+
   it('代码块：行首插入围栏并把光标放进代码体', () => {
     const handle = makeSourceHandle('after', 0, 0);
     runEditorCommand('codeBlock');

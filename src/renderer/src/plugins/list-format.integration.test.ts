@@ -152,6 +152,25 @@ describe('所见即所得格式切换', () => {
     expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe('甲\n\n* 乙\n* 丙\n');
   });
 
+  it('混合标题和列表全选转正文时分别处理两种块', async () => {
+    activeEditor = await createEditor('# 标题\n\n- 项目\n  - 子项\n- 未选');
+    placeSelection(activeEditor.view, '标题', '项目');
+    activeEditor.commands.call(toParagraphCommand.key);
+    expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe(
+      '标题\n\n项目\n\n* 子项\n\n- 未选\n',
+    );
+  });
+
+  it('转正文时保留未选嵌套任务的勾选状态', async () => {
+    activeEditor = await createEditor('# 标题\n\n- [x] 项目\n  - [ ] 子项\n- [ ] 未选');
+    placeSelection(activeEditor.view, '标题', '项目');
+    activeEditor.commands.call(toParagraphCommand.key);
+    const markdown = activeEditor.serialize(activeEditor.view.state.doc);
+    expect(markdown).not.toContain('[x] 项目');
+    expect(markdown).toContain('[ ] 子项');
+    expect(markdown).toContain('[ ] 未选');
+  });
+
   it('同级标题再次点击会切回正文', async () => {
     activeEditor = await createEditor('## 甲\n乙');
     placeSelection(activeEditor.view, '甲', '乙');
