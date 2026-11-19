@@ -87,23 +87,49 @@ function parseTaskPrefix(list: ListPrefix): { checked: boolean; body: string } |
   return { checked: match[1].toLowerCase() === '[x]', body: match[3] };
 }
 
-function lineStructure(
-  state: EditorState,
-  line: SourceLine,
-): { hasStructure: boolean; isCode: boolean } {
-  let hasStructure = false;
-  let isCode = false;
+/** 只消费语法树标出的行首标记，保留标题和引文里的字面量。 */
+function paragraphSourceLine(state: EditorState, line: SourceLine) {
+  let bodyStart = line.from;
+  let bodyEnd = line.to;
+  let listContentStart = -1;
+  let itemEnd = -1;
+  let hasPrefix = false;
   syntaxTree(state).iterate({
     from: line.from,
     to: line.to,
-    enter: (node) => {
-      if (node.name === 'ListMark' || node.name === 'HeaderMark' || node.name === 'QuoteMark') {
-        hasStructure = true;
+    enter(ref) {
+      if (ref.name !== 'ListMark' && ref.name !== 'QuoteMark' && ref.name !== 'HeaderMark') return;
+      if (ref.from < line.from || ref.to > line.to) return;
+      if (
+        ref.name === 'HeaderMark' &&
+        ref.node.parent?.name.startsWith('ATXHeading') &&
+        ref.node.parent.firstChild?.from !== ref.from
+      ) {
+        bodyEnd = ref.from;
+        while (bodyEnd > bodyStart && /[ \t]/.test(line.text[bodyEnd - line.from - 1])) bodyEnd--;
+        return;
       }
-      if (node.name === 'CodeBlock' || node.name === 'FencedCode') isCode = true;
+      if (
+        ref.from < bodyStart ||
+        /\S/.test(line.text.slice(bodyStart - line.from, ref.from - line.from))
+      )
+        return;
+      hasPrefix = true;
+      bodyStart = ref.to;
+      while (bodyStart < bodyEnd && /[ \t]/.test(line.text[bodyStart - line.from])) bodyStart++;
+      if (ref.name === 'ListMark') {
+        listContentStart = bodyStart;
+        itemEnd = ref.node.parent?.to ?? -1;
+      }
     },
   });
-  return { hasStructure, isCode };
+  const body = line.text.slice(bodyStart - line.from, bodyEnd - line.from);
+  return {
+    hasPrefix,
+    text: listContentStart === bodyStart ? body.replace(/^\[[ xX]\](?:[ \t]+|$)/, '') : body,
+    indent: listContentStart >= 0 ? listContentStart - line.from : 0,
+    itemEnd,
+  };
 }
 
 function mapPosition(position: number, changes: readonly LineChange[]): number {
@@ -263,28 +289,38 @@ export function convertSourceToParagraph(): void {
   const text = handle.getValue();
   const selection = handle.getSelection();
   const state = handle.getEditorState();
+  const promoted: { end: number; indent: number }[] = [];
   const changes: LineChange[] = selectedLines(text, selection.from, selection.to).map((line) => {
-    const structure = lineStructure(state, line);
-    if (!structure.hasStructure || structure.isCode) return { ...line, replacement: line.text };
-    const withoutQuote = line.text.replace(/^[ \t]*>[ \t]?/, '');
-    const withoutHeading = withoutQuote.replace(/^[ \t]*#{1,6}[ \t]+/, '');
-    const withoutList = withoutHeading.replace(/^[ \t]*(?:[-+*]|\d+[.)])[ \t]+/, '');
-    const withoutTask = withoutList.replace(/^\[[ xX]\][ \t]+/, '');
-    const previousLine =
-      line.from > 0 ? text.slice(lineStartAt(text, line.from - 1), line.from - 1) : '';
-    const separator = structure.hasStructure && previousLine.length > 0 ? '\n' : '';
-    return { ...line, replacement: `${separator}${withoutTask}` };
+    const result = paragraphSourceLine(state, line);
+    if (!result.hasPrefix) return { ...line, replacement: line.text };
+    if (result.itemEnd > line.to) promoted.push({ end: result.itemEnd, indent: result.indent });
+    const previousLine = line.from > 0 ? state.doc.lineAt(line.from - 1).text : '';
+    return { ...line, replacement: (previousLine.trim() ? '\n' : '') + result.text };
   });
+
   const last = changes.at(-1);
-  if (last && last.text !== last.replacement && last.to < text.length) {
-    const next = state.doc.lineAt(last.to + 1);
-    const prefix = parseListPrefix(next.text);
-    if (prefix && /^\d/.test(prefix.marker) && Number(prefix.marker.slice(0, -1)) !== 1) {
-      const mark = syntaxTree(state).resolveInner(next.from + prefix.indent.length + 1, -1);
-      if (mark.name === 'ListMark' && mark.parent?.parent?.name === 'OrderedList') {
-        // 正文之后从非 1 开始的有序列表需要空行分隔。
-        changes.push({ from: next.from, to: next.from, text: '', replacement: '\n' });
+  if (last && last.to < text.length) {
+    const firstUnselected = last.to + 1;
+    const end = promoted.reduce((max, item) => Math.max(max, item.end), firstUnselected);
+    for (let pos = firstUnselected; pos === firstUnselected || pos < end;) {
+      const next = state.doc.lineAt(pos);
+      const indent = promoted.reduce(
+        (max, item) => (pos < item.end ? Math.max(max, item.indent) : max),
+        0,
+      );
+      const spaces = next.text.match(/^[ \t]*/)?.[0].length ?? 0;
+      let replacement = next.text.slice(Math.min(spaces, indent));
+      // 正文之后从非 1 开始的有序列表需要空行分隔。
+      if (pos === firstUnselected && last.text !== last.replacement) {
+        const prefix = parseListPrefix(next.text);
+        if (prefix && /^\d/.test(prefix.marker) && Number(prefix.marker.slice(0, -1)) !== 1) {
+          const mark = syntaxTree(state).resolveInner(next.from + prefix.indent.length + 1, -1);
+          if (mark.name === 'ListMark' && mark.parent?.parent?.name === 'OrderedList')
+            replacement = '\n' + replacement;
+        }
       }
+      if (replacement !== next.text) changes.push({ ...next, replacement });
+      pos = next.to + 1;
     }
   }
   applySourceEdit(applyLineChanges(text, selection.from, selection.to, changes));
