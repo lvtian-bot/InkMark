@@ -155,7 +155,7 @@ export interface InkMarkAPI {
   watchWorkspace: (path: string) => void;
   unwatchWorkspace: () => void;
   onWorkspaceWatchEvent: (cb: (event: { path: string }) => void) => () => void;
-  popupMenu: (pos?: { x: number; y: number }) => void;
+  popupMenu: (anchor: { right: number; bottom: number; menuWidth: number }) => void;
   /** 编辑区右键菜单：执行原生剪贴板编辑命令（作用于当前焦点元素）。 */
   execClipboardCommand: (
     action: 'cut' | 'copy' | 'paste' | 'pasteAndMatchStyle' | 'selectAll',

@@ -16,6 +16,8 @@ interface DropTarget {
   position: 'before' | 'after';
 }
 
+const menuLabelKeys = ['menu.file', 'menu.edit', 'menu.view', 'menu.theme', 'menu.help'] as const;
+
 export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
   const { t } = useI18n();
   const tabs = useStore((s) => s.tabs);
@@ -84,19 +86,6 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
 
   return (
     <div className="tab-bar">
-      <button
-        className="tab-menu"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          window.inkmark.popupMenu({
-            x: Math.round(rect.left),
-            y: Math.round(rect.bottom),
-          });
-        }}
-        title={t('tabBar.menu')}
-      >
-        {'\u2630'}
-      </button>
       <div className="tab-list">
         {tabs.map((tab) => (
           <div
@@ -138,6 +127,25 @@ export function TabBar({ onSelectTab, onCloseTab, onNewTab }: TabBarProps) {
           {'\u002b'}
         </button>
       </div>
+      <button
+        className="tab-menu"
+        onClick={(e) => {
+          const { right, bottom } = e.currentTarget.getBoundingClientRect();
+          const context = document.createElement('canvas').getContext('2d');
+          // 使用系统菜单字体。原生菜单不随页面缩放，左右留白和子菜单箭头共占 72 DIP。
+          let labelWidth = 40;
+          if (context) {
+            context.font = 'menu';
+            labelWidth = Math.max(...menuLabelKeys.map((key) => context.measureText(t(key)).width));
+          }
+          window.inkmark.popupMenu({ right, bottom, menuWidth: 72 + Math.ceil(labelWidth) });
+        }}
+        aria-label={t('tabBar.menu')}
+        aria-haspopup="menu"
+        title={t('tabBar.menu')}
+      >
+        {'\u2630'}
+      </button>
     </div>
   );
 }

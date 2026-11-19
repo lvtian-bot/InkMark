@@ -1034,26 +1034,27 @@ ipcMain.on('language:sync', (event, language: unknown, systemLanguageValue: unkn
   applyLocale(currentLanguage, systemLanguage);
 });
 
-ipcMain.on('menu:popup', (event, pos?: unknown) => {
-  if (!isTrustedRenderer(event)) return;
-  const menu = Menu.getApplicationMenu();
-  if (menu && mainWindow) {
-    const popupOptions: Electron.PopupOptions = { window: mainWindow };
-    if (
-      pos &&
-      typeof pos === 'object' &&
-      'x' in pos &&
-      'y' in pos &&
-      typeof (pos as { x: unknown }).x === 'number' &&
-      typeof (pos as { y: unknown }).y === 'number' &&
-      Number.isFinite((pos as { x: number }).x) &&
-      Number.isFinite((pos as { y: number }).y)
-    ) {
-      popupOptions.x = Math.round((pos as { x: number }).x);
-      popupOptions.y = Math.round((pos as { y: number }).y);
-    }
-    menu.popup(popupOptions);
+ipcMain.on('menu:popup', (event, anchor: unknown) => {
+  if (!mainWindow || !isTrustedRenderer(event)) return;
+  if (
+    !isRecord(anchor) ||
+    typeof anchor.right !== 'number' ||
+    !Number.isFinite(anchor.right) ||
+    typeof anchor.bottom !== 'number' ||
+    !Number.isFinite(anchor.bottom) ||
+    typeof anchor.menuWidth !== 'number' ||
+    !Number.isFinite(anchor.menuWidth) ||
+    anchor.menuWidth <= 0
+  ) {
+    return;
   }
+
+  const zoom = event.sender.getZoomFactor();
+  Menu.getApplicationMenu()?.popup({
+    window: mainWindow,
+    x: Math.max(0, Math.round(anchor.right * zoom - anchor.menuWidth)),
+    y: Math.round(anchor.bottom * zoom),
+  });
 });
 
 // 编辑区右键菜单的剪贴板动作：统一走主进程 webContents 原生编辑命令，
