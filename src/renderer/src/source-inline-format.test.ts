@@ -32,6 +32,16 @@ describe('源码格式与原文字选区', () => {
     expect(result.text).toBe('``a`b``');
   });
 
+  it('在已有加粗文字中设置行内代码时保留外层加粗标记', () => {
+    const text = '**word**';
+    const result = toggleSourceMark(text, 2, 6, '`');
+    expect(result.text).toBe('**`word`**');
+    expect(result.text.slice(result.selection.from, result.selection.to)).toBe('word');
+    const removed = toggleSourceMark(result.text, result.selection.from, result.selection.to, '`');
+    expect(removed.text).toBe('**word**');
+    expect(removed.text.slice(removed.selection.from, removed.selection.to)).toBe('word');
+  });
+
   it('跨段加粗分别包裹各段正文，保留列表结构', () => {
     const text = '- 甲\n- 乙\n\n## 小结';
     expect(toggleSourceMark(text, 2, text.length, '**').text).toBe(

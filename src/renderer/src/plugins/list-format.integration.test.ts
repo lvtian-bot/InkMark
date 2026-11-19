@@ -93,11 +93,54 @@ describe('所见即所得格式切换', () => {
     expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe('甲\n\n乙\n\n1. 丙\n');
   });
 
+  it.each([
+    ['无序', '- ', toggleBulletListCommand, 'bullet_list'],
+    ['有序', '1. ', toggleOrderedListCommand, 'ordered_list'],
+  ] as const)(
+    '跨分隔线取消%s列表只影响选中项，并保留反向选区',
+    async (_, prefix, command, type) => {
+      activeEditor = await createEditor(
+        `${prefix}上文\n${prefix}甲乙\n\n---\n\n${prefix}丙丁\n${prefix}下文`,
+      );
+      const { view, commands } = activeEditor;
+      placeSelection(view, '乙', '丙');
+      const { from, to } = view.state.selection;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, to, from)));
+      commands.call(command.key);
+      const { doc, selection } = view.state;
+      expect(Array.from({ length: doc.childCount }, (_, i) => doc.child(i).type.name)).toEqual([
+        type,
+        'paragraph',
+        'hr',
+        'paragraph',
+        type,
+      ]);
+      expect(doc.textContent).toBe('上文甲乙丙丁下文');
+      expect(doc.textBetween(selection.from, selection.to)).toBe('乙丙');
+      expect(selection.anchor).toBeGreaterThan(selection.head);
+    },
+  );
+
   it('选区结束在下一段开头时不把下一段一起转换', async () => {
     activeEditor = await createEditor('甲\n\n乙\n\n丙');
     placeSelectionBefore(activeEditor.view, '甲', '乙');
     activeEditor.commands.call(toggleBulletListCommand.key);
     expect(activeEditor.serialize(activeEditor.view.state.doc)).toBe('* 甲\n\n乙\n\n丙\n');
+  });
+
+  it('跨列表取消父项时，嵌套明细只随父项退出一级', async () => {
+    activeEditor = await createEditor('- 父项\n  - [x] 明细\n\n---\n\n- 末项');
+    const { view, commands } = activeEditor;
+    placeSelection(view, '父项', '末项');
+    commands.call(toggleBulletListCommand.key);
+    const { doc } = view.state;
+    expect(doc.childCount).toBe(4);
+    expect(doc.child(0).type.name).toBe('paragraph');
+    expect(doc.child(1).type.name).toBe('bullet_list');
+    expect(doc.child(1).child(0).attrs.checked).toBe(true);
+    expect(doc.child(1).textContent).toBe('明细');
+    expect(doc.child(2).type.name).toBe('hr');
+    expect(doc.child(3).type.name).toBe('paragraph');
   });
 
   it('任务列表混选时只给普通项补未勾选状态，已完成项保持完成', async () => {

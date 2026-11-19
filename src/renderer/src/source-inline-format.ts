@@ -115,7 +115,13 @@ function analyzeInline(
     from: absoluteFrom,
     to: absoluteTo,
     leave(ref) {
-      if (ref.name === markNodes[marker] || !Object.values(markNodes).includes(ref.name)) return;
+      // 行内代码不会解析外层强调标记，不能把选区扩展到这些标记之外。
+      if (
+        marker === '`' ||
+        ref.name === markNodes[marker] ||
+        !Object.values(markNodes).includes(ref.name)
+      )
+        return;
       const { firstChild: open, lastChild: close } = ref.node;
       if (!open || !close || formatFrom > open.to || formatTo < close.from) return;
       if (formatFrom >= ref.from) formatFrom = ref.from;

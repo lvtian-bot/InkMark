@@ -84,7 +84,7 @@ function selectedListItems(state: EditorState, listItemType: NodeType): Selected
     const item = listItemForBlock(state, block, listItemType);
     if (item) unique.set(item.pos, item);
   }
-  return [...unique.values()].sort((left, right) => right.pos - left.pos);
+  return [...unique.values()].sort((left, right) => left.pos - right.pos);
 }
 
 function scopeStateToBlocks(state: EditorState, blocks: readonly SelectedTextBlock[]): EditorState {
@@ -118,6 +118,45 @@ function appendTransactionSteps(target: Transaction, source: Transaction): void 
   for (const step of source.steps) target.step(step);
 }
 
+function liftSelectedLists(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  items: readonly SelectedListItem[],
+  listItemType: NodeType,
+): boolean {
+  const ranges: { from: number; to: number; listPos: number }[] = [];
+  let itemEnd = -1;
+  for (const { pos, node } of items) {
+    // 父项退出时会带上其内容，嵌套项不能再单独提升一次。
+    if (pos < itemEnd) continue;
+    itemEnd = pos + node.nodeSize;
+    const listPos = state.doc.resolve(pos).before();
+    const textStart = pos + 2; // 列表项首段的正文起点
+    const last = ranges.at(-1);
+    if (last?.listPos === listPos) last.to = textStart;
+    else ranges.push({ from: textStart, to: textStart, listPos });
+  }
+
+  const combined = state.tr;
+  const lift = liftListItem(listItemType);
+  let working = state;
+  for (const { from, to } of ranges.reverse()) {
+    const scoped = working.apply(
+      working.tr.setSelection(TextSelection.create(working.doc, from, to)),
+    );
+    const lifted = lift(scoped, (tr) => {
+      appendTransactionSteps(combined, tr);
+      working = scoped.apply(tr);
+    });
+    if (!lifted) return false;
+  }
+  if (dispatch) {
+    combined.setSelection(state.selection.map(combined.doc, combined.mapping));
+    dispatch(combined.scrollIntoView());
+  }
+  return true;
+}
+
 function toggleList(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
@@ -131,13 +170,9 @@ function toggleList(
     items.length > 0 &&
     blocks.every((block) => listTypeForBlock(state, block, listItemType) === listType);
 
-  const scopedState = scopeStateToBlocks(state, blocks);
-  if (allInTargetList) {
-    return runWithOriginalSelection(state, scopedState, dispatch, (nextState, nextDispatch) =>
-      liftListItem(listItemType)(nextState, nextDispatch),
-    );
-  }
+  if (allInTargetList) return liftSelectedLists(state, dispatch, items, listItemType);
 
+  const scopedState = scopeStateToBlocks(state, blocks);
   return runWithOriginalSelection(state, scopedState, dispatch, (nextState, nextDispatch) =>
     wrapInList(listType)(nextState, nextDispatch),
   );
