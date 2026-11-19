@@ -59,6 +59,7 @@ it('空白首行设置标题时保留第二行正文', () => {
   const { recorded } = makeSourceHandle('\n正文', 0, 0);
   runEditorCommand('heading2');
   expect(recorded[0].text).toBe('## \n正文');
+  expect(recorded[0].selection).toEqual({ from: 3, to: 3 });
 });
 
 beforeEach(() => {
@@ -118,6 +119,54 @@ describe('runEditorCommand 源码模式：行级变换', () => {
     const handle = makeSourceHandle('## title', 3, 3);
     runEditorCommand('heading3');
     expect(handle.recorded[0].text).toBe('### title');
+  });
+
+  it('标题：混合级别选区统一设置为目标级别', () => {
+    const text = '## one\n### two';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('## one\n## two');
+  });
+
+  it('标题：选区内全是目标级别时统一取消，空行保持为空行', () => {
+    const text = '## one\n\n## two';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('one\n\ntwo');
+  });
+
+  it('标题：取消目标级别时移除全部标题分隔空格', () => {
+    const text = '##  one';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('one');
+  });
+
+  it('标题：带空行的普通段落批量设置时不生成空标题', () => {
+    const text = 'one\n\ntwo';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('## one\n\n## two');
+  });
+
+  it('标题：带空白行的普通段落批量设置时保留空白字符', () => {
+    const text = 'one\n \t\ntwo';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('## one\n \t\n## two');
+  });
+
+  it('标题：只选多行空白时保持空白，不连续生成空标题', () => {
+    const handle = makeSourceHandle('\n\n', 0, 2);
+    runEditorCommand('heading2');
+    expect(handle.recorded).toHaveLength(0);
+  });
+
+  it('标题：混选时保留已有目标级别的额外分隔空格', () => {
+    const text = '##  one\n### two';
+    const handle = makeSourceHandle(text, 0, text.length);
+    runEditorCommand('heading2');
+    expect(handle.recorded[0].text).toBe('##  one\n## two');
   });
 
   it('无序列表：加前缀与去前缀', () => {

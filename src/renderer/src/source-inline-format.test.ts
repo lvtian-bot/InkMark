@@ -3,6 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { toggleSourceMark } from './source-inline-format';
 
 describe('源码格式与原文字选区', () => {
+  it.each(['**', '*', '~~', '`'])('跨段用同一次操作统一格式 %s，第二次整体取消', (marker) => {
+    const original = marker + '甲' + marker + '\n\n乙';
+    const added = toggleSourceMark(original, 0, original.length, marker);
+    expect(added.text).toBe(marker + '甲' + marker + '\n\n' + marker + '乙' + marker);
+    const removed = toggleSourceMark(added.text, added.selection.from, added.selection.to, marker);
+    expect(removed.text).toBe('甲\n\n乙');
+  });
   it('跨已有加粗边界时合并已有标记', () => {
     const src = 'some **bold text** on the line';
     const change = toggleSourceMark(src, src.indexOf('text'), src.length, '**');
@@ -30,6 +37,12 @@ describe('源码格式与原文字选区', () => {
     expect(toggleSourceMark(text, 2, text.length, '**').text).toBe(
       '- **甲**\n- **乙**\n\n## **小结**',
     );
+  });
+
+  it('跨任务和正文统一加粗时保留复选框和已有标记写法', () => {
+    const text = '- [x] __甲__\n- [ ] 乙\n\n丙';
+    const change = toggleSourceMark(text, 0, text.length, '**');
+    expect(change.text).toBe('- [x] __甲__\n- [ ] **乙**\n\n**丙**');
   });
 
   it('全选带收尾井号的 ATX 标题和正文时保留标题结构', () => {

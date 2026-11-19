@@ -20,7 +20,7 @@ describe('所见即所得删除整行', () => {
     await editor.destroy();
   });
 
-  function remove(markdown: string, start: string, end?: string) {
+  function remove(markdown: string, start: string, end?: string, includeEnd = false) {
     const doc = editor.ctx.get(parserCtx)(markdown);
     function offset(text: string) {
       let found = -1;
@@ -33,7 +33,11 @@ describe('所见即所得删除整行', () => {
     const from = offset(start);
     const state = EditorState.create({
       doc,
-      selection: TextSelection.create(doc, from, end ? offset(end) : from),
+      selection: TextSelection.create(
+        doc,
+        from,
+        end ? offset(end) + (includeEnd ? end.length : 0) : from,
+      ),
     });
     const result = deleteEditorLines(state)?.doc ?? doc;
     result.check();
@@ -67,5 +71,28 @@ describe('所见即所得删除整行', () => {
     expect(doc.childCount).toBe(3);
     expect(doc.child(1).type.name).toBe('ordered_list');
     expect(doc.child(1).attrs.order).toBe(3);
+  });
+
+  it('跨段落删除时一并删除选区内的分隔线', () => {
+    const doc = remove('左段\n\n前段\n\n---\n\n后段\n\n右段', '前段', '后段', true);
+    expect(doc.textContent).toBe('左段右段');
+    expect(doc.childCount).toBe(2);
+    expect(doc.child(0).type.name).toBe('paragraph');
+    expect(doc.child(1).type.name).toBe('paragraph');
+  });
+
+  it('选区外的分隔线保持不变', () => {
+    const doc = remove('左段\n\n---\n\n右段', '左段');
+    expect(doc.textContent).toBe('右段');
+    expect(doc.childCount).toBe(2);
+    expect(doc.child(0).type.name).toBe('hr');
+    expect(doc.child(1).type.name).toBe('paragraph');
+  });
+
+  it('选区经过表格时不执行删除', () => {
+    const doc = remove('前段\n\n| 列 |\n| --- |\n| 内容 |\n\n后段', '前段', '后段', true);
+    expect(doc.textContent).toBe('前段列内容后段');
+    expect(doc.childCount).toBe(3);
+    expect(doc.child(1).type.spec.tableRole).toBe('table');
   });
 });

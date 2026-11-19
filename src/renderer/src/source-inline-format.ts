@@ -19,65 +19,6 @@ const markNodes: Record<string, string> = {
 
 /** 只移除语法树确认为当前样式的成对标记，保留转义符号和其他格式。 */
 export function toggleSourceMark(text: string, from: number, to: number, marker: string) {
-  if (text.slice(from, to).includes('\n')) {
-    const blocks: Span[] = [];
-    const tree = markdownLanguage.parser.parse(text);
-    tree.iterate({
-      from,
-      to,
-      enter(ref) {
-        if (ref.name !== 'Paragraph' && !/^(?:ATX|Setext)Heading/.test(ref.name)) return;
-        let left = ref.from,
-          right = ref.to;
-        const first = ref.node.firstChild;
-        const last = ref.node.lastChild;
-        if (first?.name === 'HeaderMark' && first.from === left) {
-          left = first.to;
-          while (left < right && /[ \t]/.test(text[left])) left++;
-        }
-        if (last?.name === 'HeaderMark' && last.to === right) {
-          right = last.from;
-          while (right > left && /[ \t\r\n]/.test(text[right - 1])) right--;
-        }
-        if (Math.max(from, left) < Math.min(to, right)) blocks.push({ from: left, to: right });
-        return false;
-      },
-    });
-    const chunks: string[] = [];
-    let outputLength = 0;
-    let copied = 0;
-    let newFrom = from;
-    let newTo = to;
-    for (const block of blocks) {
-      const prefix = text.slice(copied, block.from);
-      chunks.push(prefix);
-      outputLength += prefix.length;
-      const start = outputLength;
-      const piece = text.slice(block.from, block.to);
-      const localFrom = Math.max(0, from - block.from);
-      const localTo = Math.min(to, block.to) - block.from;
-      const change = toggleInline(piece, localFrom, localTo, marker, tree, block.from);
-      chunks.push(change.text);
-      outputLength += change.text.length;
-      if (from >= block.from && from <= block.to) newFrom = start + change.selection.from;
-      if (to > block.from && to <= block.to) newTo = start + change.selection.to;
-      else if (to > block.to) newTo += change.text.length - piece.length;
-      copied = block.to;
-    }
-    chunks.push(text.slice(copied));
-    return { text: chunks.join(''), selection: { from: newFrom, to: newTo } };
-  }
-  return toggleInline(text, from, to, marker);
-}
-
-function toggleInline(
-  text: string,
-  from: number,
-  to: number,
-  marker: string,
-  sharedTree?: Tree,
-  sourceOffset = 0,
-) {
   if (from === to) {
     const paired =
       text.slice(Math.max(0, from - marker.length), from) === marker &&
@@ -91,12 +32,85 @@ function toggleInline(
     };
   }
 
+  const tree = markdownLanguage.parser.parse(text);
+  if (text.slice(from, to).includes('\n')) {
+    const blocks: Span[] = [];
+    tree.iterate({
+      from,
+      to,
+      enter(ref) {
+        if (
+          ref.name !== 'Paragraph' &&
+          ref.name !== 'Task' &&
+          !/^(?:ATX|Setext)Heading/.test(ref.name)
+        )
+          return;
+        let left = ref.from,
+          right = ref.to;
+        const first = ref.node.firstChild;
+        const last = ref.node.lastChild;
+        if ((first?.name === 'HeaderMark' || first?.name === 'TaskMarker') && first.from === left) {
+          left = first.to;
+          while (left < right && /[ \t]/.test(text[left])) left++;
+        }
+        if (last?.name === 'HeaderMark' && last.to === right) {
+          right = last.from;
+          while (right > left && /[ \t\r\n]/.test(text[right - 1])) right--;
+        }
+        if (Math.max(from, left) < Math.min(to, right)) blocks.push({ from: left, to: right });
+        return false;
+      },
+    });
+    const selections = blocks.map((block) => {
+      const piece = text.slice(block.from, block.to);
+      const localFrom = Math.max(from, block.from) - block.from;
+      const localTo = Math.min(to, block.to) - block.from;
+      const format = analyzeInline(piece, localFrom, localTo, marker, tree, block.from);
+      return { block, piece, localFrom, localTo, format };
+    });
+    const remove = selections.every(({ format }) => format.covered || !format.hasContent);
+    const chunks: string[] = [];
+    let outputLength = 0;
+    let copied = 0;
+    let newFrom = from;
+    let newTo = to;
+    for (const { block, piece, localFrom, localTo, format } of selections) {
+      const prefix = text.slice(copied, block.from);
+      chunks.push(prefix);
+      outputLength += prefix.length;
+      const start = outputLength;
+      // 已经具备目标格式的块按原样保留，包括原有标记写法。
+      const change =
+        (!remove && format.covered) || !format.hasContent
+          ? { text: piece, selection: { from: localFrom, to: localTo } }
+          : applyInline(format, marker, remove);
+      chunks.push(change.text);
+      outputLength += change.text.length;
+      if (from >= block.from && from <= block.to) newFrom = start + change.selection.from;
+      if (to > block.from && to <= block.to) newTo = start + change.selection.to;
+      else if (to > block.to) newTo += change.text.length - piece.length;
+      copied = block.to;
+    }
+    chunks.push(text.slice(copied));
+    return { text: chunks.join(''), selection: { from: newFrom, to: newTo } };
+  }
+  const format = analyzeInline(text, from, to, marker, tree, 0);
+  return applyInline(format, marker, format.covered);
+}
+
+function analyzeInline(
+  text: string,
+  from: number,
+  to: number,
+  marker: string,
+  tree: Tree,
+  sourceOffset: number,
+) {
   const spans: MarkedSpan[] = [];
   const absoluteFrom = sourceOffset + from;
   const absoluteTo = sourceOffset + to;
   let formatFrom = absoluteFrom,
     formatTo = absoluteTo;
-  const tree = sharedTree ?? markdownLanguage.parser.parse(text);
   tree.iterate({
     from: absoluteFrom,
     to: absoluteTo,
@@ -154,7 +168,24 @@ function toggleInline(
     if (previous && left <= previous.to) previous.to = Math.max(previous.to, right);
     else existing.push({ from: left, to: right });
   }
-  const remove = existing.some((s) => s.from <= start && s.to >= end);
+  const body = clean.slice(start, end);
+  const checkStart = marker === '`' ? start : end - body.trimStart().length;
+  const checkEnd = marker === '`' ? end : start + body.trimEnd().length;
+  const covered = existing.some((s) => s.from <= checkStart && s.to >= checkEnd);
+  return {
+    clean,
+    existing,
+    start,
+    end,
+    covered,
+    hasContent: checkStart < checkEnd,
+    from: cleanPos(from),
+    to: cleanPos(to),
+  };
+}
+
+function applyInline(format: ReturnType<typeof analyzeInline>, marker: string, remove: boolean) {
+  const { clean, existing, start, end, from, to } = format;
   const ranges: Span[] = [];
   if (remove) {
     for (const s of existing) {
@@ -200,6 +231,6 @@ function toggleInline(
     inserts.reduce((n, i) => n + (i.pos < p || (i.pos === p && isStart) ? i.value.length : 0), 0);
   return {
     text: result,
-    selection: { from: position(cleanPos(from), true), to: position(cleanPos(to), false) },
+    selection: { from: position(from, true), to: position(to, false) },
   };
 }

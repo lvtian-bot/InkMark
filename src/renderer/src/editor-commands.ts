@@ -37,6 +37,7 @@ interface ListPrefix {
 
 const listPrefixPattern = /^([ \t]*)([-+*]|\d+[.)])([ \t]+)(.*)$/;
 const taskPrefixPattern = /^(\[[ xX]\])([ \t]+)(.*)$/;
+const headingPrefixPattern = /^([ \t]*)(#{1,6})([ \t]+)(.*)$/;
 
 /// 把一次源码编辑写入编辑器并定位光标。用 quiet 写入（工具栏操作由
 /// React onChange 链路之外的 dispatch 触发，但仍要让 useFile 感知到改动），
@@ -186,15 +187,31 @@ function setHeadingLevel(level: number): SourceEdit | null {
   if (!handle) return null;
   const text = handle.getValue();
   const selection = handle.getSelection();
-  const changes: LineChange[] = selectedLines(text, selection.from, selection.to).map((line) => {
-    const match = /^([ \t]*)(#{1,6})[ \t]+(.*)$/.exec(line.text);
+  const lines = selectedLines(text, selection.from, selection.to);
+  const nonEmpty = lines.filter((line) => line.text.trim() !== '');
+  if (nonEmpty.length === 0) {
+    if (selection.from !== selection.to) return null;
+    const line = lines[0];
+    const indent = line.text.match(/^[ \t]*/)?.[0] ?? '';
+    const replacement = `${indent}${'#'.repeat(level)} `;
+    const nextText = text.slice(0, line.from) + replacement + text.slice(line.to);
+    const cursor = line.from + replacement.length;
+    return { text: nextText, selection: { from: cursor, to: cursor } };
+  }
+  const allTargetHeadings = nonEmpty.every((line) => {
+    const match = headingPrefixPattern.exec(line.text);
+    return match?.[2].length === level;
+  });
+  const changes: LineChange[] = lines.map((line) => {
+    if (!line.text.trim()) return { ...line, replacement: line.text };
+    const match = headingPrefixPattern.exec(line.text);
     const indent = match?.[1] ?? line.text.match(/^[ \t]*/)?.[0] ?? '';
-    const currentLevel = match?.[2].length ?? 0;
-    const body = match?.[3] ?? line.text.slice(indent.length);
+    const body = match?.[4] ?? line.text.slice(indent.length);
+    if (match && match[2].length === level && !allTargetHeadings) {
+      return { ...line, replacement: line.text };
+    }
     const replacement =
-      match && currentLevel === level
-        ? `${indent}${body}`
-        : `${indent}${'#'.repeat(level)} ${body}`;
+      allTargetHeadings && match ? `${indent}${body}` : `${indent}${'#'.repeat(level)} ${body}`;
     return { ...line, replacement };
   });
   return applyLineChanges(text, selection.from, selection.to, changes);

@@ -54,14 +54,26 @@ function deleteBlock(tr: Transaction, pos: ResolvedPos, block: Node): void {
 export function deleteEditorLines(state: EditorState): Transaction | null {
   const { selection, doc } = state;
   if (!(selection instanceof TextSelection)) return null;
-  const edits: { pos: number; start: number; end: number; whole: boolean }[] = [];
+  const edits: ({ pos: number } | { pos: number; start: number; end: number; whole: boolean })[] =
+    [];
   let touchesTable = false;
   doc.nodesBetween(selection.from, selection.to, (block, pos) => {
     if (block.type.spec.tableRole === 'table') {
       touchesTable = true;
       return false;
     }
-    if (!block.isTextblock) return true;
+    if (!block.isTextblock) {
+      // 分隔线等独立块没有文本行，选区完整覆盖时随相邻行一起删除。
+      if (
+        block.isLeaf &&
+        !block.isInline &&
+        pos >= selection.from &&
+        pos + block.nodeSize <= selection.to
+      ) {
+        edits.push({ pos });
+      }
+      return !block.isLeaf;
+    }
     const from = Math.max(0, selection.from - pos - 1);
     const to = Math.min(block.content.size, selection.to - pos - 1);
     if (
@@ -86,6 +98,10 @@ export function deleteEditorLines(state: EditorState): Transaction | null {
   for (const edit of edits.reverse()) {
     const pos = tr.mapping.map(edit.pos, 1);
     const block = tr.doc.nodeAt(pos);
+    if (!('start' in edit)) {
+      if (block?.isLeaf && !block.isInline) tr.delete(pos, pos + block.nodeSize);
+      continue;
+    }
     if (!block?.isTextblock) continue;
     if (edit.whole) deleteBlock(tr, tr.doc.resolve(pos), block);
     else tr.delete(pos + 1 + edit.start, pos + 1 + edit.end);
