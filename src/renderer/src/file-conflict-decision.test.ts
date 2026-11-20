@@ -3,7 +3,6 @@ import {
   decideCloseDirty,
   decideExternalChange,
   resolveConflictChoice,
-  resolveConflictChoiceForKind,
 } from './file-conflict-decision';
 
 describe('decideExternalChange', () => {
@@ -13,7 +12,6 @@ describe('decideExternalChange', () => {
         fileMtime: 100,
         diskMtime: 100,
         isDirty: false,
-        inReview: false,
       }),
     ).toBe('noop');
     expect(
@@ -21,7 +19,6 @@ describe('decideExternalChange', () => {
         fileMtime: 100,
         diskMtime: 100,
         isDirty: true,
-        inReview: true,
       }),
     ).toBe('noop');
   });
@@ -32,7 +29,6 @@ describe('decideExternalChange', () => {
         fileMtime: null,
         diskMtime: 100,
         isDirty: false,
-        inReview: false,
       }),
     ).toBe('noop');
     expect(
@@ -40,18 +36,16 @@ describe('decideExternalChange', () => {
         fileMtime: null,
         diskMtime: 100,
         isDirty: true,
-        inReview: true,
       }),
     ).toBe('noop');
   });
 
-  it('prompts a clean tab when the disk mtime changed (banner: replace or review)', () => {
+  it('prompts a clean tab when the disk mtime changed for manual reload', () => {
     expect(
       decideExternalChange({
         fileMtime: 100,
         diskMtime: 200,
         isDirty: false,
-        inReview: false,
       }),
     ).toBe('prompt');
   });
@@ -62,42 +56,19 @@ describe('decideExternalChange', () => {
         fileMtime: 100,
         diskMtime: 200,
         isDirty: true,
-        inReview: false,
       }),
     ).toBe('conflict');
   });
 
   it('keeps asking for conflict resolution regardless of mtime delta', () => {
-    expect(
-      decideExternalChange({ fileMtime: 5, diskMtime: 6, isDirty: true, inReview: false }),
-    ).toBe('conflict');
+    expect(decideExternalChange({ fileMtime: 5, diskMtime: 6, isDirty: true })).toBe('conflict');
     expect(
       decideExternalChange({
         fileMtime: 1000,
         diskMtime: 1,
         isDirty: true,
-        inReview: false,
       }),
     ).toBe('conflict');
-  });
-
-  it('ingests silently into the ongoing review when pending chunks exist', () => {
-    expect(
-      decideExternalChange({
-        fileMtime: 100,
-        diskMtime: 200,
-        isDirty: false,
-        inReview: true,
-      }),
-    ).toBe('review');
-    expect(
-      decideExternalChange({
-        fileMtime: 100,
-        diskMtime: 200,
-        isDirty: true,
-        inReview: true,
-      }),
-    ).toBe('review');
   });
 });
 
@@ -106,16 +77,12 @@ describe('resolveConflictChoice', () => {
     expect(resolveConflictChoice(0)).toBe('reload');
   });
 
-  it('maps choice 1 to review', () => {
-    expect(resolveConflictChoice(1)).toBe('review');
+  it('maps choice 1 to keep-and-override', () => {
+    expect(resolveConflictChoice(1)).toBe('keep-and-override');
   });
 
-  it('maps choice 2 to keep-and-override', () => {
-    expect(resolveConflictChoice(2)).toBe('keep-and-override');
-  });
-
-  it('maps choice 3 to cancel', () => {
-    expect(resolveConflictChoice(3)).toBe('cancel');
+  it('maps choice 2 to cancel', () => {
+    expect(resolveConflictChoice(2)).toBe('cancel');
   });
 
   it('falls back to cancel for unexpected indices', () => {
@@ -146,20 +113,5 @@ describe('decideCloseDirty', () => {
   it('cancels on an unexpected choice for a dirty tab', () => {
     expect(decideCloseDirty({ isDirty: true, choice: -1 })).toBe('cancel');
     expect(decideCloseDirty({ isDirty: true, choice: 3 })).toBe('cancel');
-  });
-});
-
-describe('resolveConflictChoiceForKind', () => {
-  it('keeps the markdown dialog mapping (review still offered)', () => {
-    expect(resolveConflictChoiceForKind('markdown', 0)).toBe('reload');
-    expect(resolveConflictChoiceForKind('markdown', 1)).toBe('review');
-    expect(resolveConflictChoiceForKind('markdown', 2)).toBe('keep-and-override');
-    expect(resolveConflictChoiceForKind('markdown', 3)).toBe('cancel');
-  });
-
-  it('maps the text dialog without the review option', () => {
-    expect(resolveConflictChoiceForKind('text', 0)).toBe('reload');
-    expect(resolveConflictChoiceForKind('text', 1)).toBe('keep-and-override');
-    expect(resolveConflictChoiceForKind('text', 2)).toBe('cancel');
   });
 });

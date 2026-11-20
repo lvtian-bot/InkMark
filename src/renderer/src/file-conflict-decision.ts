@@ -2,52 +2,32 @@
 // 这些判断从 useFile hook 中抽出，便于单元测试且不依赖 IPC、弹窗或 React。
 // 文件丢失（missing）的判定由 useFile 的事件层和 mtime 查询层负责，不在这里处理。
 
-export type ExternalChangeDecision = 'noop' | 'prompt' | 'conflict' | 'review';
+export type ExternalChangeDecision = 'noop' | 'prompt' | 'conflict';
 
 export interface ExternalChangeInput {
   fileMtime: number | null;
   diskMtime: number;
   isDirty: boolean;
-  /** 该标签处于审阅会话中：外部更新只标记冲突，不更换本轮版本。 */
-  inReview: boolean;
 }
 
 // 判定某个已打开标签在面对外部文件变化时应走哪条分支。
 // 调用前应已确认文件存在（missing 由事件/查询层先行过滤）。
 // 返回值与 useFile 的 checkExternalChanges 中 mtime 比较后的分支一一对应：
-// 无待决块时干净标签走提示条（prompt，用户选重新加载或逐项审阅）、
-// 脏标签走冲突弹窗（conflict，弹窗内含逐项审阅选项）；
-// 审阅会话进行中（inReview）只通知审阅结果需另存（review）。
+// 干净标签显示手动重载提示，有未保存修改时弹出冲突选择。
 export function decideExternalChange(input: ExternalChangeInput): ExternalChangeDecision {
-  const { fileMtime, diskMtime, isDirty, inReview } = input;
+  const { fileMtime, diskMtime, isDirty } = input;
   if (fileMtime == null || diskMtime === fileMtime) return 'noop';
-  if (inReview) return 'review';
   return isDirty ? 'conflict' : 'prompt';
 }
 
-export type ConflictChoiceAction = 'reload' | 'review' | 'keep-and-override' | 'cancel';
+export type ConflictChoiceAction = 'reload' | 'keep-and-override' | 'cancel';
 
 // 解析「文件已被外部修改」弹窗的选择。
-// 0=使用磁盘版，1=逐项审阅，2=保留并覆盖，3/其他=取消。
+// 0=使用磁盘版，1=保留并覆盖，2/其他=取消。
 export function resolveConflictChoice(choice: number): ConflictChoiceAction {
   if (choice === 0) return 'reload';
-  if (choice === 1) return 'review';
-  if (choice === 2) return 'keep-and-override';
+  if (choice === 1) return 'keep-and-override';
   return 'cancel';
-}
-
-// 纯文本/代码文件没有 Markdown 审阅能力：冲突弹窗不提供「逐项审阅」，
-// 按钮为 0=使用磁盘版，1=保留并覆盖，2/其他=取消。
-export function resolveConflictChoiceForKind(
-  kind: 'markdown' | 'text',
-  choice: number,
-): ConflictChoiceAction {
-  if (kind === 'text') {
-    if (choice === 0) return 'reload';
-    if (choice === 1) return 'keep-and-override';
-    return 'cancel';
-  }
-  return resolveConflictChoice(choice);
 }
 
 export type CloseDirtyDecision = 'proceed' | 'save' | 'discard' | 'cancel';

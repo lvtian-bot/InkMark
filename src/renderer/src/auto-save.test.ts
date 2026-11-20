@@ -8,7 +8,6 @@ describe('isAutoSaveEligible', () => {
         enabled: true,
         filePath: 'D:/a.md',
         isDirty: true,
-        hasPendingReview: false,
       }),
     ).toBe(true);
   });
@@ -19,15 +18,12 @@ describe('isAutoSaveEligible', () => {
         enabled: false,
         filePath: 'D:/a.md',
         isDirty: true,
-        hasPendingReview: false,
       }),
     ).toBe(false);
   });
 
   it('无路径的新文档不触发', () => {
-    expect(
-      isAutoSaveEligible({ enabled: true, filePath: null, isDirty: true, hasPendingReview: false }),
-    ).toBe(false);
+    expect(isAutoSaveEligible({ enabled: true, filePath: null, isDirty: true })).toBe(false);
   });
 
   it('无修改时不触发', () => {
@@ -36,18 +32,6 @@ describe('isAutoSaveEligible', () => {
         enabled: true,
         filePath: 'D:/a.md',
         isDirty: false,
-        hasPendingReview: false,
-      }),
-    ).toBe(false);
-  });
-
-  it('审阅期间（有未决外部改动）不触发', () => {
-    expect(
-      isAutoSaveEligible({
-        enabled: true,
-        filePath: 'D:/a.md',
-        isDirty: true,
-        hasPendingReview: true,
       }),
     ).toBe(false);
   });

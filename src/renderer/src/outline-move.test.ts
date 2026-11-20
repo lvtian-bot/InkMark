@@ -227,10 +227,6 @@ describe('源码模式大纲搬移接入', () => {
       redo: () => undefined,
       deleteLine: () => undefined,
       replaceDocumentUndoable,
-      applyReviewChunks: () => undefined,
-      getReviewChunks: () => [],
-      acceptAllReviewChunks: () => undefined,
-      rejectAllReviewChunks: () => undefined,
     };
     return replaceDocumentUndoable;
   }
@@ -293,7 +289,7 @@ describe('源码模式大纲搬移接入', () => {
     expect(replace).toHaveBeenCalledWith('# B\n\nb\n\n# A\n\n## A1\n\nbody');
   });
 
-  it('审阅只读状态禁止拖动与写回', () => {
+  it('编辑器只读状态禁止拖动与写回', () => {
     const replace = prepare('# A\n\n# B', true);
     expect(canMoveOutlineSection()).toBe(false);
     expect(moveOutlineSection(1, { kind: 'before', index: 0 })).toBe(false);

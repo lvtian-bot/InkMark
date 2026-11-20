@@ -10,7 +10,7 @@ import {
   net,
   shell,
 } from 'electron';
-import { join, dirname, isAbsolute, basename, extname } from 'path';
+import { join, dirname, isAbsolute, basename } from 'path';
 import {
   readFileSync,
   writeFileSync,
@@ -44,11 +44,6 @@ import {
   MAX_OPEN_FILE_SIZE_BYTES,
   PLAIN_TEXT_EXTENSIONS,
 } from '../shared/openable-document';
-import {
-  saveReviewedFileVersion,
-  writeNewReviewCopy,
-  type ReviewedFileSaveRequest,
-} from './review-file-save';
 import { resolveDocumentLink } from './document-link-resolver';
 import { resolveAutoUpdater } from './resolve-auto-updater';
 import { createUpdateService, type UpdateService } from './update-service';
@@ -285,17 +280,6 @@ function isSaveAsRequest(value: unknown): value is SaveAsRequest {
   if (!isRecord(value) || typeof value.content !== 'string') return false;
   return (
     value.sourcePath === undefined || value.sourcePath === null || isDocumentPath(value.sourcePath)
-  );
-}
-
-function isReviewedFileSaveRequest(value: unknown): value is ReviewedFileSaveRequest {
-  return (
-    isRecord(value) &&
-    typeof value.content === 'string' &&
-    isDocumentPath(value.path) &&
-    typeof value.expectedContent === 'string' &&
-    typeof value.expectedMtime === 'number' &&
-    Number.isFinite(value.expectedMtime)
   );
 }
 
@@ -1227,77 +1211,6 @@ ipcMain.handle('dialog:saveFileAs', async (event, request: unknown): Promise<Sav
   approveWorkspaceAroundFile(filePath);
   return { path: filePath, content: savedContent, mtime };
 });
-
-ipcMain.handle('file:saveReviewed', (event, request: unknown) => {
-  if (!isTrustedRenderer(event) || !isReviewedFileSaveRequest(request)) {
-    throw new Error('Invalid reviewed file save request.');
-  }
-  const target = getOpenedSaveTarget(request.path);
-  if (!target) return { status: 'conflict' };
-  if (!documentSaveAuthorization.isApproved(target)) return { status: 'authorization-required' };
-  return saveReviewedFileVersion({ ...request, path: target }, () => {
-    workspaceWatchManager.recordSelfWrite(request.path);
-    return fileWatchManager.performSelfWrite(request.path, () =>
-      atomicWriteFile(target, request.content),
-    );
-  });
-});
-
-ipcMain.handle(
-  'dialog:saveReviewCopy',
-  async (event, request: unknown): Promise<SaveAsResponse> => {
-    if (
-      !isTrustedRenderer(event) ||
-      !isSaveAsRequest(request) ||
-      !isDocumentPath(request.sourcePath)
-    ) {
-      throw new Error('Invalid review copy request.');
-    }
-    const sourcePath = request.sourcePath;
-    if (!mainWindow) return null;
-    const owner = mainWindow;
-    while (!owner.isDestroyed()) {
-      const result = await dialog.showSaveDialog(owner, {
-        defaultPath: join(
-          dirname(sourcePath),
-          `${basename(sourcePath, extname(sourcePath))}-review.md`,
-        ),
-        filters: [{ name: 'Markdown', extensions: ['md'] }],
-      });
-      if (result.canceled || !result.filePath) return null;
-      const filePath = result.filePath;
-      try {
-        // 与普通另存共用图片引用收集；审阅副本仍必须排他新建。
-        const savedContent = imageStorage.copyAssetsForSaveAs(
-          sourcePath,
-          filePath,
-          request.content,
-        );
-        workspaceWatchManager.recordSelfWrite(filePath);
-        const mtime = fileWatchManager.performSelfWrite(filePath, () =>
-          writeNewReviewCopy(filePath, savedContent, sourcePath),
-        );
-        openedDocuments.add(documentKey(filePath));
-        approveDocumentSave(filePath);
-        addRecent(filePath, 'file', { trusted: true });
-        approveWorkspaceAroundFile(filePath);
-        return { path: filePath, content: savedContent, mtime };
-      } catch (error) {
-        const failure = imageCopyFailure(error);
-        if (failure) return failure;
-        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
-        if (owner.isDestroyed()) return null;
-        await dialog.showMessageBox(owner, {
-          type: 'info',
-          title: t('review.copyExistsTitle'),
-          message: t('review.copyExistsBody'),
-          buttons: [t('common.ok')],
-        });
-      }
-    }
-    return null;
-  },
-);
 
 // 导出文档（HTML / PDF）：对话框选目标路径 → 渲染 → 落盘。
 // 渲染链路较重（remark 全家桶），随主进程代码动态加载，首次导出时才载入。

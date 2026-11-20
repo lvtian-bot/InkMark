@@ -25,14 +25,6 @@ const api = {
     ipcRenderer.invoke('file:save', { content, path, knownMtime, force }),
   saveFileAs: (content: string, sourcePath?: string | null): Promise<SaveAsResponse> =>
     ipcRenderer.invoke('dialog:saveFileAs', { content, sourcePath }),
-  saveReviewedFile: (
-    content: string,
-    path: string,
-    expectedContent: string,
-    expectedMtime: number,
-  ) => ipcRenderer.invoke('file:saveReviewed', { content, path, expectedContent, expectedMtime }),
-  saveReviewCopy: (content: string, sourcePath: string): Promise<SaveAsResponse> =>
-    ipcRenderer.invoke('dialog:saveReviewCopy', { content, sourcePath }),
   openFilePath: (path: string) => ipcRenderer.invoke('file:read', { path }),
   getRecentFiles: () => ipcRenderer.invoke('recent:get') as Promise<RecentItem[]>,
   removeRecentFile: (path: string) => ipcRenderer.invoke('recent:remove', path),

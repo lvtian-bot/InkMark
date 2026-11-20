@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   decideDeleteWarning,
   findTabsUnderPath,
-  findTabsWithActiveReview,
   findTabsWithPendingExternalUpdate,
 } from './file-tree-actions';
 import type { Tab } from './stores/useStore';
@@ -22,8 +21,6 @@ function makeTab(overrides: Partial<Tab> = {}): Tab {
     sourceScrollTop: 0,
     fileMtime: null,
     externalUpdatePending: false,
-    pendingReviewCount: 0,
-    reviewSession: false,
     ...overrides,
   };
 }
@@ -45,29 +42,13 @@ describe('findTabsUnderPath', () => {
   });
 });
 
-describe('findTabsWithActiveReview', () => {
-  it('审阅会话与未决审阅块都算审阅中', () => {
-    const tabs = [
-      makeTab({ id: 'a', reviewSession: true }),
-      makeTab({ id: 'b', pendingReviewCount: 2 }),
-      makeTab({ id: 'c' }),
-    ];
-    expect(findTabsWithActiveReview(tabs).map((t) => t.id)).toEqual(['a', 'b']);
-  });
-});
-
 describe('decideDeleteWarning', () => {
-  it('目标内有审阅中标签时阻止删除', () => {
-    const tabs = [makeTab({ filePath: 'D:\\n\\a.md', reviewSession: true })];
-    expect(decideDeleteWarning(tabs, 'D:\\n\\a.md')).toBe('review-blocked');
-  });
-
   it('提示条上有待处理外部更新时阻止删除', () => {
     const tabs = [makeTab({ filePath: 'D:\\n\\a.md', externalUpdatePending: true })];
     expect(decideDeleteWarning(tabs, 'D:\\n\\a.md')).toBe('external-pending');
   });
 
-  it('无审阅但有未保存修改时警示丢失', () => {
+  it('有未保存修改时警示丢失', () => {
     const tabs = [
       makeTab({ filePath: 'D:\\n\\a.md', isDirty: false }),
       makeTab({ filePath: 'D:\\n\\b.md', isDirty: true }),

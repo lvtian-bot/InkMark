@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { confirmDialog, isDialogOpen } from '../confirm-dialog';
 import { t } from '../i18n';
-import { getDiskSnapshot, setDiskSnapshot } from '../review/review-store';
+import { getDiskBaseline, setDiskBaseline } from '../disk-baseline';
 import { tabDocumentPath, useStore, type Tab } from '../stores/useStore';
 import type { RecoveryDraft } from '../../../shared/draft-recovery';
 
@@ -80,8 +80,7 @@ export function useDraftRecovery(): void {
         }
       }
       for (const tab of tabs) {
-        const eligible =
-          tab.isDirty && !tab.isStartPage && !tab.reviewSession && tab.pendingReviewCount === 0;
+        const eligible = tab.isDirty && !tab.isStartPage;
         if (!eligible) {
           cancel(tab.id);
           const id = ids.get(tab.id);
@@ -96,8 +95,6 @@ export function useDraftRecovery(): void {
           ids.has(tab.id) &&
           previous?.isDirty &&
           !previous.isStartPage &&
-          !previous.reviewSession &&
-          previous.pendingReviewCount === 0 &&
           previous.sourceContent === tab.sourceContent &&
           previous.filePath === tab.filePath &&
           previous.recoveryOriginPath === tab.recoveryOriginPath &&
@@ -110,20 +107,12 @@ export function useDraftRecovery(): void {
           timers.delete(tab.id);
           const current = useStore.getState().tabs.find((item) => item.id === tab.id);
           const id = ids.get(tab.id);
-          if (
-            !current ||
-            !id ||
-            !current.isDirty ||
-            current.reviewSession ||
-            current.pendingReviewCount > 0
-          )
-            return;
-          const baseline = getDiskSnapshot(current.id);
+          if (!current || !id || !current.isDirty) return;
           const draft: RecoveryDraft = {
             id,
             filePath: tabDocumentPath(current),
             fileMtime: current.fileMtime,
-            baseContent: baseline?.content ?? null,
+            baseContent: getDiskBaseline(current.id) ?? null,
             content: current.sourceContent,
           };
           enqueue(id, async () => {
@@ -204,7 +193,7 @@ export function useDraftRecovery(): void {
           fileMtime: same ? file.mtime : null,
           content: draft.content,
         });
-        if (same) setDiskSnapshot(tabId, file.content, file.mtime);
+        if (same) setDiskBaseline(tabId, file.content);
         ids.set(tabId, draft.id);
         useStore.getState().updateTab(tabId, { isDirty: true });
       }

@@ -3,7 +3,7 @@ import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveConfirmDialog } from '../confirm-dialog';
-import { setDiskSnapshot } from '../review/review-store';
+import { setDiskBaseline } from '../disk-baseline';
 import { selectViewMode, useStore } from '../stores/useStore';
 import {
   clearRecoveryDraftsBeforeExit,
@@ -72,7 +72,7 @@ describe('正文草稿恢复', () => {
     expect(save).toHaveBeenCalledTimes(2);
     expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ content: '尚未保存' }));
   });
-  it('编辑时保存草稿，普通保存和进入审阅时清理', async () => {
+  it('编辑时保存草稿，普通保存时清理', async () => {
     const save = vi.fn(async () => undefined);
     const remove = vi.fn(async () => undefined);
     const api: Partial<InkMarkAPI> = {
@@ -85,7 +85,7 @@ describe('正文草稿恢复', () => {
     const id = useStore
       .getState()
       .addTab({ filePath: 'D:/note.md', content: '原文', fileMtime: 10 });
-    setDiskSnapshot(id, '原文', 10);
+    setDiskBaseline(id, '原文');
     useStore.getState().updateTab(id, { sourceContent: '编辑后', isDirty: true });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
@@ -98,15 +98,6 @@ describe('正文草稿恢复', () => {
       await Promise.resolve();
     });
     expect(remove).toHaveBeenCalledTimes(1);
-    useStore.getState().updateTab(id, { isDirty: true, sourceContent: '下一次编辑' });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1000);
-    });
-    useStore.getState().updateTab(id, { reviewSession: true });
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(remove).toHaveBeenCalledTimes(2);
   });
 
   it('原文件变更后恢复为新文档，保留草稿内容', async () => {

@@ -35,10 +35,6 @@ export interface Tab {
   fileMtime: number | null;
   /** 外部改动已发生、等待用户点击提示条后加载磁盘版本（不静默刷新）。 */
   externalUpdatePending: boolean;
-  /** 外部改动审阅中未决的改动块数量（0 = 无待审改动）。 */
-  pendingReviewCount: number;
-  /** 本轮审阅尚未保存：固定磁盘快照，后续外部修改仅标记为需另存。 */
-  reviewSession: boolean;
 }
 
 interface InkMarkState extends AppSettings {
@@ -139,8 +135,6 @@ function createTab(
     sourceScrollTop: 0,
     fileMtime: init?.fileMtime ?? null,
     externalUpdatePending: false,
-    pendingReviewCount: 0,
-    reviewSession: false,
   };
 }
 
@@ -311,11 +305,6 @@ export const useStore = create<InkMarkState>((set, get) => ({
     // 纯文本/代码文件固定源码模式：快捷键与菜单入口在此拦下，
     // 与有效模式（selectViewMode）的派生规则保持一致。
     if (activeTab && resolveDocumentKind(tabDocumentPath(activeTab)) === 'text') return;
-    // 审阅视图只存在于源码模式：处理完后仍要确认保存，会话结束前不切换。
-    // 被锁定拒绝的切换不消耗防抖窗口，待审清零后可立即切换。
-    if (s.viewMode !== 'wysiwyg') {
-      if (activeTab?.reviewSession || (activeTab?.pendingReviewCount ?? 0) > 0) return;
-    }
     lastToggleViewModeTime = now;
     set((state) => ({ viewMode: state.viewMode === 'wysiwyg' ? 'source' : 'wysiwyg' }));
   },
