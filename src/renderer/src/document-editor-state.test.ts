@@ -42,7 +42,7 @@ describe('document editor state', () => {
     const states = createDocumentEditorState<{ source: object; wysiwyg: object }>();
     const wysiwyg = { name: 'wysiwyg' };
 
-    states.capture('a', 'source', 'A', { name: 'source-review' });
+    states.capture('a', 'source', 'A', { name: 'source' });
     states.capture('a', 'wysiwyg', 'A', wysiwyg);
     states.disposeMode('a', 'source');
 

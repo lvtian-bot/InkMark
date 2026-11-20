@@ -62,12 +62,7 @@ async function mountDocument(doc: string) {
   await act(async () => {
     root.render(
       <I18nProvider>
-        <SourceEditor
-          onChange={onChange}
-          onReviewCountChange={() => undefined}
-          onSingleReviewComplete={() => undefined}
-          onFollowLink={() => undefined}
-        />
+        <SourceEditor onChange={onChange} onFollowLink={() => undefined} />
         <Outline />
       </I18nProvider>,
     );
@@ -201,8 +196,8 @@ describe('大纲右键操作（源码模式）', () => {
     expect(handle.getDocText()).toBe(changed);
   });
 
-  it('切换标签或进入审阅后菜单关闭且操作不可用', async () => {
-    const { host, tabId } = await mountDocument('# A\n\n# B');
+  it('切换标签后菜单关闭且旧操作不可用', async () => {
+    const { host } = await mountDocument('# A\n\n# B');
     await openMenu(host, 0);
     const staleActions = prepareOutlineActions(0);
     await act(async () =>
@@ -214,23 +209,10 @@ describe('大纲右键操作（源码模式）', () => {
     );
     expect(host.querySelector('.context-menu')).toBeNull();
     expect(staleActions.run('delete')).toBe(false);
-    await act(async () => useStore.getState().setActiveTab(tabId));
-    await act(async () =>
-      useStore.getState().updateTab(tabId, {
-        reviewSession: true,
-        pendingReviewCount: 1,
-      }),
-    );
-    const buttons = await openMenu(host, 0);
-    expect(menuButton(buttons, '删除章节').disabled).toBe(true);
-    expect(menuButton(buttons, '升级').disabled).toBe(true);
-    expect(menuButton(buttons, '降级').disabled).toBe(true);
   });
 
-  it('未决审阅块清空后允许调整结果，实际只读时仍禁止操作', async () => {
-    const { tabId, handle } = await mountDocument('## A\n\nbody');
-    await act(async () => useStore.getState().updateTab(tabId, { reviewSession: true }));
-    expect(prepareOutlineActions(0).can('promote')).toBe(true);
+  it('实际只读时禁止大纲操作', async () => {
+    const { handle } = await mountDocument('## A\n\nbody');
     handle.setEditorState(
       handle.getEditorState().update({
         effects: StateEffect.appendConfig.of(Prec.highest(EditorState.readOnly.of(true))),

@@ -16,7 +16,6 @@ const PROGRESS_DELAY_MS = 400;
 
 /**
  * 菜单「导出」入口：把活动标签的 sourceContent（单一真源）提交主进程渲染落盘。
- * 审阅未决时与保存一致地拦下——导出半审阅状态的内容会让用户拿到未定稿的文档。
  */
 export function useExport() {
   const exportDocument = useCallback(async (kind: ExportKind): Promise<void> => {
@@ -30,15 +29,6 @@ export function useExport() {
       await confirmDialog(t('confirm.exportUnsupportedTitle'), t('confirm.exportUnsupportedBody'), [
         t('common.ok'),
       ]);
-      return;
-    }
-
-    if (tab.pendingReviewCount > 0) {
-      await confirmDialog(
-        t('review.saveBlockedTitle'),
-        t('review.saveBlockedBody', { count: tab.pendingReviewCount }),
-        [t('common.ok')],
-      );
       return;
     }
 

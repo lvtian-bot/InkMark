@@ -283,58 +283,7 @@ export const messages: Record<MessageKey, string> = {
   'statusBar.wordCount': '{wordCount} words',
   'statusBar.charCount': '{charCount} chars',
 
-  'review.replaceNow': 'Reload',
-  'review.enterReview': 'Review changes',
-  'review.toolbarTitle': 'External changes · {count} pending',
-  'review.toolbarHint': 'Confirm to save; save a new copy if the original changes',
-  'review.concurrentWarning':
-    'Do not edit this document in other software or with AI during review, to avoid conflicts or content loss.',
-  'review.externalChangedHint': 'External changes detected. Save this review result as a new file.',
-  'review.readyTitle': 'Review complete · not saved',
-  'review.saveResultTitle': 'Save review result',
-  'review.saveResultBody':
-    'Replace the original file with the current review result and finish reviewing?',
-  'review.saveAndFinish': 'Save and finish review',
-  'review.externalChangedTitle': 'The original file changed again',
-  'review.externalChangedBody':
-    'The original file changed during review, or could not be verified. Save your review result as a new file and compare the versions yourself. Cancel keeps the result in this tab without writing to the original. Save a copy before closing.',
-  'review.saveCopy': 'Save a new version',
-  'review.saveFailedBody':
-    'Saving did not complete. Your review result remains in this tab. Retry or save it as a new file.',
-  'review.copyExistsTitle': 'File already exists',
-  'review.copyExistsBody':
-    'Save the reviewed result as a new file. Choose a different file name; existing files will not be overwritten.',
-  'review.exit': 'Exit review',
-  'review.acceptAllConfirmTitle': 'Accept all and save',
-  'review.acceptAllConfirmBody':
-    'Accept all {count} external changes and save? The original will be checked first. If it changed again, save the result as a new file.',
-  'review.rejectAllConfirmTitle': 'Reject all and save',
-  'review.rejectAllConfirmBody':
-    'Reject all {count} external changes and save your current content? The original will be checked first. If it changed again, save the result as a new file.',
-  'review.acceptAllAndSave': 'Accept and save',
-  'review.rejectAllAndSave': 'Reject and save',
-  'review.exitTitle': 'Exit review',
-  'review.exitBody':
-    '{count} external changes are still pending. "Reject all & save" overwrites them with your current content; accepted changes will be written to disk.',
-  'review.exitAcceptAll': 'Accept all & save',
-  'review.exitRejectAll': 'Reject all & save',
-  'review.exitContinue': 'Continue reviewing',
-  'review.acceptAll': 'Accept all',
-  'review.rejectAll': 'Reject all',
-  'review.acceptInsert': 'Accept addition',
-  'review.rejectInsert': 'Reject addition',
-  'review.acceptDelete': 'Accept deletion',
-  'review.acceptReplace': 'Accept change',
-  'review.keepOriginal': 'Keep original',
-  'review.foldCollapsed': '⋯ {count} unchanged lines, click to expand',
-  'review.saveBlockedTitle': 'Review unfinished',
-  'review.saveBlockedBody':
-    'This document still has {count} pending external changes. Accept or reject them before saving.',
-  'review.closeTitle': 'Review unfinished',
-  'review.closeBody':
-    '"{name}" still has {count} pending changes. Closing discards them and any accepted-but-unsaved edits; reopening shows the external version on disk.',
-  'review.closeAnyway': 'Close anyway',
-  'review.tabBadge': '{count} external changes pending review',
+  'externalUpdate.reload': 'Reload',
 
   'tabBar.menu': 'Menu',
   'tabBar.closeTab': 'Close Tab',
@@ -376,10 +325,8 @@ export const messages: Record<MessageKey, string> = {
     'The file tree only shows .md or .markdown documents. Use one of these extensions.',
   'fileTree.errorNameExists': 'A file with this name already exists. Please choose another.',
   'fileTree.errorOpFailed': 'The operation failed. Please try again.',
-  'fileTree.reviewInProgress':
-    '"{name}" is under change review. Finish or discard the review before this operation.',
   'fileTree.pendingExternalUpdate':
-    '"{name}" has pending external changes. Reload or review them from the banner above before this operation.',
+    '"{name}" has pending external changes. Reload them from the banner above before this operation.',
   'fileTree.deleteKeptDirty':
     'The file was moved to the Recycle Bin, but new unsaved edits appeared during deletion. Their tabs were kept so the content can be recovered via "Save As".',
 

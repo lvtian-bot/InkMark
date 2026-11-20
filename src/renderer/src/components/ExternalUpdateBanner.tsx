@@ -4,13 +4,10 @@ import '../styles/external-update-banner.css';
 
 interface ExternalUpdateBannerProps {
   onReload: () => Promise<void>;
-  /** 纯文本/代码文件没有逐项审阅能力，缺省时只显示「重新加载」。 */
-  onReview?: () => Promise<void>;
 }
 
-// 编辑区顶部的「文件已被外部更新」提示条（change-review.md 默认状态）：
-// 干净标签页被外部修改后不静默刷新，由用户选择「重新加载」或「逐项审阅」。
-export function ExternalUpdateBanner({ onReload, onReview }: ExternalUpdateBannerProps) {
+// 编辑区顶部的「文件已被外部更新」提示条。文件仍需由用户明确点击重新加载。
+export function ExternalUpdateBanner({ onReload }: ExternalUpdateBannerProps) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
 
@@ -35,18 +32,8 @@ export function ExternalUpdateBanner({ onReload, onReview }: ExternalUpdateBanne
           disabled={busy}
           onClick={() => void run(onReload)}
         >
-          {t('review.replaceNow')}
+          {t('externalUpdate.reload')}
         </button>
-        {onReview && (
-          <button
-            type="button"
-            className="external-update-banner-btn is-primary"
-            disabled={busy}
-            onClick={() => void run(onReview)}
-          >
-            {t('review.enterReview')}
-          </button>
-        )}
       </span>
     </div>
   );

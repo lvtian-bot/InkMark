@@ -79,13 +79,6 @@ export interface InkMarkAPI {
     force?: boolean,
   ) => Promise<SaveResult>;
   saveFileAs: (content: string, sourcePath?: string | null) => Promise<SaveAsResponse>;
-  saveReviewedFile: (
-    content: string,
-    path: string,
-    expectedContent: string,
-    expectedMtime: number,
-  ) => Promise<SaveResult>;
-  saveReviewCopy: (content: string, sourcePath: string) => Promise<SaveAsResponse>;
   openFilePath: (path: string) => Promise<FileResult | OpenFileRejection | null>;
   getRecentFiles: () => Promise<RecentItem[]>;
   removeRecentFile: (path: string) => Promise<void>;

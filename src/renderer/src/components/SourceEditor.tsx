@@ -21,14 +21,6 @@ import { sourceBackspaceKeymap, sourceListKeymap } from '../source-list-keymap';
 import { serializeDoc } from '../source-document';
 import { useI18n } from '../i18n';
 import { readScrollTop, writeScrollTop } from '../editor-scroll';
-import {
-  acceptAllReviewChunks,
-  createReviewExtension,
-  getReviewChunks,
-  rejectAllReviewChunks,
-  setReviewChunks,
-} from '../review/review-extension';
-import { drainQueuedReviewChunks } from '../review/review-store';
 import { findLinkHrefAtPos } from '../source-link';
 import { isFollowLinkCombo } from '../document-link';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
@@ -101,9 +93,6 @@ const findScopeField = StateField.define<DecorationSet>({
 
 interface SourceEditorProps {
   onChange: (state: EditorState) => void;
-  /** 未决审阅块数量变化时上报（React 侧据此驱动工具条与角标）。 */
-  onReviewCountChange?: (count: number, content: string) => void;
-  onSingleReviewComplete?: (content: string) => void;
   /** Ctrl/Cmd+点击链接时回调（href 为链接的原始地址）。 */
   onFollowLink: (href: string) => void;
 }
@@ -143,12 +132,7 @@ const fadedMarksHighlight = HighlightStyle.define([
   // 列表项文字（tags.list）保持正文色，不加样式
 ]);
 
-export function SourceEditor({
-  onChange,
-  onReviewCountChange,
-  onSingleReviewComplete,
-  onFollowLink,
-}: SourceEditorProps) {
+export function SourceEditor({ onChange, onFollowLink }: SourceEditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -156,12 +140,7 @@ export function SourceEditor({
   const onChangeRef = useRef(onChange);
   // 抑制标记：setValue / replaceRangeQuiet 等程序化写入不应触发 onChange。
   const suppressRef = useRef(false);
-  // 审阅扩展的回调容器：扩展只创建一次，回调通过同一对象热替换。
-  const reviewCallbacksRef = useRef<{
-    onCountChange?: (count: number, content: string) => void;
-    onSingleDecisionComplete?: (content: string) => void;
-  }>({});
-  // 链接跳转回调容器：与审阅回调同理，扩展内经它取最新回调。
+  // 链接跳转回调容器：扩展内经它取最新回调。
   const followLinkRef = useRef(onFollowLink);
   // 右键菜单状态：条目在打开菜单的事件处理器里一次性构造，渲染期仅读取。
   const [contextMenu, setContextMenu] = useState<{
@@ -179,11 +158,6 @@ export function SourceEditor({
   useEffect(() => {
     followLinkRef.current = onFollowLink;
   }, [onFollowLink]);
-
-  useEffect(() => {
-    reviewCallbacksRef.current.onCountChange = onReviewCountChange;
-    reviewCallbacksRef.current.onSingleDecisionComplete = onSingleReviewComplete;
-  }, [onReviewCountChange, onSingleReviewComplete]);
 
   // 创建 CodeMirror 实例（只创建一次）。
   useEffect(() => {
@@ -234,7 +208,6 @@ export function SourceEditor({
               return true;
             },
           }),
-          ...createReviewExtension(reviewCallbacksRef.current),
         ],
       });
 
@@ -357,21 +330,7 @@ export function SourceEditor({
         // 拖动来自大纲按钮，焦点已离开编辑器；交还焦点才能让撤销快捷键立即生效。
         view.focus();
       },
-      applyReviewChunks: (chunks) => {
-        view.dispatch({ effects: setReviewChunks.of(chunks) });
-      },
-      getReviewChunks: () => getReviewChunks(view.state),
-      acceptAllReviewChunks: () => {
-        acceptAllReviewChunks(view);
-      },
-      rejectAllReviewChunks: () => {
-        rejectAllReviewChunks(view);
-      },
     };
-
-    // 懒加载挂载完成：此时 App 的标签/模式切换 effect 可能已经跑过而句柄未就绪，
-    // 补一次待注入审阅块的排空。
-    drainQueuedReviewChunks(useStore.getState().activeTabId);
 
     return () => {
       view.destroy();

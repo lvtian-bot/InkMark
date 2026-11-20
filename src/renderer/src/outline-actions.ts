@@ -10,7 +10,7 @@ import { editOutlineSection, type OutlineAction } from './outline-edit';
 function readContext() {
   const state = useStore.getState();
   const tab = state.tabs.find((item) => item.id === state.activeTabId);
-  if (!tab || tab.isStartPage || tab.pendingReviewCount > 0) return null;
+  if (!tab || tab.isStartPage) return null;
   const mode = selectViewMode(state);
   const handle = mode === 'source' ? sourceEditorHandle.current : editorHandle.current;
   if (!handle) return null;
@@ -50,7 +50,7 @@ function readContext() {
   return { tabId: tab.id, mode, handle, doc };
 }
 
-/** 菜单捕获当前正文；执行时再次核对，切页、切模式、编辑或审阅后旧操作失效。 */
+/** 菜单捕获当前正文；执行时再次核对，切页、切模式或编辑后旧操作失效。 */
 export function prepareOutlineActions(index: number) {
   const original = readContext();
   const results = new Map<OutlineAction, string | null>();

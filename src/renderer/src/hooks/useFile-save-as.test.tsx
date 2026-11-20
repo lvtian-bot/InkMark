@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SourceEditor } from '../components/SourceEditor';
 import { editorStateCache } from '../editor-state-cache';
 import { resolveConfirmDialog, useConfirmDialogState } from '../confirm-dialog';
-import { getDiskSnapshot, setDiskSnapshot } from '../review/review-store';
+import { getDiskBaseline, setDiskBaseline } from '../disk-baseline';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { useStore } from '../stores/useStore';
 import { I18nProvider } from '../i18n';
@@ -35,23 +35,19 @@ async function mount(mode: ViewMode = 'source', path: string | null = originalPa
     fileMtime: 1,
     startPage: false,
   });
-  setDiskSnapshot(tabId, original, 1);
+  setDiskBaseline(tabId, original);
   const saveFileAs = vi.fn<InkMarkAPI['saveFileAs']>(async () => ({
     path: copiedPath,
     content: rewritten,
     mtime: 2,
   }));
-  const saveReviewCopy = vi.fn<InkMarkAPI['saveReviewCopy']>(saveFileAs);
   const saveFile = vi.fn<InkMarkAPI['saveFile']>(async () => ({ status: 'ok', mtime: 3 }));
   const confirmFileSave = vi.fn<InkMarkAPI['confirmFileSave']>(async () => false);
-  const saveReviewedFile = vi.fn<InkMarkAPI['saveReviewedFile']>();
   const api: Partial<InkMarkAPI> = {
     platform: 'win32',
     saveFileAs,
-    saveReviewCopy,
     saveFile,
     confirmFileSave,
-    saveReviewedFile,
     openFilePath: async (path) => ({ path, content: original, mtime: 1 }),
     onFileWatchEvent: () => () => undefined,
     watchFile: () => undefined,
@@ -82,10 +78,8 @@ async function mount(mode: ViewMode = 'source', path: string | null = originalPa
   return {
     tabId,
     saveFileAs,
-    saveReviewCopy,
     saveFile,
     confirmFileSave,
-    saveReviewedFile,
     setMarkdown,
   };
 }
@@ -130,29 +124,6 @@ describe('覆盖原文件的授权', () => {
     expect(confirmFileSave).not.toHaveBeenCalled();
     expect(useStore.getState().tabs.find((tab) => tab.id === tabId)?.isDirty).toBe(true);
   });
-
-  it('审阅保存也需要授权，取消时保留审阅结果', async () => {
-    const { tabId, saveReviewedFile, confirmFileSave } = await mount();
-    saveReviewedFile.mockResolvedValue({ status: 'authorization-required' });
-    let saving: Promise<void> | undefined;
-    await act(async () => {
-      useStore
-        .getState()
-        .updateTab(tabId, { reviewSession: true, pendingReviewCount: 0, isDirty: true });
-      saving = fileOps().save();
-    });
-    await act(async () => {
-      resolveConfirmDialog(0);
-      await saving;
-    });
-
-    expect(confirmFileSave).toHaveBeenCalledExactlyOnceWith(originalPath);
-    expect(saveReviewedFile).toHaveBeenCalledTimes(1);
-    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)).toMatchObject({
-      reviewSession: true,
-      isDirty: true,
-    });
-  });
 });
 
 describe('另存后的正文与标签同步', () => {
@@ -181,7 +152,7 @@ describe('另存后的正文与标签同步', () => {
       isDirty: false,
       fileMtime: 2,
     });
-    expect(getDiskSnapshot(tabId)).toEqual({ content: rewritten, mtime: 2 });
+    expect(getDiskBaseline(tabId)).toBe(rewritten);
     expect(sourceEditorHandle.current?.getValue()).toBe(rewritten);
     await act(async () => fileOps().save());
     expect(saveFile).toHaveBeenCalledWith(rewritten, copiedPath, 2);
@@ -211,35 +182,16 @@ describe('另存后的正文与标签同步', () => {
     expect(sourceEditorHandle.current?.getValue()).toBe(rewritten);
   });
 
-  it('审阅副本也接收实际落盘正文后再结束审阅', async () => {
-    const { tabId, saveReviewCopy } = await mount();
-    await act(async () => {
-      useStore
-        .getState()
-        .updateTab(tabId, { reviewSession: true, pendingReviewCount: 0, isDirty: true });
-    });
-    await act(async () => fileOps().saveAs());
-    expect(saveReviewCopy).toHaveBeenCalledWith(original, originalPath);
-    expect(useStore.getState().tabs.find((tab) => tab.id === tabId)).toMatchObject({
-      filePath: copiedPath,
-      sourceContent: rewritten,
-      reviewSession: false,
-      isDirty: false,
-    });
-    expect(getDiskSnapshot(tabId)).toEqual({ content: rewritten, mtime: 2 });
-  });
-
-  it.each([false, true])('图片复制失败保留原正文与路径，审阅会话状态为 %s', async (reviewing) => {
-    const { tabId, saveFileAs, saveReviewCopy } = await mount();
+  it('图片复制失败保留原正文与路径', async () => {
+    const { tabId, saveFileAs } = await mount();
     const failure = {
       status: 'error',
       code: 'image-copy-failed',
       message: '找不到本地图片。',
     } as const;
     saveFileAs.mockResolvedValue(failure);
-    saveReviewCopy.mockResolvedValue(failure);
     await act(async () => {
-      useStore.getState().updateTab(tabId, { reviewSession: reviewing, isDirty: true });
+      useStore.getState().updateTab(tabId, { isDirty: true });
     });
     let pending: Promise<void> | undefined;
     await act(async () => {
@@ -249,11 +201,10 @@ describe('另存后的正文与标签同步', () => {
     expect(useStore.getState().tabs.find((tab) => tab.id === tabId)).toMatchObject({
       filePath: originalPath,
       sourceContent: original,
-      reviewSession: reviewing,
       isDirty: true,
       fileMtime: 1,
     });
-    expect(getDiskSnapshot(tabId)).toEqual({ content: original, mtime: 1 });
+    expect(getDiskBaseline(tabId)).toBe(original);
     await act(async () => {
       resolveConfirmDialog(0);
       await pending;
@@ -283,7 +234,7 @@ describe('另存后的正文与标签同步', () => {
       sourceContent: original + '新增正文',
       isDirty: true,
     });
-    expect(getDiskSnapshot(tabId)).toEqual({ content: original, mtime: 1 });
+    expect(getDiskBaseline(tabId)).toBe(original);
   });
 
   it('等待另存时切换标签，只更新原标签，不向当前编辑器装入另一份正文', async () => {

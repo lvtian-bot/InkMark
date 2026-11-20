@@ -123,23 +123,10 @@ describe('所见即所得大纲操作（真实编辑器）', () => {
     expect(prepareOutlineActions(1).can('delete')).toBe(true);
   });
 
-  it('标题尚未上报或已进入审阅时禁止修改', async () => {
-    const { handle, tabId } = await boot('## A\n\nbody');
+  it('标题尚未上报时禁止修改', async () => {
+    const { handle } = await boot('## A\n\nbody');
     await act(async () => handle.insertText('new'));
     expect(prepareOutlineActions(0).can('promote')).toBe(false);
-    await act(async () =>
-      useStore.getState().updateTab(tabId, {
-        reviewSession: true,
-        pendingReviewCount: 1,
-      }),
-    );
-    expect(prepareOutlineActions(0).run('delete')).toBe(false);
-  });
-
-  it('未决审阅块清空后允许继续调整结果', async () => {
-    const { tabId } = await boot('## A\n\nbody');
-    await act(async () => useStore.getState().updateTab(tabId, { reviewSession: true }));
-    expect(prepareOutlineActions(0).can('promote')).toBe(true);
   });
 
   it('旧菜单不能覆盖新的正文输入', async () => {

@@ -11,7 +11,6 @@ import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { FindReplaceBar } from './components/FindReplaceBar';
 import { ExternalUpdateBanner } from './components/ExternalUpdateBanner';
-import { ReviewToolbar } from './components/ReviewToolbar';
 import { ExportProgressDialog } from './components/ExportProgressDialog';
 import { useTheme } from './hooks/useTheme';
 import { useEditorFont } from './hooks/useEditorFont';
@@ -33,8 +32,6 @@ import { editorHandle } from './editor-ref';
 import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
 import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
-import { drainQueuedReviewChunks } from './review/review-store';
-import { resolveAllReviewChunks } from './review/review-resolution';
 import { confirmDialog, promptDialog } from './confirm-dialog';
 import { isImageUploadInProgress } from './image-upload';
 import { followDocumentLinkHref } from './document-link';
@@ -47,7 +44,6 @@ import { selectViewMode } from './stores/useStore';
 import type { MessageKey } from '../../shared/i18n';
 import {
   findTabsUnderPath,
-  findTabsWithActiveReview,
   findTabsWithPendingExternalUpdate,
   decideDeleteWarning,
 } from './file-tree-actions';
@@ -131,13 +127,6 @@ function AppContent() {
     const tab = s.tabs.find((item) => item.id === s.activeTabId);
     return !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
   });
-  const setViewMode = useStore((s) => s.setViewMode);
-  const activeReviewSession = useStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.reviewSession ?? false,
-  );
-  const pendingReviewCount = useStore(
-    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.pendingReviewCount ?? 0,
-  );
   const setOutlineWidth = useStore((s) => s.setOutlineWidth);
   const toggleViewMode = useStore((s) => s.toggleViewMode);
   const setActiveTab = useStore((s) => s.setActiveTab);
@@ -188,7 +177,6 @@ function AppContent() {
   );
   const fileOps = useFile(setMarkdown, viewMode, refreshSourceMetadata);
   useDraftRecovery();
-  const { finishReview } = fileOps;
   const { exportDocument: runExport } = useExport();
   const fileTree = useFileTree(activeFilePath);
 
@@ -263,14 +251,6 @@ function AppContent() {
         return;
       }
       const affectedTabs = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
-      if (findTabsWithActiveReview(affectedTabs).length > 0) {
-        await confirmDialog(
-          t('fileTree.renameTitle'),
-          t('fileTree.reviewInProgress', { name: entry.name }),
-          [t('common.ok')],
-        );
-        return;
-      }
       if (findTabsWithPendingExternalUpdate(affectedTabs).length > 0) {
         await confirmDialog(
           t('fileTree.renameTitle'),
@@ -289,17 +269,8 @@ function AppContent() {
       // 消失;静默中止,不再作用于不可见目标
       if (!fileTree.isPathInCurrentRoot(entry.absolutePath)) return;
       // 对话框打开期间磁盘可能已被外部改动,执行前以最新标签状态复核,
-      // 避免重命名沿用旧基线后静默覆盖未见过的外部版本;期间用户也可能
-      // 在弹出的冲突选择中进入了审阅,需一并拦截
+      // 避免重命名沿用旧基线后静默覆盖未见过的外部版本。
       const liveAffected = findTabsUnderPath(useStore.getState().tabs, entry.absolutePath);
-      if (findTabsWithActiveReview(liveAffected).length > 0) {
-        await confirmDialog(
-          t('fileTree.renameTitle'),
-          t('fileTree.reviewInProgress', { name: entry.name }),
-          [t('common.ok')],
-        );
-        return;
-      }
       if (findTabsWithPendingExternalUpdate(liveAffected).length > 0) {
         await confirmDialog(
           t('fileTree.renameTitle'),
@@ -384,14 +355,6 @@ function AppContent() {
         return;
       }
       const warning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
-      if (warning === 'review-blocked') {
-        await confirmDialog(
-          t('fileTree.deleteTitle'),
-          t('fileTree.reviewInProgress', { name: entry.name }),
-          [t('common.ok')],
-        );
-        return;
-      }
       if (warning === 'external-pending') {
         await confirmDialog(
           t('fileTree.deleteTitle'),
@@ -416,18 +379,13 @@ function AppContent() {
       );
       if (choice !== 1) return;
       // 确认框打开期间状态可能已变化，执行删除前以最新标签状态复核:
-      // 外部改动/审阅到达时终止;刚输入的编辑延迟上报把标签变为未保存时,
+      // 外部改动到达时终止;刚输入的编辑延迟上报把标签变为未保存时,
       // 原确认没有警示内容丢失，必须补一次强确认
       const liveWarning = decideDeleteWarning(useStore.getState().tabs, entry.absolutePath);
-      if (liveWarning === 'review-blocked' || liveWarning === 'external-pending') {
+      if (liveWarning === 'external-pending') {
         await confirmDialog(
           t('fileTree.deleteTitle'),
-          t(
-            liveWarning === 'review-blocked'
-              ? 'fileTree.reviewInProgress'
-              : 'fileTree.pendingExternalUpdate',
-            { name: entry.name },
-          ),
+          t('fileTree.pendingExternalUpdate', { name: entry.name }),
           [t('common.ok')],
         );
         return;
@@ -502,7 +460,7 @@ function AppContent() {
 
   const handleDocChange = useCallback(
     (doc: unknown) => {
-      // 所见即所得编辑器隐藏后，延迟到达的旧通知不能覆盖源码审阅正文。
+      // 所见即所得编辑器隐藏后，延迟到达的旧通知不能覆盖源码正文。
       if (selectViewMode(useStore.getState()) !== 'wysiwyg') return;
       notifyFindContentChanged();
       if (switchingRef.current) return;
@@ -689,14 +647,8 @@ function AppContent() {
     switchingRef.current = true;
     if (viewMode === 'source') {
       const tab = useStore.getState().tabs.find((item) => item.id === tabId);
-      // 审阅块按 sourceContent 定位。进入审阅不得用所见即所得的重新
-      // 序列化结果替换原文，否则换行/格式变化会使待审块失效。
       const tabIsText = !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
-      const md = tab?.reviewSession
-        ? tab.sourceContent
-        : tabIsText
-          ? tab.sourceContent
-          : (editorHandle.current?.getMarkdown() ?? '');
+      const md = tabIsText ? tab.sourceContent : (editorHandle.current?.getMarkdown() ?? '');
       const state = editorHandle.current?.getEditorState();
       // 文本文档从未装载所见即所得编辑器：其当前状态（可能为空白）不代表正文，
       // 缓存它会在类型切回 Markdown 时被当作有效状态恢复出空白编辑器。
@@ -799,111 +751,6 @@ function AppContent() {
     // 依赖纳入活动标签：同类型标签切换也要更新记录，否则后续重命名
     // 会被误判为跨标签切换而跳过重建。
   }, [activeTabId, activeTabIsText, refreshSourceMetadata]);
-
-  // 审阅视图只存在于源码模式（change-review.md）：活动标签出现待决外部改动时
-  // 自动切入源码模式；期间 toggleViewMode 被锁定，处理完才能切回。
-  useEffect(() => {
-    if (pendingReviewCount > 0 && selectViewMode(useStore.getState()) === 'wysiwyg') {
-      setViewMode('source');
-    }
-  }, [pendingReviewCount, setViewMode]);
-
-  // 上面的模式/标签切换 effect 把源码编辑器内容同步为当前标签后，
-  // 排空该标签排队中的待审块（后台标签入库时编辑器未就绪的情形）。
-  // 本 effect 必须声明在切换 effect 之后，同一提交内后运行。
-  useEffect(() => {
-    drainQueuedReviewChunks(activeTabId);
-  }, [activeTabId, viewMode]);
-
-  // 源码编辑器上报的未决块数量写回活动标签（工具条、角标与锁定判定都读它）。
-  const handleReviewCountChange = useCallback((count: number) => {
-    const state = useStore.getState();
-    state.updateTab(state.activeTabId, { pendingReviewCount: count });
-  }, []);
-
-  const handleSingleReviewComplete = useCallback(
-    (content: string) => {
-      void finishReview(useStore.getState().activeTabId, content);
-    },
-    [finishReview],
-  );
-
-  const finishAllReviewChunks = useCallback(
-    (tabId: string, decision: 'accept' | 'reject'): boolean => {
-      const state = useStore.getState();
-      const tab = state.tabs.find((item) => item.id === tabId);
-      if (!tab || state.activeTabId !== tabId || state.viewMode !== 'source') return false;
-
-      // 模式刚切换时可能仍有块在队列中，先尝试完成注入；之后数量仍不一致
-      // 就保持审阅状态，绝不把“什么也没执行”当作接受成功去保存旧正文。
-      drainQueuedReviewChunks(tabId);
-      const content = resolveAllReviewChunks(
-        sourceEditorHandle.current,
-        tab.pendingReviewCount,
-        decision,
-      );
-      if (content == null) return false;
-
-      void finishReview(tabId, content, true);
-      return true;
-    },
-    [finishReview],
-  );
-
-  // 全部接受 / 全部拒绝（change-review.md 2026-09-04）：这是对整批外部改动的
-  // 终局决定，先弹确认，确认后执行并把文档写回磁盘、结束审阅会话——不再有
-  // 单独的「退出审阅」动作（写盘由核验后的 finishReview 显式发起）。
-  const handleAcceptAll = useCallback(async () => {
-    const tabId = useStore.getState().activeTabId;
-    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
-    if (!tab || tab.pendingReviewCount === 0) return;
-    const choice = await confirmDialog(
-      tt('review.acceptAllConfirmTitle'),
-      tt('review.acceptAllConfirmBody', { count: tab.pendingReviewCount }),
-      [tt('review.acceptAllAndSave'), tt('common.cancel')],
-      { defaultId: 1, cancelId: 1 },
-    );
-    if (choice !== 0) return;
-    if (useStore.getState().activeTabId !== tabId) return;
-    finishAllReviewChunks(tabId, 'accept');
-  }, [finishAllReviewChunks]);
-
-  const handleRejectAll = useCallback(async () => {
-    const tabId = useStore.getState().activeTabId;
-    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
-    if (!tab || tab.pendingReviewCount === 0) return;
-    const choice = await confirmDialog(
-      tt('review.rejectAllConfirmTitle'),
-      tt('review.rejectAllConfirmBody', { count: tab.pendingReviewCount }),
-      [tt('review.rejectAllAndSave'), tt('common.cancel')],
-      { defaultId: 1, cancelId: 1 },
-    );
-    if (choice !== 0) return;
-    if (useStore.getState().activeTabId !== tabId) return;
-    finishAllReviewChunks(tabId, 'reject');
-  }, [finishAllReviewChunks]);
-
-  // 退出审阅（change-review.md 2026-09-04）：有未决块时点退出须表态（复用
-  // 全部接受/拒绝的确认语义）；防御性兼容零块状态时直接收尾。
-  const handleExitReview = useCallback(async () => {
-    const tabId = useStore.getState().activeTabId;
-    const tab = useStore.getState().tabs.find((t) => t.id === tabId);
-    if (tab && tab.pendingReviewCount > 0) {
-      const choice = await confirmDialog(
-        tt('review.exitTitle'),
-        tt('review.exitBody', { count: tab.pendingReviewCount }),
-        [tt('review.exitAcceptAll'), tt('review.exitRejectAll'), tt('review.exitContinue')],
-        { defaultId: 2, cancelId: 2 },
-      );
-      if (choice === 0 || choice === 1) {
-        // 弹窗期间活动标签可能已被快捷键切换，只对发起退出时的标签执行。
-        if (useStore.getState().activeTabId !== tabId) return;
-        finishAllReviewChunks(tabId, choice === 0 ? 'accept' : 'reject');
-      }
-      return;
-    }
-    await fileOps.saveReviewResult(tabId);
-  }, [finishAllReviewChunks, fileOps]);
 
   useEffect(() => {
     if (window.inkmark.syncOutlineVisible) {
@@ -1491,21 +1338,8 @@ function AppContent() {
             />
           )}
           {!isStartPage && toolbarVisible && <Toolbar onSave={() => void fileOps.save()} />}
-          {!isStartPage && externalUpdatePending && !activeReviewSession && (
-            <ExternalUpdateBanner
-              onReload={fileOps.reloadActiveTab}
-              onReview={activeTabIsText ? undefined : fileOps.reviewActiveTab}
-            />
-          )}
-          {!isStartPage && activeReviewSession && (
-            <ReviewToolbar
-              count={pendingReviewCount}
-              externalChanged={externalUpdatePending}
-              onSave={() => void fileOps.saveReviewResult(activeTabId)}
-              onAcceptAll={() => void handleAcceptAll()}
-              onRejectAll={() => void handleRejectAll()}
-              onExit={() => void handleExitReview()}
-            />
+          {!isStartPage && externalUpdatePending && (
+            <ExternalUpdateBanner onReload={fileOps.reloadActiveTab} />
           )}
           {!isStartPage && isFindReplaceOpen && <FindReplaceBar controller={findReplace} />}
           <div
@@ -1521,12 +1355,7 @@ function AppContent() {
             className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}
           >
             <Suspense fallback={null}>
-              <SourceEditor
-                onChange={handleSourceChange}
-                onReviewCountChange={handleReviewCountChange}
-                onSingleReviewComplete={handleSingleReviewComplete}
-                onFollowLink={handleFollowLink}
-              />
+              <SourceEditor onChange={handleSourceChange} onFollowLink={handleFollowLink} />
             </Suspense>
           </div>
           <StatusBar onOpenSettings={() => setIsSettingsOpen(true)} />
