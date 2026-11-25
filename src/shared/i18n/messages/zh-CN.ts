@@ -274,6 +274,8 @@ export const messages = {
   'statusBar.charCount': '{charCount} 字符',
 
   'externalUpdate.reload': '重新加载',
+  'externalUpdate.saveAsNewFile': '另存为新文件…',
+  'externalUpdate.reviewConflict': '查看差异并处理',
 
   'tabBar.menu': '菜单',
   'tabBar.closeTab': '关闭标签页',
@@ -351,13 +353,10 @@ export const messages = {
   'confirm.saveFailedShort': '"{name}" 保存失败。',
   'confirm.saveFailedGeneric': '文件保存失败，请重试。',
   'confirm.externalModified': '文件已被外部修改',
-  'confirm.externalModifiedCoverHint':
-    '下方显示磁盘版本与当前编辑版本的差异。覆盖后，磁盘上的外部修改将被替换。',
   'confirm.overwriteDisk': '覆盖磁盘版本',
-  'confirm.externalModifiedChooseHint':
-    '下方显示磁盘版本与当前编辑版本的差异。请选择使用哪个版本。',
+  'confirm.externalModifiedChooseHint': '下方显示磁盘版本与当前编辑版本的差异。请选择处理方式。',
+  'confirm.saveAsNewFile': '另存为新文件…',
   'confirm.useDisk': '使用磁盘版本',
-  'confirm.keepAndOverride': '保留并在下次保存时覆盖',
   'dialog.supportedDocuments': '支持的文档',
   'confirm.openFailed': '打开失败',
   'confirm.openDialogFailed': '无法打开文件对话框，请重试。',
@@ -384,7 +383,8 @@ export const messages = {
   'confirm.diffDisk': '− 磁盘版本',
   'confirm.diffCurrent': '+ 当前编辑版本',
 
-  'externalUpdate.banner': '文件已被外部更新',
+  'externalUpdate.banner': '文件已被外部更新，请先重新加载后再编辑',
+  'externalUpdate.conflictBanner': '文件已被外部修改，已暂停编辑与自动保存',
 
   'largeDoc.banner': '当前文档较大，已自动使用源码模式打开以保持流畅。',
   'largeDoc.switchToWysiwyg': '仍用所见即所得打开',

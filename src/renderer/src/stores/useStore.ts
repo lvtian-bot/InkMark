@@ -113,6 +113,10 @@ export const selectViewMode = (s: InkMarkState): ViewMode => {
   return resolveTabViewMode(tab, s.viewMode);
 };
 
+/** 待重载或冲突未决时锁定当前标签编辑，保留滚动与选中复制。 */
+export const selectIsReadOnly = (s: InkMarkState): boolean =>
+  s.tabs.find((item) => item.id === s.activeTabId)?.externalUpdatePending ?? false;
+
 let lastToggleViewModeTime = 0;
 export function resetToggleViewModeThrottleForTesting(): void {
   lastToggleViewModeTime = 0;

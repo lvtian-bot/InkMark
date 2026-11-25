@@ -10,7 +10,7 @@ import { editOutlineSection, type OutlineAction } from './outline-edit';
 function readContext() {
   const state = useStore.getState();
   const tab = state.tabs.find((item) => item.id === state.activeTabId);
-  if (!tab || tab.isStartPage) return null;
+  if (!tab || tab.isStartPage || tab.externalUpdatePending) return null;
   const mode = selectViewMode(state);
   const handle = mode === 'source' ? sourceEditorHandle.current : editorHandle.current;
   if (!handle) return null;

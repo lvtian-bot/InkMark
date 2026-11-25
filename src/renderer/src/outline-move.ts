@@ -82,7 +82,7 @@ function computeSafeMove(
 function readMoveContext(): MoveContext | null {
   const state = useStore.getState();
   const tab = state.tabs.find((item) => item.id === state.activeTabId);
-  if (!tab) return null;
+  if (!tab || tab.externalUpdatePending) return null;
 
   if (selectViewMode(state) === 'source') {
     const handle = sourceEditorHandle.current;

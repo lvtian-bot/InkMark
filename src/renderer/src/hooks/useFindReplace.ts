@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
+import { selectIsReadOnly, useStore } from '../stores/useStore';
 import {
   expandReplacement,
   findMatchAtOrAfter,
@@ -247,6 +248,7 @@ export function useFindReplace({
 
   const replace = useCallback(
     (all: boolean) => {
+      if (selectIsReadOnly(useStore.getState())) return;
       const result = compute();
       if (result.invalidPattern || scopeInvalid.current) return;
       const current = activeMatch.current;

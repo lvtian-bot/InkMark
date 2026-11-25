@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronUp, Replace, ReplaceAll, TextSelect, X } from 'lucide-react';
 import type { FindReplaceController } from '../hooks/useFindReplace';
+import { selectIsReadOnly, useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import '../styles/find-replace.css';
 
@@ -34,6 +35,7 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
     wholeWord,
   } = controller;
   const { t } = useI18n();
+  const isReadOnly = useStore(selectIsReadOnly);
   const hasMatch = matchCount > 0 && !regexError;
   const matchSummary = query
     ? hasMatch
@@ -152,7 +154,7 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault();
-                replaceCurrent();
+                if (!isReadOnly) replaceCurrent();
               }
             }}
             placeholder={t('find.replacePlaceholder')}
@@ -163,7 +165,7 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
             className="find-replace-icon-button"
             type="button"
             onClick={replaceCurrent}
-            disabled={!hasMatch}
+            disabled={!hasMatch || isReadOnly}
             title={t('find.replaceCurrent')}
             aria-label={t('find.replaceCurrent')}
           >
@@ -173,7 +175,7 @@ export function FindReplaceBar({ controller }: FindReplaceBarProps) {
             className="find-replace-icon-button"
             type="button"
             onClick={replaceAll}
-            disabled={!hasMatch}
+            disabled={!hasMatch || isReadOnly}
             title={t('find.replaceAll')}
             aria-label={t('find.replaceAll')}
           >

@@ -1,5 +1,6 @@
 import { $view, $nodeSchema, $remark } from '@milkdown/kit/utils';
 import remarkFrontmatter from 'remark-frontmatter';
+import { selectIsReadOnly, useStore } from '../stores/useStore';
 
 // frontmatter(YAML 元信息块)的所见即所得渲染。
 //
@@ -76,6 +77,12 @@ const frontmatterView = $view(frontmatterSchema.node, () => (node, view, getPos)
 
   dom.append(startDelimiter, editor, endDelimiter);
 
+  const syncReadOnly = (readOnly: boolean): void => {
+    editor.readOnly = readOnly;
+  };
+  syncReadOnly(selectIsReadOnly(useStore.getState()));
+  const unsubscribeReadOnly = useStore.subscribe((state) => syncReadOnly(selectIsReadOnly(state)));
+
   const autoResize = (): void => {
     editor.style.height = 'auto';
     const h = editor.scrollHeight;
@@ -91,6 +98,11 @@ const frontmatterView = $view(frontmatterSchema.node, () => (node, view, getPos)
   // 输入即把文本写回节点属性,确保文档脏状态、字数与序列化都拿到最新值;
   // 本地 value 与节点同步后,ProseMirror 回调 update 时不会再回写 textarea,避免光标跳动。
   const commit = (): void => {
+    if (selectIsReadOnly(useStore.getState()) || !view.editable) {
+      editor.value = value;
+      autoResize();
+      return;
+    }
     const pos = getPos();
     if (typeof pos !== 'number') return;
     if (editor.value === value) return;
@@ -99,10 +111,17 @@ const frontmatterView = $view(frontmatterSchema.node, () => (node, view, getPos)
     view.dispatch(tr);
   };
 
-  editor.addEventListener('input', () => {
+  const handleInput = (): void => {
+    if (selectIsReadOnly(useStore.getState()) || !view.editable) {
+      editor.value = value;
+      autoResize();
+      return;
+    }
     autoResize();
     commit();
-  });
+  };
+
+  editor.addEventListener('input', handleInput);
 
   return {
     dom,
@@ -121,7 +140,8 @@ const frontmatterView = $view(frontmatterSchema.node, () => (node, view, getPos)
     stopEvent: () => true,
     ignoreMutation: () => true,
     destroy: () => {
-      editor.removeEventListener('input', autoResize);
+      editor.removeEventListener('input', handleInput);
+      unsubscribeReadOnly();
     },
   };
 });

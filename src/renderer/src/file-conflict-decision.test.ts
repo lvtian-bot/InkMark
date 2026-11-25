@@ -60,6 +60,25 @@ describe('decideExternalChange', () => {
     ).toBe('conflict');
   });
 
+  it('returns noop when the tab already has a pending external update or conflict', () => {
+    expect(
+      decideExternalChange({
+        fileMtime: 100,
+        diskMtime: 200,
+        isDirty: false,
+        externalUpdatePending: true,
+      }),
+    ).toBe('noop');
+    expect(
+      decideExternalChange({
+        fileMtime: 100,
+        diskMtime: 200,
+        isDirty: true,
+        externalUpdatePending: true,
+      }),
+    ).toBe('noop');
+  });
+
   it('keeps asking for conflict resolution regardless of mtime delta', () => {
     expect(decideExternalChange({ fileMtime: 5, diskMtime: 6, isDirty: true })).toBe('conflict');
     expect(
@@ -73,16 +92,20 @@ describe('decideExternalChange', () => {
 });
 
 describe('resolveConflictChoice', () => {
-  it('maps choice 0 to reload', () => {
-    expect(resolveConflictChoice(0)).toBe('reload');
+  it('maps choice 0 to save-as', () => {
+    expect(resolveConflictChoice(0)).toBe('save-as');
   });
 
-  it('maps choice 1 to keep-and-override', () => {
-    expect(resolveConflictChoice(1)).toBe('keep-and-override');
+  it('maps choice 1 to reload', () => {
+    expect(resolveConflictChoice(1)).toBe('reload');
   });
 
-  it('maps choice 2 to cancel', () => {
-    expect(resolveConflictChoice(2)).toBe('cancel');
+  it('maps choice 2 to overwrite', () => {
+    expect(resolveConflictChoice(2)).toBe('overwrite');
+  });
+
+  it('maps choice 3 to cancel', () => {
+    expect(resolveConflictChoice(3)).toBe('cancel');
   });
 
   it('falls back to cancel for unexpected indices', () => {

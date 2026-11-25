@@ -12,7 +12,7 @@ import {
   Table,
   Undo2,
 } from 'lucide-react';
-import { useStore, selectViewMode, tabDocumentPath } from '../stores/useStore';
+import { useStore, selectIsReadOnly, selectViewMode, tabDocumentPath } from '../stores/useStore';
 import { resolveDocumentKind } from '../../../shared/openable-document';
 import { editorHandle } from '../editor-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
@@ -32,6 +32,8 @@ interface ToolbarProps {
 
 export function Toolbar({ onSave }: ToolbarProps) {
   const viewMode = useStore(selectViewMode);
+  const isReadOnly = useStore(selectIsReadOnly);
+  const isDirty = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.isDirty ?? false);
   const toolbarWidth = useStore((s) => s.toolbarWidth);
   const saveShortcut = useStore((s) => s.shortcuts.save);
   // HMR 下 store 可能仍是新增字段前的旧状态，缺 editorShortcuts，兜底用默认值
@@ -76,10 +78,20 @@ export function Toolbar({ onSave }: ToolbarProps) {
       }}
     >
       <div className="toolbar-group">
-        <button className="toolbar-btn" onClick={handleUndo} title={t('toolbar.undo')}>
+        <button
+          className="toolbar-btn"
+          disabled={isReadOnly}
+          onClick={handleUndo}
+          title={t('toolbar.undo')}
+        >
           <Undo2 size={16} />
         </button>
-        <button className="toolbar-btn" onClick={handleRedo} title={t('toolbar.redo')}>
+        <button
+          className="toolbar-btn"
+          disabled={isReadOnly}
+          onClick={handleRedo}
+          title={t('toolbar.redo')}
+        >
           <Redo2 size={16} />
         </button>
       </div>
@@ -88,6 +100,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
           <div className="toolbar-group">
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('bold')}
               title={titleWithShortcut(t('toolbar.bold'), editorShortcuts.bold)}
             >
@@ -95,6 +108,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('italic')}
               title={titleWithShortcut(t('toolbar.italic'), editorShortcuts.italic)}
             >
@@ -102,6 +116,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('strike')}
               title={titleWithShortcut(t('toolbar.strikethrough'), editorShortcuts.strike)}
             >
@@ -109,6 +124,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('inlineCode')}
               title={titleWithShortcut(t('toolbar.inlineCode'), editorShortcuts.inlineCode)}
             >
@@ -118,6 +134,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
           <div className="toolbar-group">
             <button
               className="toolbar-btn toolbar-heading"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('heading1')}
               title={titleWithShortcut(t('toolbar.heading1'), editorShortcuts.heading1)}
             >
@@ -125,6 +142,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn toolbar-heading"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('heading2')}
               title={titleWithShortcut(t('toolbar.heading2'), editorShortcuts.heading2)}
             >
@@ -132,6 +150,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn toolbar-heading"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('heading3')}
               title={titleWithShortcut(t('toolbar.heading3'), editorShortcuts.heading3)}
             >
@@ -141,6 +160,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
           <div className="toolbar-group">
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('bulletList')}
               title={titleWithShortcut(t('toolbar.bulletList'), editorShortcuts.bulletList)}
             >
@@ -148,6 +168,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('taskList')}
               title={titleWithShortcut(t('toolbar.taskList'), editorShortcuts.taskList)}
             >
@@ -157,6 +178,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
           <div className="toolbar-group">
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('codeBlock')}
               title={titleWithShortcut(t('toolbar.codeBlock'), editorShortcuts.codeBlock)}
             >
@@ -164,6 +186,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('link')}
               title={titleWithShortcut(t('toolbar.link'), editorShortcuts.link)}
             >
@@ -171,6 +194,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
             </button>
             <button
               className="toolbar-btn"
+              disabled={isReadOnly}
               onClick={() => runEditorCommand('table')}
               title={titleWithShortcut(t('toolbar.table'), editorShortcuts.table)}
             >
@@ -182,6 +206,7 @@ export function Toolbar({ onSave }: ToolbarProps) {
       <div className="toolbar-group toolbar-group-end">
         <button
           className="toolbar-btn"
+          disabled={isReadOnly && !isDirty}
           onClick={onSave}
           title={titleWithShortcut(t('toolbar.save'), saveShortcut)}
         >

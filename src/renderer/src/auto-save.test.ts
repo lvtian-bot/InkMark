@@ -36,6 +36,17 @@ describe('isAutoSaveEligible', () => {
     ).toBe(false);
   });
 
+  it('待重载或存在外部冲突时暂停自动保存', () => {
+    expect(
+      isAutoSaveEligible({
+        enabled: true,
+        filePath: 'D:/a.md',
+        isDirty: true,
+        externalUpdatePending: true,
+      }),
+    ).toBe(false);
+  });
+
   it('防抖间隔为 3 秒', () => {
     expect(AUTO_SAVE_DELAY_MS).toBe(3_000);
   });

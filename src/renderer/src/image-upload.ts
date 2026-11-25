@@ -25,6 +25,9 @@ export const storeLocalImages: Uploader = async (files, schema) => {
   try {
     const state = useStore.getState();
     const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+    if (activeTab?.externalUpdatePending) {
+      return Fragment.empty;
+    }
     const documentPath = activeTab?.filePath ?? null;
     const tabId = activeTab?.id ?? null;
 

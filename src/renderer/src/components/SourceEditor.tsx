@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { Decoration, EditorView, keymap, WidgetType, type DecorationSet } from '@codemirror/view';
-import { EditorState, StateEffect, StateField } from '@codemirror/state';
+import { Compartment, EditorState, StateEffect, StateField } from '@codemirror/state';
 import {
   defaultKeymap,
   deleteLine as deleteLineCommand,
@@ -18,6 +18,7 @@ import { resolveDocumentKind } from '../../../shared/openable-document';
 import {
   selectAppTheme,
   selectContentTheme,
+  selectIsReadOnly,
   selectViewMode,
   tabDocumentPath,
   useStore,
@@ -140,9 +141,22 @@ const fadedMarksHighlight = HighlightStyle.define([
   // 列表项文字（tags.list）保持正文色，不加样式
 ]);
 
+const readOnlyCompartment = new Compartment();
+
+function readOnlyExtensions(readOnly: boolean) {
+  return readOnly
+    ? [
+        EditorState.readOnly.of(true),
+        EditorView.editable.of(false),
+        EditorState.changeFilter.of(() => false),
+      ]
+    : [];
+}
+
 export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
+  const isReadOnly = useStore(selectIsReadOnly);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -205,6 +219,7 @@ export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorPro
                 syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
               ]),
           EditorView.lineWrapping,
+          readOnlyCompartment.of(readOnlyExtensions(selectIsReadOnly(useStore.getState()))),
           updateListener,
           EditorView.domEventHandlers({
             // 与所见即所得模式同一手势：Ctrl/Cmd+点击跟随链接；普通点击承担
@@ -254,7 +269,14 @@ export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorPro
       getValue: () => serializeDoc(view.state),
       getDocText: () => view.state.doc.toString(),
       getEditorState: () => view.state,
-      setEditorState: (state) => view.setState(state),
+      setEditorState: (state) => {
+        view.setState(state);
+        view.dispatch({
+          effects: readOnlyCompartment.reconfigure(
+            readOnlyExtensions(selectIsReadOnly(useStore.getState())),
+          ),
+        });
+      },
       setValue: (value, options) => {
         // 按需保留原文件换行符；仅在内容确为 CRLF 时声明，避免 LF 被反向改写。
         const lineSeparator =
@@ -283,6 +305,7 @@ export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorPro
       getScrollTop: () => readScrollTop(view.scrollDOM),
       setScrollTop: (top) => writeScrollTop(view.scrollDOM, top),
       replaceRange: (from, to, text) => {
+        if (view.state.readOnly) return;
         suppressRef.current = false;
         view.dispatch(
           view.state.update({
@@ -331,13 +354,19 @@ export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorPro
         return view.state.doc === previousDoc ? 0 : replacements.length;
       },
       notifyChange: () => onChangeRef.current(view.state),
-      undo: () => undo(view),
-      redo: () => redo(view),
+      undo: () => {
+        if (!view.state.readOnly) undo(view);
+      },
+      redo: () => {
+        if (!view.state.readOnly) redo(view);
+      },
       deleteLine: () => {
+        if (view.state.readOnly) return;
         deleteLineCommand(view);
         view.focus();
       },
       replaceDocumentUndoable: (nextDoc) => {
+        if (view.state.readOnly) return;
         // 整篇替换以一次普通事务提交：undo 栈保留，用户按 Ctrl+Z 可一步撤回。
         // 光标落在文首，避免沿用已被搬移内容里的旧位置。
         suppressRef.current = false;
@@ -361,6 +390,12 @@ export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorPro
     };
   }, []);
 
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({ effects: readOnlyCompartment.reconfigure(readOnlyExtensions(isReadOnly)) });
+  }, [isReadOnly]);
+
   const { t } = useI18n();
 
   // 与所见即所得模式一致的剪贴板基础组；源码模式下链接/代码块是纯文本
@@ -368,13 +403,14 @@ export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorPro
   const buildEntries = (hasSelection: boolean, clipboardHasText: boolean): ContextMenuItem[] => {
     const exec = (action: Parameters<typeof window.inkmark.execClipboardCommand>[0]) => () =>
       void window.inkmark.execClipboardCommand(action);
+    const readOnly = viewRef.current?.state.readOnly ?? selectIsReadOnly(useStore.getState());
     return [
-      { label: t('menu.cut'), disabled: !hasSelection, onSelect: exec('cut') },
+      { label: t('menu.cut'), disabled: readOnly || !hasSelection, onSelect: exec('cut') },
       { label: t('menu.copy'), disabled: !hasSelection, onSelect: exec('copy') },
-      { label: t('menu.paste'), disabled: !clipboardHasText, onSelect: exec('paste') },
+      { label: t('menu.paste'), disabled: readOnly || !clipboardHasText, onSelect: exec('paste') },
       {
         label: t('menu.pasteAsPlainText'),
-        disabled: !clipboardHasText,
+        disabled: readOnly || !clipboardHasText,
         onSelect: exec('pasteAndMatchStyle'),
       },
       { label: t('menu.selectAll'), onSelect: exec('selectAll') },
