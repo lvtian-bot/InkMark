@@ -31,6 +31,7 @@ export const tableEnterKeymapPlugin = $prose((ctx) => {
     key: tableEnterKeymapKey,
     props: {
       handleKeyDown(view, event) {
+        if (!view.editable) return false;
         const action = tableKeyAction({
           key: event.key,
           shiftKey: event.shiftKey,

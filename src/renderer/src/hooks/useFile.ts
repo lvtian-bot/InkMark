@@ -105,6 +105,25 @@ export function useFile(
     return tab?.sourceContent ?? '';
   }, []);
 
+  // 所见即所得编辑器有 200ms 上报防抖：保存、关页、外部冲突锁定只读前先把尚未同步的
+  // 编辑刷回标签真源，防止锁定后被只读通知守卫丢弃或拿旧正文做对比/写盘。
+  const flushPendingWysiwygEdit = useCallback(
+    (tabId: string): boolean => {
+      const state = useStore.getState();
+      const tab = state.tabs.find((item) => item.id === tabId);
+      if (!tab) return false;
+      if (tabId === state.activeTabId && selectViewMode(state) === 'wysiwyg') {
+        const pendingMd = editorHandle.current?.getPendingMarkdown();
+        if (pendingMd != null && pendingMd !== tab.sourceContent) {
+          updateTab(tabId, { sourceContent: pendingMd, isDirty: true });
+          return true;
+        }
+      }
+      return tab.isDirty;
+    },
+    [updateTab],
+  );
+
   // 附件复制可能改写图片路径，磁盘正文、标签真源与可见编辑器必须一起接收。
   // 对话框期间改过正文时，不能把旧快照的路径改写覆盖到新内容或另一个文档上。
   const applySavedCopy = useCallback(
@@ -176,6 +195,7 @@ export function useFile(
       const currentState = useStore.getState();
       const targetTab = currentState.tabs.find((tab) => tab.id === tabId);
       if (!targetTab) return false;
+      flushPendingWysiwygEdit(tabId);
       const content = getTabMarkdown(tabId);
       let result;
       try {
@@ -197,7 +217,7 @@ export function useFile(
       }
       return false;
     },
-    [applySavedCopy, cancelAutoSaveTimer, getTabMarkdown],
+    [applySavedCopy, cancelAutoSaveTimer, flushPendingWysiwygEdit, getTabMarkdown],
   );
 
   const reloadTab = useCallback(
@@ -280,6 +300,7 @@ export function useFile(
       if (conflictDialogTabIdsRef.current.has(tabId)) return 'unresolved';
       conflictDialogTabIdsRef.current.add(tabId);
       cancelAutoSaveTimer(tabId);
+      flushPendingWysiwygEdit(tabId);
       updateTab(tabId, { externalUpdatePending: true });
       try {
         for (;;) {
@@ -376,7 +397,15 @@ export function useFile(
         conflictDialogTabIdsRef.current.delete(tabId);
       }
     },
-    [cancelAutoSaveTimer, getTabMarkdown, notifyMissingFile, reloadTab, saveTabAs, updateTab],
+    [
+      cancelAutoSaveTimer,
+      flushPendingWysiwygEdit,
+      getTabMarkdown,
+      notifyMissingFile,
+      reloadTab,
+      saveTabAs,
+      updateTab,
+    ],
   );
 
   const saveTab = useCallback(
@@ -384,12 +413,14 @@ export function useFile(
       const tab = useStore.getState().tabs.find((t) => t.id === tabId);
       if (!tab) return false;
 
+      flushPendingWysiwygEdit(tabId);
+      const liveTab = useStore.getState().tabs.find((t) => t.id === tabId) ?? tab;
       const content = getTabMarkdown(tabId);
 
-      const path = tab.filePath;
+      const path = liveTab.filePath;
       if (path) {
-        if (tab.externalUpdatePending) {
-          if (!tab.isDirty) return false;
+        if (liveTab.externalUpdatePending) {
+          if (!liveTab.isDirty) return false;
           const outcome = await resolveExternalConflict(tabId);
           return outcome === 'saved';
         }
@@ -397,13 +428,13 @@ export function useFile(
         try {
           result = await saveWithAuthorization(
             path,
-            () => window.inkmark.saveFile(content, path, tab.fileMtime),
+            () => window.inkmark.saveFile(content, path, liveTab.fileMtime),
             () => {
               if (automatic) return false;
               const current = useStore.getState().tabs.find((item) => item.id === tabId);
               return (
                 current?.filePath === path &&
-                current.fileMtime === tab.fileMtime &&
+                current.fileMtime === liveTab.fileMtime &&
                 getTabMarkdown(tabId) === content
               );
             },
@@ -455,7 +486,7 @@ export function useFile(
       }
       return false;
     },
-    [applySavedCopy, getTabMarkdown, resolveExternalConflict, updateTab],
+    [applySavedCopy, flushPendingWysiwygEdit, getTabMarkdown, resolveExternalConflict, updateTab],
   );
 
   // —— 自动保存 ——
@@ -635,14 +666,15 @@ export function useFile(
       const tab = currentState.tabs.find((t) => t.id === id);
       if (!tab) return false;
 
-      let dirty = tab.isDirty;
+      let dirty = flushPendingWysiwygEdit(id);
+      const liveTabAfterFlush = useStore.getState().tabs.find((t) => t.id === id) ?? tab;
       // 自动保存开启时先补存：干净关闭不打扰；冲突或保存失败仍走原有询问。
       if (
         isAutoSaveEligible({
           enabled: useStore.getState().autoSave,
-          filePath: tab.filePath,
+          filePath: liveTabAfterFlush.filePath,
           isDirty: dirty,
-          externalUpdatePending: tab.externalUpdatePending,
+          externalUpdatePending: liveTabAfterFlush.externalUpdatePending,
         })
       ) {
         await flushAutoSave(id);
@@ -652,7 +684,7 @@ export function useFile(
       if (dirty) {
         const choice = await confirmDialog(
           t('confirm.unsavedChanges'),
-          t('confirm.unsavedChangesBody', { name: tabDisplayName(tab, t) }),
+          t('confirm.unsavedChangesBody', { name: tabDisplayName(liveTabAfterFlush, t) }),
           [t('common.save'), t('common.dontSave'), t('common.cancel')],
         );
         const closeDecision = decideCloseDirty({ isDirty: true, choice });
@@ -672,7 +704,7 @@ export function useFile(
       closeTabStore(id);
       return true;
     },
-    [cancelAutoSaveTimer, closeTabStore, flushAutoSave, saveTab],
+    [cancelAutoSaveTimer, closeTabStore, flushAutoSave, flushPendingWysiwygEdit, saveTab],
   );
 
   // 文件树重命名后同步标签身份：路径、文件名与磁盘基线一起切换，未保存
@@ -784,14 +816,15 @@ export function useFile(
       const liveTab = useStore.getState().tabs.find((t) => t.id === tab.id);
       if (!liveTab) continue;
 
-      if (!liveTab.isDirty) continue;
+      const liveDirty = flushPendingWysiwygEdit(tab.id);
+      if (!liveDirty) continue;
 
       let shouldAsk = true;
       if (
         isAutoSaveEligible({
           enabled: useStore.getState().autoSave,
           filePath: liveTab.filePath,
-          isDirty: liveTab.isDirty,
+          isDirty: liveDirty,
           externalUpdatePending: liveTab.externalUpdatePending,
         })
       ) {
@@ -824,7 +857,7 @@ export function useFile(
       }
     }
     return true;
-  }, [saveTab, flushAutoSave]);
+  }, [saveTab, flushAutoSave, flushPendingWysiwygEdit]);
 
   const closeWindow = useCallback(async (): Promise<boolean> => {
     if (!(await prepareToClose())) return false;
@@ -927,17 +960,7 @@ export function useFile(
             missingNotifiedTabIdsRef.current.delete(snapshotTab.id);
             const currentTab = useStore.getState().tabs.find((tab) => tab.id === snapshotTab.id);
             if (!currentTab?.filePath || currentTab.filePath !== snapshotTab.filePath) continue;
-            let liveDirty = currentTab.isDirty;
-            if (
-              currentTab.id === useStore.getState().activeTabId &&
-              selectViewMode(useStore.getState()) === 'wysiwyg'
-            ) {
-              const pendingMd = editorHandle.current?.getPendingMarkdown();
-              if (pendingMd != null && pendingMd !== currentTab.sourceContent) {
-                updateTab(currentTab.id, { sourceContent: pendingMd, isDirty: true });
-                liveDirty = true;
-              }
-            }
+            const liveDirty = flushPendingWysiwygEdit(currentTab.id);
             const changeDecision = decideExternalChange({
               fileMtime: currentTab.fileMtime,
               diskMtime: res.mtime,
@@ -959,7 +982,13 @@ export function useFile(
         checkingRef.current = false;
       }
     },
-    [cancelAutoSaveTimer, notifyMissingFile, resolveExternalConflict, updateTab],
+    [
+      cancelAutoSaveTimer,
+      flushPendingWysiwygEdit,
+      notifyMissingFile,
+      resolveExternalConflict,
+      updateTab,
+    ],
   );
 
   const reloadActiveTab = useCallback(async (): Promise<void> => {

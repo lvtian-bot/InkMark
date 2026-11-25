@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { editorStateCache } from './editor-state-cache';
+import { editorHandle, type EditorHandle } from './editor-ref';
 import { runEditorCommand } from './editor-commands';
 import { resolveConfirmDialog } from './confirm-dialog';
 import { sourceEditorHandle } from './source-editor-ref';
@@ -168,6 +169,7 @@ async function mountScenario(options?: { autoSave?: boolean }) {
 
 afterEach(async () => {
   vi.useRealTimers();
+  editorHandle.current = null;
   resolveConfirmDialog(-1);
   for (const root of mountedRoots) {
     await act(async () => root.unmount());
@@ -428,6 +430,82 @@ describe('外部文件更新', () => {
       sourceContent: local,
       isDirty: true,
       externalUpdatePending: true,
+    });
+  });
+
+  it('所见即所得防抖窗口内保存撞上冲突时，先刷新待同步正文再锁只读与对比', async () => {
+    const { host, saveFile, saveFileAs, tab, triggerMenuSave, setDiskState } =
+      await mountScenario();
+    const pendingLocal = '尚未同步的所见即所得编辑\n';
+    saveFile.mockResolvedValueOnce({ status: 'conflict' });
+    setDiskState(external, 2);
+
+    await act(async () => {
+      useStore.setState({ viewMode: 'wysiwyg' });
+      editorHandle.current = {
+        getMarkdown: () => pendingLocal,
+        getPendingMarkdown: () => pendingLocal,
+        getSelectedMarkdown: () => '',
+        setMarkdown: noop,
+        clear: noop,
+        replaceDocumentUndoable: noop,
+        skipFrontmatterIfSelected: noop,
+        getEditorState: () => null,
+        setEditorState: noop,
+        getMarkdownFromState: () => '',
+        scrollToPos: noop,
+        getScrollContainer: () => null,
+        getScrollTop: () => 0,
+        setScrollTop: noop,
+        undo: noop,
+        redo: noop,
+        toggleBold: noop,
+        toggleItalic: noop,
+        toggleStrike: noop,
+        toggleInlineCode: noop,
+        wrapHeading: noop,
+        wrapBulletList: noop,
+        wrapOrderedList: noop,
+        wrapTaskList: noop,
+        insertCodeBlock: noop,
+        insertLink: noop,
+        insertTable: noop,
+        insertText: noop,
+        deleteLine: noop,
+        addTableLine: noop,
+        deleteTableLine: noop,
+        selectTable: noop,
+        copyTable: noop,
+        findTextMatches: () => [],
+        getFindSegments: () => [],
+        getSelection: () => ({ from: 0, to: 0 }),
+        showFindScope: noop,
+        replaceTextMatches: () => 0,
+        showTextMatches: noop,
+        replaceTextMatch: () => false,
+        replaceAllTextMatches: () => 0,
+        focus: noop,
+      } satisfies EditorHandle;
+    });
+
+    await act(async () => {
+      triggerMenuSave();
+    });
+    expect(saveFile).toHaveBeenCalledWith(pendingLocal, path, 1);
+
+    const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(dialog?.querySelector('.confirm-diff-content')?.textContent).toContain(
+      pendingLocal.trim(),
+    );
+
+    await act(async () => buttonByText(host, '另存为新文件…').click());
+    await settleReact();
+    expect(saveFileAs).toHaveBeenCalledWith(pendingLocal, path);
+    expect(tab()).toMatchObject({
+      filePath: savedAsPath,
+      sourceContent: pendingLocal,
+      isDirty: false,
+      externalUpdatePending: false,
     });
   });
 });

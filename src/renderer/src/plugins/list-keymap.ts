@@ -78,6 +78,7 @@ export const listKeymapPlugin = $prose((ctx) => {
     key: listKeymapKey,
     props: {
       handleKeyDown(view, event) {
+        if (!view.editable) return false;
         const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
 
         if (event.key === 'Backspace') {

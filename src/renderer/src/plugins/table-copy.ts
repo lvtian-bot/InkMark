@@ -316,6 +316,7 @@ export const tableCopyPlugin = $prose((ctx) => {
           return false;
         },
         cut: (view, event) => {
+          if (!view.editable) return false;
           const serializer = ctx.get(serializerCtx);
           const result = serializeTableSelection(view.state, serializer);
           if (!result) return false;
