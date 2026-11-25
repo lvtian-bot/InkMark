@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { selectViewMode, tabDocumentPath, useStore } from '../stores/useStore';
+import { isLargeMarkdownTab, selectViewMode, tabDocumentPath, useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { editorHandle } from '../editor-ref';
 import { confirmDialog } from '../confirm-dialog';
@@ -113,7 +113,11 @@ export function useFile(
       const state = useStore.getState();
       const tab = state.tabs.find((item) => item.id === tabId);
       if (!tab) return false;
-      if (tabId === state.activeTabId && selectViewMode(state) === 'wysiwyg') {
+      if (
+        tabId === state.activeTabId &&
+        selectViewMode(state) === 'wysiwyg' &&
+        !isLargeMarkdownTab(tab)
+      ) {
         const pendingMd = editorHandle.current?.getPendingMarkdown();
         if (pendingMd != null && pendingMd !== tab.sourceContent) {
           updateTab(tabId, { sourceContent: pendingMd, isDirty: true });

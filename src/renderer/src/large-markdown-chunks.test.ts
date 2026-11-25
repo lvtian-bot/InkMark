@@ -245,4 +245,83 @@ describe('splitMarkdownForReader & renderMarkdownChunkToHtml', () => {
     expect(extracted).toContain('AltText');
     expect(extracted).toContain('BoldItem with code');
   });
+
+  it('跨分块延续重复 1. 与非 1 起始有序列表编号，且更换列表分隔符时不错误延续', () => {
+    const repeatedLines = Array.from({ length: 250 }, (_, i) => `1. Item ${i + 1}`);
+    const doc = splitMarkdownForReader(repeatedLines.join('\n'), 80, 120);
+    expect(doc.chunks).toHaveLength(3);
+
+    const html0 = renderMarkdownChunkToHtml(doc.chunks[0], doc.referenceDefs);
+    const html1 = renderMarkdownChunkToHtml(doc.chunks[1], doc.referenceDefs);
+    const html2 = renderMarkdownChunkToHtml(doc.chunks[2], doc.referenceDefs);
+    expect(html0).toContain('<ol>');
+    expect(html0).not.toContain('start="');
+    expect(html1).toContain('<ol start="121">');
+    expect(html2).toContain('<ol start="241">');
+
+    // 宽松有序列表与非 1 起始（5. 后接 1.）
+    const looseLines: string[] = [];
+    for (let i = 0; i < 65; i++) {
+      looseLines.push(i === 0 ? '5. Loose start' : `1. Loose ${i}`, '');
+    }
+    const looseDoc = splitMarkdownForReader(looseLines.join('\n'), 80, 120);
+    expect(looseDoc.chunks.length).toBeGreaterThanOrEqual(2);
+    const looseHtml1 = renderMarkdownChunkToHtml(looseDoc.chunks[1], looseDoc.referenceDefs);
+    expect(looseHtml1).toContain(`<ol start="${5 + 40}">`);
+
+    // 分隔符由 '.' 换为 ')' 时应开启新有序列表，不延续此前 '.' 列表序号
+    const switchedLines = [
+      ...Array.from({ length: 120 }, (_, i) => `1. Dot ${i + 1}`),
+      ...Array.from({ length: 20 }, (_, i) => `1) Paren ${i + 1}`),
+    ];
+    const switchedDoc = splitMarkdownForReader(switchedLines.join('\n'), 80, 120);
+    expect(switchedDoc.chunks.length).toBeGreaterThanOrEqual(2);
+    const switchedHtml1 = renderMarkdownChunkToHtml(
+      switchedDoc.chunks[1],
+      switchedDoc.referenceDefs,
+    );
+    expect(switchedHtml1).toContain('<ol>\n<li>Paren 1</li>');
+    expect(switchedHtml1).not.toContain('start="121"');
+  });
+
+  it('存在同名重复引用定义时保持全文首个定义优先，且不破坏后续片段标题偏移', () => {
+    const filler = Array.from({ length: 90 }, (_, i) => `间隔段落 ${i}`).join('\n\n');
+    const content = [
+      '[dup]: https://first.example "First"',
+      '',
+      filler,
+      '',
+      '## Later Heading',
+      '',
+      '访问 [Link][dup] 验证。',
+      '',
+      '[dup]: https://second.example "Second"',
+    ].join('\n');
+
+    const doc = splitMarkdownForReader(content, 60, 90);
+    expect(doc.chunks.length).toBeGreaterThanOrEqual(2);
+    const laterHeading = doc.headings.find((h) => h.text === 'Later Heading');
+    expect(laterHeading).toBeDefined();
+    const targetChunk = doc.chunks[doc.headingToChunk.get(laterHeading!.pos)!];
+    const html = renderMarkdownChunkToHtml(targetChunk, doc.referenceDefs);
+
+    expect(html).toContain(`<h2 data-heading-pos="${laterHeading!.pos}">Later Heading</h2>`);
+    expect(html).toContain('<a href="https://first.example" title="First">Link</a>');
+    expect(html).not.toContain('https://second.example');
+  });
+
+  it('列表项内含 20,000 行连续空行后接缩进续行时保持线性切分性能', () => {
+    const blankGap = '\n'.repeat(20_000);
+    const content = `1. Start\n${blankGap}   indented continuation\n\n2. Second`;
+
+    const start = performance.now();
+    const doc = splitMarkdownForReader(content, 80, 120);
+    const elapsed = performance.now() - start;
+
+    expect(elapsed).toBeLessThan(500);
+    expect(doc.chunks).toHaveLength(2);
+    expect(doc.chunks[0].markdown).toContain('1. Start');
+    expect(doc.chunks[0].markdown).toContain('indented continuation');
+    expect(doc.chunks[1].markdown.trim()).toBe('2. Second');
+  });
 });

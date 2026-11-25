@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkRehype, { defaultHandlers, type Options as RemarkRehypeOptions } from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
-import type { Heading as MdastHeading, Image as MdastImage, Root } from 'mdast';
+import type { Heading as MdastHeading, Image as MdastImage, Parent, Root } from 'mdast';
 import { transformBreaksInTree } from '../../shared/markdown-breaks';
 import { transformCellBrInTree } from './plugins/table-cell-breaks';
 import type { Heading } from './types';
@@ -18,6 +18,7 @@ export interface LargeMarkdownChunk {
   markdown: string;
   estimatedHeight: number;
   headingPositions: number[];
+  continuedOrderedListStart?: number;
 }
 
 export interface LargeMarkdownDocument {
@@ -39,9 +40,32 @@ const TABLE_SEPARATOR_RE =
   /^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$|^ {0,3}\|\s*:?-+:?\s*\|?\s*$/;
 const TOP_LEVEL_LIST_RE = /^(?:[-*+]|\d{1,9}[.)])[ \t]/;
 const ANY_LIST_ITEM_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]/;
+const ORDERED_LIST_ITEM_RE = /^( {0,3})(\d{1,9})([.)])(?:([ \t]+)(.*)|[ \t]*)$/;
+const UNORDERED_LIST_ITEM_RE = /^( {0,3})[-*+](?:[ \t]|$)/;
 const BLOCKQUOTE_OR_HR_RE = /^ {0,3}(?:>|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/;
 const REF_DEF_HEAD_RE = /^ {0,3}\[((?:[^\]\\]|\\.)+)\]:[ \t]*(.*)$/;
 const STANDALONE_TITLE_RE = /^[ \t]*(?:"[^"]*"|'[^']*'|\([^)]*\))[ \t]*$/;
+
+interface ActiveOrderedList {
+  delimiter: '.' | ')';
+  nextOrdinal: number;
+  contentIndent: number;
+}
+
+function leadingIndentWidth(line: string): number {
+  let width = 0;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === ' ') {
+      width += 1;
+    } else if (ch === '\t') {
+      width += 4 - (width % 4);
+    } else {
+      break;
+    }
+  }
+  return width;
+}
 
 function slugify(text: string): string {
   return text
@@ -86,13 +110,6 @@ function isClosingFence(line: string, fenceChar: string, fenceLen: number): bool
 
 function isBlankLine(line: string): boolean {
   return line.trim().length === 0;
-}
-
-function findNextNonBlankLine(lines: readonly string[], startIndex: number): number {
-  for (let i = startIndex; i < lines.length; i++) {
-    if (!isBlankLine(lines[i])) return i;
-  }
-  return -1;
 }
 
 function resolveRefDefEndLine(lines: readonly string[], startIndex: number): number {
@@ -185,6 +202,13 @@ export function splitMarkdownForReader(
     cursor = nextStart;
   }
 
+  const lineCount = lines.length;
+  const nextNonBlankLine = new Int32Array(lineCount + 1);
+  nextNonBlankLine[lineCount] = -1;
+  for (let i = lineCount - 1; i >= 0; i--) {
+    nextNonBlankLine[i] = isBlankLine(lines[i]) ? nextNonBlankLine[i + 1] : i;
+  }
+
   const frontmatterEndLine = scanFrontmatterEndLine(lines);
   const chunks: LargeMarkdownChunk[] = [];
   const headings: Heading[] = [];
@@ -217,12 +241,18 @@ export function splitMarkdownForReader(
   let inList = false;
   let paragraphStartLine = -1;
   let refDefConsumedUntil = -1;
+  const orderedListState: {
+    active: ActiveOrderedList | null;
+    carried: ActiveOrderedList | null;
+  } = { active: null, carried: null };
+  let chunkFirstNonBlankSeen = false;
+  let chunkOrderedListStart: number | undefined = undefined;
 
   const flushChunk = (endLineInclusive: number): void => {
     const id = chunks.length;
     const startOffset = lineStarts[chunkStartLine];
     const endOffset = lineNextStarts[endLineInclusive];
-    const lineCount = endLineInclusive - chunkStartLine + 1;
+    const chunkLineCount = endLineInclusive - chunkStartLine + 1;
     chunks.push({
       id,
       startLine: chunkStartLine,
@@ -230,15 +260,20 @@ export function splitMarkdownForReader(
       startOffset,
       endOffset,
       markdown: markdown.slice(startOffset, endOffset),
-      estimatedHeight: Math.max(MIN_CHUNK_HEIGHT, lineCount * PIXELS_PER_LINE_ESTIMATE),
+      estimatedHeight: Math.max(MIN_CHUNK_HEIGHT, chunkLineCount * PIXELS_PER_LINE_ESTIMATE),
       headingPositions: currentHeadingPositions,
+      ...(chunkOrderedListStart !== undefined
+        ? { continuedOrderedListStart: chunkOrderedListStart }
+        : {}),
     });
     chunkStartLine = endLineInclusive + 1;
     currentHeadingPositions = [];
     paragraphStartLine = -1;
+    orderedListState.carried = orderedListState.active;
+    chunkFirstNonBlankSeen = false;
+    chunkOrderedListStart = undefined;
   };
 
-  const lineCount = lines.length;
   for (let i = 0; i < lineCount; i++) {
     const line = lines[i];
     const inFrontmatter = frontmatterEndLine >= 0 && i <= frontmatterEndLine;
@@ -248,6 +283,8 @@ export function splitMarkdownForReader(
       paragraphStartLine = -1;
       inTable = false;
       inList = false;
+      orderedListState.active = null;
+      if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
       // 前置 YAML 块禁止拆开，只在最后一行完成后考虑切分。
       if (i === frontmatterEndLine && i - chunkStartLine + 1 >= maxLines && i + 1 < lineCount) {
         flushChunk(i);
@@ -262,9 +299,10 @@ export function splitMarkdownForReader(
       }
       paragraphStartLine = -1;
       inTable = false;
+      if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
       if (fenceChar === '' && i - chunkStartLine + 1 >= targetLines && i + 1 < lineCount) {
         const nextLine = lines[i + 1];
-        const nextNonBlankIdx = findNextNonBlankLine(lines, i + 1);
+        const nextNonBlankIdx = nextNonBlankLine[i + 1];
         const nextContinuesList =
           inList && nextNonBlankIdx !== -1 && /^[ \t]+\S/.test(lines[nextNonBlankIdx]);
         if (!nextContinuesList && (isBlankLine(nextLine) || ATX_HEADING_RE.test(nextLine))) {
@@ -283,6 +321,13 @@ export function splitMarkdownForReader(
         fenceLen = marker.length;
         paragraphStartLine = -1;
         inTable = false;
+        chunkFirstNonBlankSeen = true;
+        if (
+          orderedListState.active &&
+          leadingIndentWidth(line) < orderedListState.active.contentIndent
+        ) {
+          orderedListState.active = null;
+        }
         if (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))) {
           inList = false;
         }
@@ -293,6 +338,7 @@ export function splitMarkdownForReader(
     if (i <= refDefConsumedUntil) {
       paragraphStartLine = -1;
       inTable = false;
+      if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
       if (i < refDefConsumedUntil || i + 1 >= lineCount) continue;
     } else {
       // 表格状态追踪：标题行 + 分隔行启动表格，直到空行、代码块、标题或无管道字符行结束。
@@ -305,6 +351,12 @@ export function splitMarkdownForReader(
         inTable = true;
         paragraphStartLine = -1;
         if (!/^[ \t]/.test(line)) inList = false;
+        if (
+          orderedListState.active &&
+          leadingIndentWidth(line) < orderedListState.active.contentIndent
+        ) {
+          orderedListState.active = null;
+        }
       } else if (inTable) {
         if (isBlankLine(line) || ATX_HEADING_RE.test(line) || !looksLikeTableRow(line)) {
           inTable = false;
@@ -324,6 +376,13 @@ export function splitMarkdownForReader(
         }
         refDefConsumedUntil = refEndLine;
         paragraphStartLine = -1;
+        chunkFirstNonBlankSeen = true;
+        if (
+          orderedListState.active &&
+          leadingIndentWidth(line) < orderedListState.active.contentIndent
+        ) {
+          orderedListState.active = null;
+        }
         if (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))) {
           inList = false;
         }
@@ -339,6 +398,8 @@ export function splitMarkdownForReader(
           registerHeading(level, rawBody, pos, chunkId);
           paragraphStartLine = -1;
           inList = false;
+          orderedListState.active = null;
+          chunkFirstNonBlankSeen = true;
         } else if (paragraphStartLine !== -1 && !inTable && SETEXT_UNDERLINE_RE.test(line)) {
           const level = line.trimStart()[0] === '=' ? 1 : 2;
           const pos = lineStarts[paragraphStartLine];
@@ -349,6 +410,8 @@ export function splitMarkdownForReader(
           currentHeadingPositions.push(pos);
           registerHeading(level, rawBody, pos, chunkId);
           paragraphStartLine = -1;
+          orderedListState.active = null;
+          chunkFirstNonBlankSeen = true;
         } else {
           if (ANY_LIST_ITEM_RE.test(line)) {
             inList = true;
@@ -359,6 +422,51 @@ export function splitMarkdownForReader(
             (i === 0 || isBlankLine(lines[i - 1]) || BLOCKQUOTE_OR_HR_RE.test(line))
           ) {
             inList = false;
+          }
+
+          if (!isBlankLine(line)) {
+            const currentOrd = orderedListState.active;
+            const ordMatch = !inTable ? ORDERED_LIST_ITEM_RE.exec(line) : null;
+            if (ordMatch) {
+              const leadingSpaces = ordMatch[1].length;
+              const digits = ordMatch[2];
+              const delimiter = ordMatch[3] as '.' | ')';
+              const spacesAfter = ordMatch[4] ?? '';
+              const rest = ordMatch[5] ?? '';
+              const contentIndent =
+                leadingSpaces +
+                digits.length +
+                1 +
+                (spacesAfter.length > 0 && spacesAfter.length <= 4 && rest.trim().length > 0
+                  ? spacesAfter.length
+                  : 1);
+              if (currentOrd && leadingSpaces >= currentOrd.contentIndent) {
+                // 缩进落在当前列表内容缩进之后，属于子列表项，不递增外层序号。
+              } else if (currentOrd && currentOrd.delimiter === delimiter) {
+                if (!chunkFirstNonBlankSeen && orderedListState.carried === currentOrd) {
+                  chunkOrderedListStart = currentOrd.nextOrdinal;
+                }
+                currentOrd.nextOrdinal += 1;
+                currentOrd.contentIndent = contentIndent;
+              } else {
+                orderedListState.active = {
+                  delimiter,
+                  nextOrdinal: Number.parseInt(digits, 10) + 1,
+                  contentIndent,
+                };
+              }
+            } else if (!inTable && UNORDERED_LIST_ITEM_RE.test(line)) {
+              if (currentOrd && leadingIndentWidth(line) < currentOrd.contentIndent) {
+                orderedListState.active = null;
+              }
+            } else if (
+              currentOrd &&
+              leadingIndentWidth(line) < currentOrd.contentIndent &&
+              (i === 0 || isBlankLine(lines[i - 1]) || BLOCKQUOTE_OR_HR_RE.test(line))
+            ) {
+              orderedListState.active = null;
+            }
+            chunkFirstNonBlankSeen = true;
           }
 
           const isPlainCandidate =
@@ -387,7 +495,7 @@ export function splitMarkdownForReader(
     // 正在累积的段落若紧跟 Setext 下划线，不得提前拆开。
     if (paragraphStartLine !== -1 && SETEXT_UNDERLINE_RE.test(nextLine)) continue;
 
-    const nextNonBlankIdx = findNextNonBlankLine(lines, i + 1);
+    const nextNonBlankIdx = nextNonBlankLine[i + 1];
     const nextNonBlank = nextNonBlankIdx !== -1 ? lines[nextNonBlankIdx] : null;
     // 列表项内的空行后紧跟缩进续行或子列表时，属于同一列表项容器，不得在空行边界拆开。
     const nextContinuesListItem = inList && nextNonBlank !== null && /^[ \t]+\S/.test(nextNonBlank);
@@ -427,12 +535,67 @@ export function splitMarkdownForReader(
   };
 }
 
+interface GlobalDefinition {
+  url: string;
+  title: string | null;
+}
+
 interface ActiveRenderContext {
   chunkStartOffset: number;
   headingSet: Set<number>;
+  continuedOrderedListStart?: number;
+  globalDefs: ReadonlyMap<string, GlobalDefinition>;
 }
 
 let activeRenderContext: ActiveRenderContext | null = null;
+
+const refDefParser = unified().use(remarkParse);
+let cachedGlobalDefs: {
+  raw: string;
+  map: Map<string, GlobalDefinition>;
+} | null = null;
+
+function getGlobalDefinitions(referenceDefs: string): ReadonlyMap<string, GlobalDefinition> {
+  if (!referenceDefs) return new Map();
+  if (cachedGlobalDefs?.raw === referenceDefs) return cachedGlobalDefs.map;
+  const map = new Map<string, GlobalDefinition>();
+  const tree = refDefParser.parse(referenceDefs);
+  for (const node of tree.children) {
+    if (node.type === 'definition' && !map.has(node.identifier)) {
+      map.set(node.identifier, { url: node.url, title: node.title ?? null });
+    }
+  }
+  cachedGlobalDefs = { raw: referenceDefs, map };
+  return map;
+}
+
+function applyRenderContextToTree(tree: Root, ctx: ActiveRenderContext | null): void {
+  if (!ctx) return;
+  if (
+    ctx.continuedOrderedListStart !== undefined &&
+    tree.children[0]?.type === 'list' &&
+    tree.children[0].ordered
+  ) {
+    tree.children[0].start = ctx.continuedOrderedListStart;
+  }
+  if (ctx.globalDefs.size > 0) {
+    const stack: Parent[] = [tree];
+    while (stack.length > 0) {
+      const parent = stack.pop()!;
+      for (const child of parent.children) {
+        if (child.type === 'definition') {
+          const globalDef = ctx.globalDefs.get(child.identifier);
+          if (globalDef) {
+            child.url = globalDef.url;
+            child.title = globalDef.title;
+          }
+        } else if ('children' in child && Array.isArray(child.children)) {
+          stack.push(child as Parent);
+        }
+      }
+    }
+  }
+}
 
 function resolveHeadingDocPos(node: MdastHeading): number | null {
   if (!activeRenderContext) return null;
@@ -504,6 +667,7 @@ function createChunkProcessor(withFrontmatter: boolean) {
   const withFm = withFrontmatter ? base.use(remarkFrontmatter, 'yaml') : base;
   return withFm
     .use(() => (tree: Root) => {
+      applyRenderContextToTree(tree, activeRenderContext);
       transformCellBrInTree(tree);
       transformBreaksInTree(tree);
     })
@@ -528,6 +692,8 @@ export function renderMarkdownChunkToHtml(
   activeRenderContext = {
     chunkStartOffset: chunk.startOffset,
     headingSet: new Set(chunk.headingPositions),
+    continuedOrderedListStart: chunk.continuedOrderedListStart,
+    globalDefs: getGlobalDefinitions(referenceDefs),
   };
   try {
     return String(processor.processSync(input));

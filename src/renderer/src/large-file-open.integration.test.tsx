@@ -19,6 +19,15 @@ const editorSpies = vi.hoisted(() => ({
   replaceTextMatches: vi.fn(),
 }));
 
+const fileTreeMocks = vi.hoisted(() => ({
+  onRenameFile: undefined as
+    ((entry: { name: string; absolutePath: string; kind: 'file' }) => void) | undefined,
+  renameEntry: vi.fn(async (_oldPath: string, parentDir: string, newName: string) => ({
+    path: `${parentDir}/${newName}`,
+    mtime: 9,
+  })),
+}));
+
 vi.mock('./components/Editor', async () => {
   const ReactMod = await import('react');
   const { editorHandle: handleRef } = await import('./editor-ref');
@@ -72,7 +81,16 @@ vi.mock('./components/Toolbar', () => ({
   Toolbar: () => <div data-testid="mock-toolbar" />,
 }));
 vi.mock('./components/Outline', () => ({ Outline: () => null }));
-vi.mock('./components/FileTree', () => ({ FileTree: () => null }));
+vi.mock('./components/FileTree', () => ({
+  FileTree: (props: {
+    onRenameFile?: (entry: { name: string; absolutePath: string; kind: 'file' }) => void;
+  }) => {
+    if (props.onRenameFile) {
+      fileTreeMocks.onRenameFile = props.onRenameFile;
+    }
+    return null;
+  },
+}));
 vi.mock('./components/StartPage', () => ({
   StartPage: ({ onCreateBlank }: { onCreateBlank: () => void }) => (
     <button type="button" onClick={onCreateBlank}>
@@ -82,11 +100,17 @@ vi.mock('./components/StartPage', () => ({
 }));
 vi.mock('./components/ExportProgressDialog', () => ({ ExportProgressDialog: () => null }));
 vi.mock('./hooks/useEditorFont', () => ({ useEditorFont: () => undefined }));
-vi.mock('./hooks/useFileTree', () => ({ useFileTree: () => ({ closeRoot: () => undefined }) }));
+vi.mock('./hooks/useFileTree', () => ({
+  useFileTree: () => ({
+    closeRoot: () => undefined,
+    isPathInCurrentRoot: () => true,
+    renameEntry: fileTreeMocks.renameEntry,
+  }),
+}));
 vi.mock('./hooks/useExport', () => ({ useExport: () => ({ exportDocument: () => undefined }) }));
 
 import App from './App';
-import { resolveConfirmDialog } from './confirm-dialog';
+import { resolveConfirmDialog, resolvePromptDialog } from './confirm-dialog';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 window.requestIdleCallback = (callback: IdleRequestCallback): number => {
@@ -205,11 +229,14 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
     editorSpies.clear.mockClear();
     editorSpies.getMarkdown.mockClear();
     editorSpies.replaceTextMatches.mockClear();
+    fileTreeMocks.onRenameFile = undefined;
+    fileTreeMocks.renameEntry.mockClear();
     resetToggleViewModeThrottleForTesting();
   });
 
   afterEach(async () => {
     resolveConfirmDialog(-1);
+    resolvePromptDialog(null);
     for (const root of mountedRoots) {
       await act(async () => root.unmount());
     }
@@ -589,5 +616,45 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
     expect(partialCopy.defaultPrevented).toBe(false);
     expect(partialSetData).not.toHaveBeenCalled();
     expect(largeReaderHandle.current?.getSelectedText()).not.toBe(twoChunkContent);
+  });
+
+  it('源码切入大文档只读阅读模式后通过文件树重命名，保留完整正文且不读取隐藏 Milkdown', async () => {
+    const docPath = 'D:/docs/rename-big.md';
+    const largeContent = `# Keep Content\n\n${'r'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
+    const app = mountApp({ [docPath]: largeContent }, 'source');
+    await app.start();
+    await app.openFile(docPath);
+    await waitFor(
+      () => sourceEditorHandle.current?.getValue() === largeContent,
+      '未在源码模式装载大文档',
+    );
+
+    await act(async () => {
+      useStore.setState({ fileTreeVisible: true });
+      useStore.getState().setViewMode('wysiwyg');
+    });
+    await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未切入只读阅读模式');
+    expect(fileTreeMocks.onRenameFile).toBeTypeOf('function');
+
+    editorSpies.getMarkdown.mockClear();
+    await act(async () => {
+      fileTreeMocks.onRenameFile?.({
+        name: 'rename-big.md',
+        absolutePath: docPath,
+        kind: 'file',
+      });
+    });
+    await act(async () => {
+      resolvePromptDialog('renamed-big.md');
+    });
+    await waitFor(
+      () => useStore.getState().tabs[0].filePath === 'D:/docs/renamed-big.md',
+      '文件树重命名未更新标签路径',
+    );
+
+    expect(fileTreeMocks.renameEntry).toHaveBeenCalledTimes(1);
+    expect(editorSpies.getMarkdown).not.toHaveBeenCalled();
+    expect(useStore.getState().tabs[0].sourceContent).toBe(largeContent);
+    expect(useStore.getState().tabs[0].isDirty).toBe(false);
   });
 });

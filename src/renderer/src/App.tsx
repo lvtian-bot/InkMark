@@ -335,7 +335,8 @@ function AppContent() {
       if (
         activeTab0 &&
         renameTabIds.includes(activeTab0.id) &&
-        selectViewMode(state0) === 'wysiwyg'
+        selectViewMode(state0) === 'wysiwyg' &&
+        !isLargeMarkdownTab(activeTab0)
       ) {
         // 刷新的正文可能包含 Milkdown 尚未上报的键入：类型翻转后迟到通知
         // 会被拒绝，因此刷新后必须标记未保存并交给自动保存，否则关闭时
