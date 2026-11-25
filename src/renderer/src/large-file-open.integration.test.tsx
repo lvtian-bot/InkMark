@@ -63,7 +63,13 @@ vi.mock('./components/TabBar', () => ({ TabBar: () => null }));
 vi.mock('./components/Toolbar', () => ({ Toolbar: () => null }));
 vi.mock('./components/Outline', () => ({ Outline: () => null }));
 vi.mock('./components/FileTree', () => ({ FileTree: () => null }));
-vi.mock('./components/StartPage', () => ({ StartPage: () => null }));
+vi.mock('./components/StartPage', () => ({
+  StartPage: ({ onCreateBlank }: { onCreateBlank: () => void }) => (
+    <button type="button" onClick={onCreateBlank}>
+      新建空白文档
+    </button>
+  ),
+}));
 vi.mock('./components/ExportProgressDialog', () => ({ ExportProgressDialog: () => null }));
 vi.mock('./hooks/useEditorFont', () => ({ useEditorFont: () => undefined }));
 vi.mock('./hooks/useFileTree', () => ({ useFileTree: () => ({ closeRoot: () => undefined }) }));
@@ -101,6 +107,8 @@ function mountApp(
   initialViewMode: 'wysiwyg' | 'source' = 'wysiwyg',
 ) {
   let openFileCallback: ((path: string) => void) | undefined;
+  let watchCallback:
+    ((event: { path: string; status: 'changed' | 'missing'; mtime?: number }) => void) | undefined;
   const target: Partial<InkMarkAPI> = {
     platform: 'win32',
     openFilePath: async (path: string) =>
@@ -108,7 +116,12 @@ function mountApp(
     getFileMtime: async () => ({ status: 'ok', mtime: 1 }),
     listRecoveryDrafts: async () => [],
     getRecentFiles: async () => [],
-    onFileWatchEvent: () => () => undefined,
+    onFileWatchEvent: (cb) => {
+      watchCallback = cb;
+      return () => {
+        watchCallback = undefined;
+      };
+    },
     onOpenFilePath: (cb) => {
       openFileCallback = cb;
     },
@@ -152,6 +165,12 @@ function mountApp(
     async openFile(path: string) {
       await act(async () => {
         openFileCallback?.(path);
+      });
+    },
+    async triggerExternalChange(path: string, nextContent: string, mtime = 2) {
+      files[path] = nextContent;
+      await act(async () => {
+        watchCallback?.({ path, status: 'changed', mtime });
       });
     },
   };
@@ -288,5 +307,68 @@ describe('大文档自动源码模式与惰性所见即所得加载', () => {
     await waitFor(() => sourceEditorHandle.current?.getValue() === '# A', '未切回文件 A');
 
     expect(editorSpies.setMarkdown).not.toHaveBeenCalled();
+  });
+
+  it('大文档在外部修改缩小到 1 MB 以下后点击重新加载，不会恢复旧源码正文', async () => {
+    const docPath = 'D:/docs/shrunk.md';
+    const largeContent = `# Old\n\n${'z'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
+    const smallContent = '# New Small\n\nUpdated body';
+    const files: Record<string, string> = { [docPath]: largeContent };
+
+    const app = mountApp(files, 'wysiwyg');
+    await app.start();
+    await app.openFile(docPath);
+    await waitFor(
+      () => sourceEditorHandle.current?.getValue() === largeContent,
+      '大文档未加载到源码编辑器',
+    );
+
+    await app.triggerExternalChange(docPath, smallContent, 2);
+    await waitFor(
+      () => app.host.textContent?.includes('重新加载') ?? false,
+      '未显示外部更新提示条',
+    );
+
+    await act(async () => {
+      buttonByText(app.host, '重新加载').click();
+    });
+
+    await waitFor(
+      () => selectViewMode(useStore.getState()) === 'wysiwyg',
+      '重载缩小文档后未解除源码限制',
+    );
+    await waitFor(
+      () => editorHandle.current?.getMarkdown() === smallContent,
+      '重载后所见即所得编辑器未同步为新正文',
+    );
+    expect(useStore.getState().tabs[0].sourceContent).toBe(smallContent);
+    expect(useStore.getState().tabs[0].largeDocSourceForced).toBe(false);
+  });
+
+  it('从普通所见即所得标签切到开始页并新建空白文档时，会清空上一标签编辑状态', async () => {
+    const docPath = 'D:/docs/prev.md';
+    const prevContent = '# Previous\n\nShould not leak';
+    const app = mountApp({ [docPath]: prevContent }, 'wysiwyg');
+    await app.start();
+
+    await app.openFile(docPath);
+    await waitFor(
+      () => editorHandle.current?.getMarkdown() === prevContent,
+      '前置文档未装载到所见即所得编辑器',
+    );
+
+    // 新建开始页标签，再点「新建空白文档」
+    await act(async () => {
+      useStore.getState().addTab();
+    });
+    await waitFor(() => editorSpies.clear.mock.calls.length >= 1, '切入开始页未清空旧编辑器');
+
+    await act(async () => {
+      buttonByText(app.host, '新建空白文档').click();
+    });
+    await waitFor(() => !useStore.getState().tabs[1].isStartPage, '未能从开始页进入空白文档');
+
+    expect(editorHandle.current?.getMarkdown()).toBe('');
+    expect(useStore.getState().tabs[1].sourceContent).toBe('');
   });
 });

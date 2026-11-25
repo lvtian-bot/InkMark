@@ -608,7 +608,7 @@ function AppContent() {
         editorHandle.current?.setMarkdown(newTab.sourceContent);
       }
       editorHandle.current?.skipFrontmatterIfSelected();
-    } else if (captureMode === 'wysiwyg' && oldTabWasLarge) {
+    } else if (newTab.isStartPage || (captureMode === 'wysiwyg' && oldTabWasLarge)) {
       editorHandle.current?.clear();
     }
 
@@ -697,7 +697,7 @@ function AppContent() {
       if (state && !tabSkippedWysiwyg && !largeContent) {
         editorStateCache.capture(tabId, 'wysiwyg', md, state);
       }
-      if (!tabSkippedWysiwyg && largeContent) {
+      if (largeContent) {
         editorHandle.current?.clear();
       }
       setSourceContent(md);
@@ -1320,6 +1320,17 @@ function AppContent() {
     }
   }, [isStartPage, closeFileTreeRoot]);
 
+  const handleCreateBlankFromStartPage = useCallback(() => {
+    setStartPage(false);
+    if (selectViewMode(useStore.getState()) === 'wysiwyg') {
+      editorHandle.current?.setMarkdown('');
+    } else {
+      sourceEditorHandle.current?.setValue('');
+      const loaded = sourceEditorHandle.current?.getEditorState();
+      if (loaded) refreshSourceMetadata(loaded);
+    }
+  }, [refreshSourceMetadata, setStartPage]);
+
   const outlinePanel = useResizablePanel({
     width: outlineWidth,
     onWidthChange: setOutlineWidth,
@@ -1376,7 +1387,7 @@ function AppContent() {
         <main className={`editor-main toolbar-width-${toolbarWidth}`}>
           {isStartPage && (
             <StartPage
-              onCreateBlank={() => setStartPage(false)}
+              onCreateBlank={handleCreateBlankFromStartPage}
               onOpenFile={() => void fileOps.openFile()}
               onOpenFolder={(path) => {
                 if (path == null) return fileTree.openFolderDialog();

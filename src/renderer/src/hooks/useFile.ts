@@ -127,22 +127,23 @@ export function useFile(
         editorStateCache.dispose(tabId);
         const isTextDoc = resolveDocumentKind(result.path) === 'text';
         const largeDocSourceForced =
-          !isTextDoc && (current.largeDocSourceForced || isLargeMarkdownContent(result.content));
-        if (isTextDoc && current.largeDocSourceForced) {
-          updateTab(tabId, { largeDocSourceForced: false });
-        } else if (largeDocSourceForced !== current.largeDocSourceForced) {
+          !isTextDoc && current.largeDocSourceForced && isLargeMarkdownContent(result.content);
+        if (largeDocSourceForced !== current.largeDocSourceForced) {
           updateTab(tabId, { largeDocSourceForced });
         }
         if (state.activeTabId === tabId) {
+          const prevMode = selectViewMode(state);
           const activeMode = selectViewMode(useStore.getState());
-          if (activeMode === 'source') {
+          if (prevMode === 'source') {
             sourceEditorHandle.current?.setValue(result.content, {
               preserveLineSeparator: isTextDoc,
               plainText: isTextDoc,
             });
-            const loaded = sourceEditorHandle.current?.getEditorState();
-            if (loaded) refreshSourceMetadata(loaded);
-          } else {
+            if (activeMode === 'source') {
+              const loaded = sourceEditorHandle.current?.getEditorState();
+              if (loaded) refreshSourceMetadata(loaded);
+            }
+          } else if (activeMode === 'wysiwyg') {
             stateRef.current.setMarkdown(result.content);
           }
         }
@@ -742,15 +743,19 @@ export function useFile(
       });
       if (tabId === current.activeTabId) {
         const nextMode = selectViewMode(useStore.getState());
-        if (nextMode === 'wysiwyg') {
-          current.setMarkdown(result.content);
-        } else if (current.viewMode === 'source') {
+        if (current.viewMode === 'source') {
+          // 无论重载后留在源码还是因缩小而切回所见即所得，都先同步源码编辑器，
+          // 防止随后的模式切换 effect 读回旧正文覆盖磁盘最新版本。
           sourceEditorHandle.current?.setValue(result.content, {
             preserveLineSeparator: isTextDoc,
             plainText: isTextDoc,
           });
-          const loaded = sourceEditorHandle.current?.getEditorState();
-          if (loaded) refreshSourceMetadata(loaded);
+          if (nextMode === 'source') {
+            const loaded = sourceEditorHandle.current?.getEditorState();
+            if (loaded) refreshSourceMetadata(loaded);
+          }
+        } else if (nextMode === 'wysiwyg') {
+          current.setMarkdown(result.content);
         }
       }
       setDiskBaseline(tabId, result.content);
