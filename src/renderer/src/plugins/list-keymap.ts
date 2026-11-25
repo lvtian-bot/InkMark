@@ -1,10 +1,12 @@
 import { $prose } from '@milkdown/kit/utils';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import { liftListItem } from '@milkdown/kit/prose/schema-list';
+import { canJoin } from '@milkdown/kit/prose/transform';
 import { listItemSchema } from '@milkdown/kit/preset/commonmark';
 import type { Node as ProseNode, ResolvedPos } from '@milkdown/kit/prose/model';
 
 const listKeymapKey = new PluginKey('inkmark-list-keymap');
+const autoJoinListsKey = new PluginKey('inkmark-auto-join-lists');
 
 /// 判定「列表项行首 Backspace」是否改为提升出列表，而非走默认的合并到前一项。
 ///
@@ -104,6 +106,35 @@ export const listKeymapPlugin = $prose((ctx) => {
             });
             return dispatched;
           }
+
+          // 两步退格的第二步：当光标在列表后的空段落时，直接删除该空段落并把光标
+          // 移回上一段列表末尾；若下方还有同类列表，autoJoinListsPlugin 会自动重连。
+          if (
+            !hasModifier &&
+            selection.empty &&
+            !item &&
+            $from.parent.type.name === 'paragraph' &&
+            $from.parent.content.size === 0 &&
+            $from.depth >= 1
+          ) {
+            const parentDepth = $from.depth - 1;
+            const indexInParent = $from.index(parentDepth);
+            if (indexInParent > 0) {
+              const prevSibling = $from.node(parentDepth).child(indexInParent - 1);
+              if (
+                prevSibling.type.name === 'bullet_list' ||
+                prevSibling.type.name === 'ordered_list'
+              ) {
+                const paraFrom = $from.before($from.depth);
+                const paraTo = $from.after($from.depth);
+                const tr = view.state.tr.delete(paraFrom, paraTo);
+                tr.setSelection(TextSelection.near(tr.doc.resolve(paraFrom), -1));
+                view.dispatch(tr.scrollIntoView());
+                return true;
+              }
+            }
+          }
+
           return false;
         }
 
@@ -188,4 +219,63 @@ export const listKeymapPlugin = $prose((ctx) => {
   });
 });
 
-export const listKeymap = [listKeymapPlugin];
+export function areListsJoinable(prev: ProseNode, next: ProseNode): boolean {
+  if (prev.type !== next.type) return false;
+  if (prev.type.name === 'bullet_list') {
+    return (prev.attrs.bullet ?? '-') === (next.attrs.bullet ?? '-');
+  }
+  if (prev.type.name === 'ordered_list') {
+    return (prev.attrs.bulletOrdered ?? '.') === (next.attrs.bulletOrdered ?? '.');
+  }
+  return false;
+}
+
+function collectListJoinPositions(doc: ProseNode): number[] {
+  const positions: number[] = [];
+
+  const scanChildren = (parent: ProseNode, contentStart: number) => {
+    let offset = 0;
+    for (let i = 0; i < parent.childCount; i += 1) {
+      const child = parent.child(i);
+      if (i > 0 && areListsJoinable(parent.child(i - 1), child)) {
+        positions.push(contentStart + offset);
+      }
+      if (!child.isLeaf && child.childCount > 0) {
+        scanChildren(child, contentStart + offset + 1);
+      }
+      offset += child.nodeSize;
+    }
+  };
+
+  scanChildren(doc, 0);
+  // Join from largest position to smallest so earlier positions stay valid.
+  return positions.sort((a, b) => b - a);
+}
+
+/// 当编辑操作（如两步退格删掉中间空行、删除中间段落）导致两个同类型列表直接相邻时，
+/// 自动将它们合并为同一个列表，保持列表连续与有序列表序号接续。
+export const autoJoinListsPlugin = $prose(
+  () =>
+    new Plugin({
+      key: autoJoinListsKey,
+      appendTransaction(transactions, _oldState, newState) {
+        if (!transactions.some((tr) => tr.docChanged)) return null;
+        if (transactions.some((tr) => tr.getMeta('history$'))) return null;
+
+        const positions = collectListJoinPositions(newState.doc);
+        if (positions.length === 0) return null;
+
+        const tr = newState.tr;
+        let joined = false;
+        for (const pos of positions) {
+          if (canJoin(tr.doc, pos)) {
+            tr.join(pos);
+            joined = true;
+          }
+        }
+        return joined ? tr : null;
+      },
+    }),
+);
+
+export const listKeymap = [listKeymapPlugin, autoJoinListsPlugin];
