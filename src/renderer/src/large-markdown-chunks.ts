@@ -38,8 +38,9 @@ const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const TABLE_SEPARATOR_RE =
   /^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$|^ {0,3}\|\s*:?-+:?\s*\|?\s*$/;
 const TOP_LEVEL_LIST_RE = /^(?:[-*+]|\d{1,9}[.)])[ \t]/;
+const ANY_LIST_ITEM_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]/;
 const BLOCKQUOTE_OR_HR_RE = /^ {0,3}(?:>|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/;
-const REF_DEF_RE = /^ {0,3}\[((?:[^\]\\]|\\.)+)\]:[ \t]*\S/;
+const REF_DEF_HEAD_RE = /^ {0,3}\[((?:[^\]\\]|\\.)+)\]:[ \t]*(.*)$/;
 const STANDALONE_TITLE_RE = /^[ \t]*(?:"[^"]*"|'[^']*'|\([^)]*\))[ \t]*$/;
 
 function slugify(text: string): string {
@@ -85,6 +86,42 @@ function isClosingFence(line: string, fenceChar: string, fenceLen: number): bool
 
 function isBlankLine(line: string): boolean {
   return line.trim().length === 0;
+}
+
+function findNextNonBlankLine(lines: readonly string[], startIndex: number): number {
+  for (let i = startIndex; i < lines.length; i++) {
+    if (!isBlankLine(lines[i])) return i;
+  }
+  return -1;
+}
+
+function resolveRefDefEndLine(lines: readonly string[], startIndex: number): number {
+  const headMatch = REF_DEF_HEAD_RE.exec(lines[startIndex]);
+  if (!headMatch) return -1;
+  const lineCount = lines.length;
+  const rest = headMatch[2].trim();
+  if (rest.length > 0) {
+    if (startIndex + 1 < lineCount && STANDALONE_TITLE_RE.test(lines[startIndex + 1])) {
+      return startIndex + 1;
+    }
+    return startIndex;
+  }
+  if (startIndex + 1 >= lineCount) return -1;
+  const nextLine = lines[startIndex + 1];
+  if (
+    isBlankLine(nextLine) ||
+    ATX_HEADING_RE.test(nextLine) ||
+    FENCE_OPEN_RE.test(nextLine) ||
+    REF_DEF_HEAD_RE.test(nextLine) ||
+    BLOCKQUOTE_OR_HR_RE.test(nextLine) ||
+    TOP_LEVEL_LIST_RE.test(nextLine)
+  ) {
+    return -1;
+  }
+  if (startIndex + 2 < lineCount && STANDALONE_TITLE_RE.test(lines[startIndex + 2])) {
+    return startIndex + 2;
+  }
+  return startIndex + 1;
 }
 
 function scanFrontmatterEndLine(lines: string[]): number {
@@ -177,7 +214,9 @@ export function splitMarkdownForReader(
   let fenceChar = '';
   let fenceLen = 0;
   let inTable = false;
+  let inList = false;
   let paragraphStartLine = -1;
+  let refDefConsumedUntil = -1;
 
   const flushChunk = (endLineInclusive: number): void => {
     const id = chunks.length;
@@ -208,6 +247,7 @@ export function splitMarkdownForReader(
     if (inFrontmatter) {
       paragraphStartLine = -1;
       inTable = false;
+      inList = false;
       // 前置 YAML 块禁止拆开，只在最后一行完成后考虑切分。
       if (i === frontmatterEndLine && i - chunkStartLine + 1 >= maxLines && i + 1 < lineCount) {
         flushChunk(i);
@@ -224,7 +264,10 @@ export function splitMarkdownForReader(
       inTable = false;
       if (fenceChar === '' && i - chunkStartLine + 1 >= targetLines && i + 1 < lineCount) {
         const nextLine = lines[i + 1];
-        if (isBlankLine(nextLine) || ATX_HEADING_RE.test(nextLine)) {
+        const nextNonBlankIdx = findNextNonBlankLine(lines, i + 1);
+        const nextContinuesList =
+          inList && nextNonBlankIdx !== -1 && /^[ \t]+\S/.test(lines[nextNonBlankIdx]);
+        if (!nextContinuesList && (isBlankLine(nextLine) || ATX_HEADING_RE.test(nextLine))) {
           flushChunk(i);
         }
       }
@@ -240,67 +283,94 @@ export function splitMarkdownForReader(
         fenceLen = marker.length;
         paragraphStartLine = -1;
         inTable = false;
+        if (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))) {
+          inList = false;
+        }
         continue;
       }
     }
 
-    // 表格状态追踪：标题行 + 分隔行启动表格，直到空行、代码块、标题或无管道字符行结束。
-    if (
-      !inTable &&
-      i + 1 < lineCount &&
-      looksLikeTableRow(line) &&
-      TABLE_SEPARATOR_RE.test(lines[i + 1])
-    ) {
-      inTable = true;
+    if (i <= refDefConsumedUntil) {
       paragraphStartLine = -1;
-    } else if (inTable) {
-      if (isBlankLine(line) || ATX_HEADING_RE.test(line) || !looksLikeTableRow(line)) {
-        inTable = false;
-      }
-    }
-
-    // 标题提取（ATX 或单行/多行 Setext）
-    const atxMatch = ATX_HEADING_RE.exec(line);
-    if (atxMatch) {
-      const level = atxMatch[1].length;
-      const rawBody = (atxMatch[2] ?? '').replace(/[ \t]+#*[ \t]*$/, '').trim();
-      const pos = lineStarts[i];
-      currentHeadingPositions.push(pos);
-      registerHeading(level, rawBody, pos, chunkId);
-      paragraphStartLine = -1;
-    } else if (paragraphStartLine !== -1 && !inTable && SETEXT_UNDERLINE_RE.test(line)) {
-      const level = line.trimStart()[0] === '=' ? 1 : 2;
-      const pos = lineStarts[paragraphStartLine];
-      const rawBody = lines
-        .slice(paragraphStartLine, i)
-        .map((item) => item.trim())
-        .join(' ');
-      currentHeadingPositions.push(pos);
-      registerHeading(level, rawBody, pos, chunkId);
-      paragraphStartLine = -1;
+      inTable = false;
+      if (i < refDefConsumedUntil || i + 1 >= lineCount) continue;
     } else {
-      const isPlainCandidate =
+      // 表格状态追踪：标题行 + 分隔行启动表格，直到空行、代码块、标题或无管道字符行结束。
+      if (
         !inTable &&
-        !isBlankLine(line) &&
-        !TOP_LEVEL_LIST_RE.test(line.trimStart()) &&
-        !BLOCKQUOTE_OR_HR_RE.test(line) &&
-        !REF_DEF_RE.test(line);
-      if (isPlainCandidate) {
-        if (paragraphStartLine === -1) paragraphStartLine = i;
-      } else {
+        i + 1 < lineCount &&
+        looksLikeTableRow(line) &&
+        TABLE_SEPARATOR_RE.test(lines[i + 1])
+      ) {
+        inTable = true;
         paragraphStartLine = -1;
+        if (!/^[ \t]/.test(line)) inList = false;
+      } else if (inTable) {
+        if (isBlankLine(line) || ATX_HEADING_RE.test(line) || !looksLikeTableRow(line)) {
+          inTable = false;
+        }
       }
-    }
 
-    // 收集引用式链接定义，确保跨片段也能正常解析。
-    const refMatch = REF_DEF_RE.exec(line);
-    if (refMatch) {
-      const labelKey = refMatch[1].trim().toLowerCase().replace(/\s+/g, ' ');
-      if (!seenRefLabels.has(labelKey)) {
-        seenRefLabels.add(labelKey);
-        refDefLines.push(line);
-        if (i + 1 < lineCount && STANDALONE_TITLE_RE.test(lines[i + 1])) {
-          refDefLines.push(lines[i + 1]);
+      // 收集单行或跨行引用式链接定义，确保跨片段也能正常解析。
+      const refHeadMatch = !inTable ? REF_DEF_HEAD_RE.exec(line) : null;
+      const refEndLine = refHeadMatch ? resolveRefDefEndLine(lines, i) : -1;
+      if (refHeadMatch && refEndLine !== -1) {
+        const labelKey = refHeadMatch[1].trim().toLowerCase().replace(/\s+/g, ' ');
+        if (!seenRefLabels.has(labelKey)) {
+          seenRefLabels.add(labelKey);
+          for (let r = i; r <= refEndLine; r++) {
+            refDefLines.push(lines[r]);
+          }
+        }
+        refDefConsumedUntil = refEndLine;
+        paragraphStartLine = -1;
+        if (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))) {
+          inList = false;
+        }
+        if (i < refDefConsumedUntil) continue;
+      } else {
+        // 标题提取（ATX 或单行/多行 Setext）与列表上下文追踪
+        const atxMatch = ATX_HEADING_RE.exec(line);
+        if (atxMatch) {
+          const level = atxMatch[1].length;
+          const rawBody = (atxMatch[2] ?? '').replace(/[ \t]+#*[ \t]*$/, '').trim();
+          const pos = lineStarts[i];
+          currentHeadingPositions.push(pos);
+          registerHeading(level, rawBody, pos, chunkId);
+          paragraphStartLine = -1;
+          inList = false;
+        } else if (paragraphStartLine !== -1 && !inTable && SETEXT_UNDERLINE_RE.test(line)) {
+          const level = line.trimStart()[0] === '=' ? 1 : 2;
+          const pos = lineStarts[paragraphStartLine];
+          const rawBody = lines
+            .slice(paragraphStartLine, i)
+            .map((item) => item.trim())
+            .join(' ');
+          currentHeadingPositions.push(pos);
+          registerHeading(level, rawBody, pos, chunkId);
+          paragraphStartLine = -1;
+        } else {
+          if (ANY_LIST_ITEM_RE.test(line)) {
+            inList = true;
+            paragraphStartLine = -1;
+          } else if (
+            !isBlankLine(line) &&
+            !/^[ \t]/.test(line) &&
+            (i === 0 || isBlankLine(lines[i - 1]) || BLOCKQUOTE_OR_HR_RE.test(line))
+          ) {
+            inList = false;
+          }
+
+          const isPlainCandidate =
+            !inTable &&
+            !isBlankLine(line) &&
+            !ANY_LIST_ITEM_RE.test(line) &&
+            !BLOCKQUOTE_OR_HR_RE.test(line);
+          if (isPlainCandidate) {
+            if (paragraphStartLine === -1) paragraphStartLine = i;
+          } else {
+            paragraphStartLine = -1;
+          }
         }
       }
     }
@@ -316,6 +386,19 @@ export function splitMarkdownForReader(
     const nextLine = lines[i + 1];
     // 正在累积的段落若紧跟 Setext 下划线，不得提前拆开。
     if (paragraphStartLine !== -1 && SETEXT_UNDERLINE_RE.test(nextLine)) continue;
+
+    const nextNonBlankIdx = findNextNonBlankLine(lines, i + 1);
+    const nextNonBlank = nextNonBlankIdx !== -1 ? lines[nextNonBlankIdx] : null;
+    // 列表项内的空行后紧跟缩进续行或子列表时，属于同一列表项容器，不得在空行边界拆开。
+    const nextContinuesListItem = inList && nextNonBlank !== null && /^[ \t]+\S/.test(nextNonBlank);
+    const isLazyListContinuation =
+      inList &&
+      !isBlankLine(line) &&
+      !isBlankLine(nextLine) &&
+      !TOP_LEVEL_LIST_RE.test(nextLine) &&
+      !ATX_HEADING_RE.test(nextLine) &&
+      !BLOCKQUOTE_OR_HR_RE.test(nextLine);
+    if (nextContinuesListItem || isLazyListContinuation) continue;
 
     const atSafeGap = isBlankLine(line) || isBlankLine(nextLine) || ATX_HEADING_RE.test(nextLine);
     if (atSafeGap) {
@@ -451,4 +534,82 @@ export function renderMarkdownChunkToHtml(
   } finally {
     activeRenderContext = null;
   }
+}
+
+/**
+ * 提取大 Markdown 文档的可读正文文本（剔除 YAML frontmatter、链接定义、
+ * 围栏标记与常见 Markdown 语法符号），使只读预览下的字数统计与源码模式保持同源口径。
+ */
+export function extractReadableMarkdownText(markdown: string): string {
+  if (!markdown) return '';
+  const lines = markdown.split(/\r?\n/);
+  const fmEnd = scanFrontmatterEndLine(lines);
+  const startLine = fmEnd >= 0 ? fmEnd + 1 : 0;
+  const output: string[] = [];
+
+  let fenceChar = '';
+  let fenceLen = 0;
+  let refEndUntil = -1;
+
+  for (let i = startLine; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (fenceChar !== '') {
+      if (isClosingFence(line, fenceChar, fenceLen)) {
+        fenceChar = '';
+        fenceLen = 0;
+      } else {
+        output.push(line);
+      }
+      continue;
+    }
+
+    const fenceMatch = FENCE_OPEN_RE.exec(line);
+    if (fenceMatch) {
+      const marker = fenceMatch[1];
+      const info = fenceMatch[2];
+      if (marker[0] !== '`' || !info.includes('`')) {
+        fenceChar = marker[0];
+        fenceLen = marker.length;
+        continue;
+      }
+    }
+
+    if (i <= refEndUntil) continue;
+    if (REF_DEF_HEAD_RE.test(line)) {
+      const resolvedEnd = resolveRefDefEndLine(lines, i);
+      if (resolvedEnd !== -1) {
+        refEndUntil = resolvedEnd;
+        continue;
+      }
+    }
+
+    if (TABLE_SEPARATOR_RE.test(line)) continue;
+    if (i > startLine && !isBlankLine(lines[i - 1]) && SETEXT_UNDERLINE_RE.test(line)) continue;
+    if (/^ {0,3}(?:[-*_])(?:[ \t]*[-*_]){2,}[ \t]*$/.test(line)) continue;
+
+    let text = line;
+    const atx = ATX_HEADING_RE.exec(text);
+    if (atx) {
+      text = (atx[2] ?? '').replace(/[ \t]+#*[ \t]*$/, '');
+    } else {
+      text = text
+        .replace(/^(?: {0,3}>[ \t]?)+/, '')
+        .replace(/^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/, '');
+    }
+
+    text = text
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
+      .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/gi, '$1')
+      .replace(/`([^`]*)`/g, '$1')
+      .replace(/(\*\*|__|~~|\*|_)/g, '')
+      .replace(/\\([\\`*_{}[\]()#+\-.!>~|])/g, '$1')
+      .replace(/[ \t]*\|[ \t]*/g, ' ');
+
+    output.push(text);
+  }
+
+  return output.join('\n');
 }

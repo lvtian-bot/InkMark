@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { renderMarkdownChunkToHtml, splitMarkdownForReader } from './large-markdown-chunks';
+import {
+  extractReadableMarkdownText,
+  renderMarkdownChunkToHtml,
+  splitMarkdownForReader,
+} from './large-markdown-chunks';
 
 describe('splitMarkdownForReader & renderMarkdownChunkToHtml', () => {
   it('将 12,000 行连续列表（约 3 MB）切分为有界片段，并在预算内完成切分与首屏渲染', () => {
@@ -174,5 +178,71 @@ describe('splitMarkdownForReader & renderMarkdownChunkToHtml', () => {
 
     const html = renderMarkdownChunkToHtml(doc.chunks[0], doc.referenceDefs);
     expect(html).toContain('<h2 data-heading-pos="0">Title<br>continued</h2>');
+  });
+
+  it('跨空行但带缩进的列表续行段落保留在同一列表项片段中，不拆出列表容器', () => {
+    const lines = ['- Intro'];
+    for (let i = 0; i < 82; i++) {
+      lines.push(`  indented continuation ${i}`);
+    }
+    lines.push('', '  second paragraph inside list item', '', '- Next top item');
+    const content = lines.join('\n');
+
+    const doc = splitMarkdownForReader(content, 60, 90);
+    const firstListChunk = doc.chunks.find((c) => c.markdown.includes('- Intro'));
+    expect(firstListChunk).toBeDefined();
+    expect(firstListChunk!.markdown).toContain('second paragraph inside list item');
+
+    const html = renderMarkdownChunkToHtml(firstListChunk!, doc.referenceDefs);
+    expect(html).toContain('<li>');
+    expect(html).toContain('second paragraph inside list item');
+  });
+
+  it('收集地址位于下一行的多行引用式链接定义并跨片段解析', () => {
+    const filler = Array.from({ length: 165 }, (_, i) => `填充段落 ${i}\n`).join('\n');
+    const content = [
+      '请查看 [documentation][docs] 获取详情。',
+      '',
+      filler,
+      '[docs]:',
+      '  https://example.com/docs',
+      '  "Documentation Title"',
+    ].join('\n');
+
+    const doc = splitMarkdownForReader(content, 60, 80);
+    expect(doc.chunks.length).toBeGreaterThanOrEqual(2);
+    expect(doc.referenceDefs).toContain('https://example.com/docs');
+
+    const html0 = renderMarkdownChunkToHtml(doc.chunks[0], doc.referenceDefs);
+    expect(html0).toContain(
+      '<a href="https://example.com/docs" title="Documentation Title">documentation</a>',
+    );
+  });
+
+  it('extractReadableMarkdownText 剔除 YAML 头、链接地址、引用定义与 Markdown 标记', () => {
+    const sample = [
+      '---',
+      'title: MetaOnly',
+      'author: Nobody',
+      '---',
+      '',
+      '# Heading Title ###',
+      '',
+      'See [Click Here](https://very-long.example.com/path/to/page) and ![AltText](./img.png).',
+      '',
+      '- **BoldItem** with `code`',
+      '',
+      '[ref]:',
+      '  https://ref-only.example.com',
+    ].join('\n');
+
+    const extracted = extractReadableMarkdownText(sample);
+    expect(extracted).not.toContain('MetaOnly');
+    expect(extracted).not.toContain('https://very-long.example.com');
+    expect(extracted).not.toContain('https://ref-only.example.com');
+    expect(extracted).toContain('Heading Title');
+    expect(extracted).toContain('Click Here');
+    expect(extracted).toContain('AltText');
+    expect(extracted).toContain('BoldItem with code');
   });
 });

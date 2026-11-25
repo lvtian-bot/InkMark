@@ -204,18 +204,32 @@ export function LargeMarkdownReader({
     const selection = window.getSelection();
     if (!body || !selection || selection.isCollapsed || selection.rangeCount === 0) return false;
     const range = selection.getRangeAt(0);
-    const firstChunk = body.firstElementChild;
-    const lastChunk = body.lastElementChild;
+    const firstChunk = body.firstElementChild as HTMLElement | null;
+    const lastChunk = body.lastElementChild as HTMLElement | null;
     if (!firstChunk || !lastChunk) return false;
-    const startsAtBeginning =
-      range.startContainer === body
-        ? range.startOffset === 0
-        : firstChunk.contains(range.startContainer) && range.startOffset === 0;
-    const endsAtEnd =
-      range.endContainer === body
-        ? range.endOffset >= body.childNodes.length
-        : lastChunk.contains(range.endContainer);
-    return startsAtBeginning && endsAtEnd && docRef.current.chunks.length > 1;
+
+    let startsAtDocStart = false;
+    if (range.startContainer === body) {
+      startsAtDocStart = range.startOffset === 0;
+    } else if (firstChunk.dataset.mounted === '1' && firstChunk.contains(range.startContainer)) {
+      const prefix = document.createRange();
+      prefix.setStart(firstChunk, 0);
+      prefix.setEnd(range.startContainer, range.startOffset);
+      startsAtDocStart = prefix.toString().length === 0;
+    }
+
+    if (!startsAtDocStart) return false;
+
+    if (range.endContainer === body) {
+      return range.endOffset >= body.childNodes.length;
+    }
+    if (lastChunk.dataset.mounted === '1' && lastChunk.contains(range.endContainer)) {
+      const suffix = document.createRange();
+      suffix.setStart(range.endContainer, range.endOffset);
+      suffix.setEnd(lastChunk, lastChunk.childNodes.length);
+      return suffix.toString().length === 0;
+    }
+    return false;
   }, []);
 
   const syncWindowToScroll = useCallback(() => {

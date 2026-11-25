@@ -6,6 +6,7 @@ import { LARGE_MARKDOWN_THRESHOLD_BYTES } from '../../shared/openable-document';
 import { clearDiskBaseline } from './disk-baseline';
 import { editorHandle, type EditorHandle } from './editor-ref';
 import { editorStateCache } from './editor-state-cache';
+import { extractReadableMarkdownText } from './large-markdown-chunks';
 import { clearLargeReaderScrollTop, largeReaderHandle } from './large-reader-ref';
 import { sourceEditorHandle } from './source-editor-ref';
 import { resetToggleViewModeThrottleForTesting, selectViewMode, useStore } from './stores/useStore';
@@ -225,7 +226,7 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
   it('超过 1 MB 的 Markdown 在所见即所得模式下使用分段只读预览、不加载 Milkdown、隐藏工具栏并同步大纲字数', async () => {
     const largePath = 'D:/docs/huge.md';
     const smallPath = 'D:/docs/small.md';
-    const largeContent = `# Big Title\n\nFirst paragraph.\n\n## Second Section\n\n${'x'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 2048)}`;
+    const largeContent = `---\ntitle: MetadataOnly\n---\n\n# Big Title\n\nFirst [link](https://example.com/very-long-url) paragraph.\n\n## Second Section\n\n${'x'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 2048)}`;
     const smallContent = '# Small Title\n\nNormal body';
 
     const app = mountApp({ [largePath]: largeContent, [smallPath]: smallContent }, 'wysiwyg', true);
@@ -247,7 +248,8 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
 
     const largeTab = useStore.getState().tabs.find((t) => t.filePath === largePath)!;
     expect(largeTab.outline.map((h) => h.text)).toEqual(['Big Title', 'Second Section']);
-    expect(largeTab.charCount).toBe(largeContent.length);
+    expect(largeTab.charCount).toBe(extractReadableMarkdownText(largeContent).length);
+    expect(largeTab.charCount).toBeLessThan(largeContent.length);
 
     // 打开普通大小文档时恢复可编辑的 Milkdown 与工具栏
     await app.openFile(smallPath);
@@ -510,7 +512,10 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
     const largePath = 'D:/docs/huge-copy-all.md';
     const lines = Array.from({ length: 400 }, (_, i) => `- Row ${i} ${'c'.repeat(3000)}`);
     const largeContent = `# Copy Full\n\n${lines.join('\n')}`;
-    const app = mountApp({ [largePath]: largeContent }, 'wysiwyg');
+    const twoChunkLines = Array.from({ length: 70 }, (_, i) => `- Item ${i} ${'d'.repeat(16000)}`);
+    const twoChunkContent = twoChunkLines.join('\n\n');
+    const twoChunkPath = 'D:/docs/two-chunks-partial.md';
+    const app = mountApp({ [largePath]: largeContent, [twoChunkPath]: twoChunkContent }, 'wysiwyg');
     await app.start();
     await app.openFile(largePath);
     await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未加载只读预览');
@@ -537,5 +542,52 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
     expect(copyEvent.defaultPrevented).toBe(true);
     expect(setDataSpy).toHaveBeenCalledWith('text/plain', largeContent);
     expect(largeReaderHandle.current?.getSelectedText()).toBe(largeContent);
+
+    // 仅从首段某节点开头到末段中间位置的部分选区，不得被误判为整篇全选
+    await app.openFile(twoChunkPath);
+    await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未加载两段文档');
+    await act(async () => {
+      largeReaderHandle.current?.setScrollTop(1600);
+    });
+    await waitFor(
+      () =>
+        app.host.querySelectorAll('.large-reader-chunk[data-mounted="1"]').length === 2 &&
+        app.host.querySelectorAll('.large-reader-chunk[data-mounted="0"]').length === 0,
+      '两段均应处于挂载状态以验证首末节点精确边界',
+    );
+
+    const mountedChunks = Array.from(
+      app.host.querySelectorAll('.large-reader-body .large-reader-chunk'),
+    );
+    const firstChunkItems = mountedChunks[0].querySelectorAll('li');
+    const lastChunkItems = mountedChunks[mountedChunks.length - 1].querySelectorAll('li');
+    const firstTextNode = (root: Element): Text => {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        if ((node.textContent ?? '').trim().length >= 10) return node as Text;
+        node = walker.nextNode();
+      }
+      throw new Error('未找到正文文本节点');
+    };
+    const startNode = firstTextNode(firstChunkItems[1]);
+    const endNode = firstTextNode(lastChunkItems[0]);
+    const partialRange = document.createRange();
+    partialRange.setStart(startNode, 0);
+    partialRange.setEnd(endNode, 4);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(partialRange);
+    document.dispatchEvent(new Event('selectionchange'));
+
+    const partialSetData = vi.fn();
+    const partialCopy = Object.assign(new Event('copy', { bubbles: true, cancelable: true }), {
+      clipboardData: { setData: partialSetData },
+    });
+    const updatedBody = app.host.querySelector('.large-reader-body') as HTMLElement;
+    updatedBody.dispatchEvent(partialCopy);
+    expect(partialCopy.defaultPrevented).toBe(false);
+    expect(partialSetData).not.toHaveBeenCalled();
+    expect(largeReaderHandle.current?.getSelectedText()).not.toBe(twoChunkContent);
   });
 });

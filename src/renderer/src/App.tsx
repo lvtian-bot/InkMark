@@ -37,6 +37,7 @@ import { tabDisplayName } from './tab-name';
 import { isThemeId, type Heading } from './types';
 import type { WorkspaceEntry } from './types';
 import { editorHandle } from './editor-ref';
+import { extractReadableMarkdownText } from './large-markdown-chunks';
 import { largeReaderHandle, readLargeReaderScrollTop } from './large-reader-ref';
 import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
 import { sourceEditorHandle } from './source-editor-ref';
@@ -519,7 +520,7 @@ function AppContent() {
     (headings: Heading[], content: string) => {
       notifyFindContentChanged();
       setOutline(headings);
-      updateRawWordCount(content, true);
+      updateRawWordCount(extractReadableMarkdownText(content), true);
     },
     [notifyFindContentChanged, setOutline, updateRawWordCount],
   );
