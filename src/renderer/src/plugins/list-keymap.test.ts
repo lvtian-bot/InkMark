@@ -6,7 +6,11 @@ import { commonmark } from '@milkdown/kit/preset/commonmark';
 import { gfm } from '@milkdown/kit/preset/gfm';
 import { editorViewCtx, parserCtx, rootCtx, serializerCtx } from '@milkdown/kit/core';
 import { TextSelection } from '@milkdown/kit/prose/state';
+import { joinBackward } from '@milkdown/kit/prose/commands';
+import { history, undo, closeHistory } from '@milkdown/kit/prose/history';
+import { $prose } from '@milkdown/kit/utils';
 import { listKeymap, shouldLiftListItemOnBackspace } from './list-keymap';
+import { listMarker } from './list-marker';
 
 /// `shouldLiftListItemOnBackspace` 决定「列表项行首 Backspace」是否改为提升出列表，
 /// 而非走默认的合并到前一项。这里覆盖它的全部分支：任务项/普通无序/有序项、项内
@@ -219,6 +223,149 @@ describe('列表键位真实编辑器接缝', () => {
     const nestedList = view.state.doc.toJSON().content[0].content[0].content[1];
     expect(nestedList.content[0].attrs.checked).toBe(false);
     expect(nestedList.content[1].attrs.checked).toBe(true);
+    await instance.destroy();
+  });
+
+  it('无序列表两步退格删掉中间空行后，上下列表自动重新连接', async () => {
+    const { instance, view } = await makeEditor('- A\n- B\n- C');
+    placeCursor(view, 'B');
+
+    // 第一步退格：中间项先变成普通段落，列表暂时断开
+    expect(fireKey(view, { key: 'Backspace' })).toBe(true);
+    expect(view.state.doc.toJSON().content.map((node: any) => node.type)).toEqual([
+      'bullet_list',
+      'paragraph',
+      'bullet_list',
+    ]);
+
+    // 清空中间段落并执行第二步退格（Backspace 删掉空段落）
+    const pPos = textPosition(view, 'B');
+    view.dispatch(view.state.tr.delete(pPos, pPos + 1));
+    expect(fireKey(view, { key: 'Backspace' })).toBe(true);
+
+    const root = view.state.doc.toJSON();
+    expect(root.content.map((node: any) => node.type)).toEqual(['bullet_list']);
+    expect(root.content[0].content).toHaveLength(2);
+    expect(root.content[0].content[0].content[0].content[0].text).toBe('A');
+    expect(root.content[0].content[1].content[0].content[0].text).toBe('C');
+    await instance.destroy();
+  });
+
+  it('有序列表两步退格删掉中间空行后，上下列表自动连接且序号连续', async () => {
+    const { instance, view, serialize } = await makeEditor('1. A\n2. B\n3. C');
+    placeCursor(view, 'B');
+
+    expect(fireKey(view, { key: 'Backspace' })).toBe(true);
+    expect(view.state.doc.toJSON().content.map((node: any) => node.type)).toEqual([
+      'ordered_list',
+      'paragraph',
+      'ordered_list',
+    ]);
+
+    const pPos = textPosition(view, 'B');
+    view.dispatch(view.state.tr.delete(pPos, pPos + 1));
+    expect(fireKey(view, { key: 'Backspace' })).toBe(true);
+
+    const root = view.state.doc.toJSON();
+    expect(root.content.map((node: any) => node.type)).toEqual(['ordered_list']);
+    expect(root.content[0].content).toHaveLength(2);
+    expect(serialize(view.state.doc)).toContain('2. C');
+    await instance.destroy();
+  });
+
+  it('不同类型的列表相邻时不会强行合并', async () => {
+    const { instance, view } = await makeEditor('- A\n\n1. C');
+    // 在无序和有序之间插入空段落再删掉，确认不会合并
+    const secondListPos = view.state.doc.child(0).nodeSize;
+    const emptyP = view.state.schema.nodes.paragraph.create();
+    view.dispatch(view.state.tr.insert(secondListPos, emptyP));
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, secondListPos + 1)),
+    );
+    expect(joinBackward(view.state, (tr) => view.dispatch(tr))).toBe(true);
+
+    expect(view.state.doc.toJSON().content.map((node: any) => node.type)).toEqual([
+      'bullet_list',
+      'ordered_list',
+    ]);
+    await instance.destroy();
+  });
+
+  it('不同标记符号的无序列表相邻时不合并（例如 - 与 *）', async () => {
+    const rootEl = document.createElement('div');
+    document.body.appendChild(rootEl);
+    const editor = Editor.make()
+      .config((ctx) => {
+        ctx.set(rootCtx, rootEl);
+      })
+      .use(commonmark)
+      .use(gfm)
+      .use(listMarker)
+      .use(listKeymap);
+    const instance = await editor.create();
+    const view = instance.ctx.get(editorViewCtx);
+    const doc = instance.ctx.get(parserCtx)('- A\n\n* C');
+    view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content));
+
+    expect(view.state.doc.toJSON().content.map((node: any) => node.type)).toEqual([
+      'bullet_list',
+      'bullet_list',
+    ]);
+    await instance.destroy();
+  });
+
+  it('自动合并后支持撤回恢复到断开前的中间段落状态', async () => {
+    const rootEl = document.createElement('div');
+    document.body.appendChild(rootEl);
+    const editor = Editor.make()
+      .config((ctx) => {
+        ctx.set(rootCtx, rootEl);
+      })
+      .use(commonmark)
+      .use(gfm)
+      .use($prose(() => history()))
+      .use(listKeymap);
+    const instance = await editor.create();
+    const view = instance.ctx.get(editorViewCtx);
+    const doc = instance.ctx.get(parserCtx)('- A\n- \n- C');
+    view.dispatch(
+      view.state.tr
+        .replaceWith(0, view.state.doc.content.size, doc.content)
+        .setMeta('addToHistory', false),
+    );
+
+    // 光标放到第 2 个空列表项的段落内
+    const secondItemParagraphPos = view.state.doc.child(0).child(0).nodeSize + 3;
+    view.dispatch(
+      view.state.tr
+        .setSelection(TextSelection.create(view.state.doc, secondItemParagraphPos))
+        .setMeta('addToHistory', false),
+    );
+
+    // 第一步退格：变空段落
+    expect(fireKey(view, { key: 'Backspace' })).toBe(true);
+    expect(view.state.doc.toJSON().content.map((node: any) => node.type)).toEqual([
+      'bullet_list',
+      'paragraph',
+      'bullet_list',
+    ]);
+
+    // 模拟用户停顿后再按第二次退格，使两次退格成为独立的可撤回步骤
+    view.dispatch(closeHistory(view.state.tr));
+
+    // 第二步退格：删掉空段落并自动重连
+    expect(fireKey(view, { key: 'Backspace' })).toBe(true);
+    const joinedRoot = view.state.doc.toJSON();
+    expect(joinedRoot.content.map((node: any) => node.type)).toEqual(['bullet_list']);
+    expect(joinedRoot.content[0].content).toHaveLength(2);
+
+    // 撤回：恢复到带有中间空段落的断开状态
+    expect(undo(view.state, (tr) => view.dispatch(tr))).toBe(true);
+    expect(view.state.doc.toJSON().content.map((node: any) => node.type)).toEqual([
+      'bullet_list',
+      'paragraph',
+      'bullet_list',
+    ]);
     await instance.destroy();
   });
 });
