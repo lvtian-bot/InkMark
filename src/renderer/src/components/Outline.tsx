@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import type { DragEvent, MouseEvent } from 'react';
 import { ChevronRight } from 'lucide-react';
-import { useStore, selectViewMode } from '../stores/useStore';
+import { isLargeMarkdownTab, useStore, selectViewMode } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import { editorHandle } from '../editor-ref';
+import { largeReaderHandle } from '../large-reader-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
 import {
   computeCollapsibleIds,
@@ -23,6 +24,10 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   const outline = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.outline ?? []);
   const activeTabId = useStore((s) => s.activeTabId);
   const viewMode = useStore(selectViewMode);
+  const isLargeReader = useStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    return selectViewMode(s) === 'wysiwyg' && isLargeMarkdownTab(tab);
+  });
   const [contextMenu, setContextMenu] = useState<{
     tabId: string;
     mode: typeof viewMode;
@@ -79,20 +84,60 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   }, []);
 
   useEffect(() => {
+    const getActiveContainer = (): HTMLElement | null =>
+      isLargeReader
+        ? (largeReaderHandle.current?.getScrollContainer() ?? null)
+        : (editorHandle.current?.getScrollContainer() ?? null);
+
     const handleScroll = (): void => {
       if (tickingRef.current) return;
       tickingRef.current = true;
       requestAnimationFrame(() => {
-        const container = editorHandle.current?.getScrollContainer();
+        const container = getActiveContainer();
         if (!container) {
           tickingRef.current = false;
           return;
         }
-        const domHeadings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        let activeIndex = -1;
         // 判定线以编辑容器顶为基准，与 scrollToPos 的落点同一参照系，
         // 否则点击跳转后目标标题过不了判定线，高亮会落在上一个标题
         const line = container.getBoundingClientRect().top + 80;
+        if (isLargeReader) {
+          if (
+            outline.length > 0 &&
+            container.scrollTop + container.clientHeight >= container.scrollHeight - 2
+          ) {
+            setActiveId(outline[outline.length - 1].id);
+            tickingRef.current = false;
+            return;
+          }
+          const mountedHeadings = container.querySelectorAll<HTMLElement>('[data-heading-pos]');
+          let matchedPos: number | null = null;
+          for (const headingEl of mountedHeadings) {
+            if (headingEl.getBoundingClientRect().top <= line) {
+              const parsed = Number(headingEl.dataset.headingPos);
+              if (Number.isFinite(parsed)) matchedPos = parsed;
+            }
+          }
+          if (matchedPos !== null) {
+            const match = outline.find((item) => item.pos === matchedPos);
+            if (match) setActiveId(match.id);
+          } else if (mountedHeadings.length > 0) {
+            const firstPos = Number(mountedHeadings[0].dataset.headingPos);
+            if (Number.isFinite(firstPos)) {
+              for (let i = outline.length - 1; i >= 0; i--) {
+                if (outline[i].pos < firstPos) {
+                  setActiveId(outline[i].id);
+                  break;
+                }
+              }
+            }
+          }
+          tickingRef.current = false;
+          return;
+        }
+
+        const domHeadings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+        let activeIndex = -1;
         domHeadings.forEach((h, i) => {
           if (h.getBoundingClientRect().top <= line) {
             activeIndex = i;
@@ -109,7 +154,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
       });
     };
 
-    const container = editorHandle.current?.getScrollContainer();
+    const container = getActiveContainer();
     if (container) {
       container.addEventListener('scroll', handleScroll);
       return () => container.removeEventListener('scroll', handleScroll);
@@ -117,7 +162,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
       window.addEventListener('scroll', handleScroll);
       return () => window.removeEventListener('scroll', handleScroll);
     }
-  }, [outline]);
+  }, [isLargeReader, outline]);
 
   const handleClick = (pos: number): void => {
     // 拖动结束后的补发 click 不触发跳转，否则会跳到已被搬走的标题位置。
@@ -127,6 +172,8 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     }
     if (viewMode === 'source') {
       sourceEditorHandle.current?.setSelection(pos, pos);
+    } else if (isLargeReader) {
+      largeReaderHandle.current?.scrollToPos(pos);
     } else {
       editorHandle.current?.scrollToPos(pos);
     }
@@ -147,6 +194,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
   };
 
   const handleContextMenu = (event: MouseEvent, index: number): void => {
+    if (isLargeReader) return;
     event.preventDefault();
     event.stopPropagation();
     const actions = prepareOutlineActions(index);
@@ -269,7 +317,7 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
               onClick={() => handleClick(heading.pos)}
               onContextMenu={(event) => handleContextMenu(event, index)}
               title={heading.text}
-              draggable
+              draggable={!isLargeReader}
               onDragStart={(event) => handleDragStart(event, index)}
               onDragOver={(event) => handleDragOver(event, index)}
               onDragLeave={() => handleDragLeave(index)}

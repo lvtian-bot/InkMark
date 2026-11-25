@@ -1,5 +1,5 @@
-/* 大 Markdown 文档自动以源码模式打开时的顶部提示条：与外部更新提示条同宽对齐，
-   使用中性强调色区分于外部修改告警，不抢编辑区焦点。 */
+/* 大 Markdown 文档只读阅读模式顶部提示条：与外部更新提示条同宽对齐，
+   使用中性强调色，尝试编辑时短暂高亮提醒切到源码模式，不抢阅读焦点。 */
 .large-document-banner {
   display: flex;
   align-items: center;
@@ -15,6 +15,16 @@
   font: 13px var(--font-family);
   text-align: left;
   user-select: none;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.large-document-banner.is-highlighted {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .large-document-banner-dot {

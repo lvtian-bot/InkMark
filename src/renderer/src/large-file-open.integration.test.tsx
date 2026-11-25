@@ -6,6 +6,7 @@ import { LARGE_MARKDOWN_THRESHOLD_BYTES } from '../../shared/openable-document';
 import { clearDiskBaseline } from './disk-baseline';
 import { editorHandle, type EditorHandle } from './editor-ref';
 import { editorStateCache } from './editor-state-cache';
+import { largeReaderHandle } from './large-reader-ref';
 import { sourceEditorHandle } from './source-editor-ref';
 import { resetToggleViewModeThrottleForTesting, selectViewMode, useStore } from './stores/useStore';
 import type { InkMarkAPI } from './types';
@@ -60,7 +61,9 @@ vi.mock('./components/Editor', async () => {
   };
 });
 vi.mock('./components/TabBar', () => ({ TabBar: () => null }));
-vi.mock('./components/Toolbar', () => ({ Toolbar: () => null }));
+vi.mock('./components/Toolbar', () => ({
+  Toolbar: () => <div data-testid="mock-toolbar" />,
+}));
 vi.mock('./components/Outline', () => ({ Outline: () => null }));
 vi.mock('./components/FileTree', () => ({ FileTree: () => null }));
 vi.mock('./components/StartPage', () => ({
@@ -105,6 +108,7 @@ async function waitFor(condition: () => boolean, message: string): Promise<void>
 function mountApp(
   files: Record<string, string>,
   initialViewMode: 'wysiwyg' | 'source' = 'wysiwyg',
+  toolbarVisible = false,
 ) {
   let openFileCallback: ((path: string) => void) | undefined;
   let watchCallback:
@@ -116,6 +120,7 @@ function mountApp(
     getFileMtime: async () => ({ status: 'ok', mtime: 1 }),
     listRecoveryDrafts: async () => [],
     getRecentFiles: async () => [],
+    resolveImageSource: async ({ source }) => ({ status: 'ok', url: source }),
     onFileWatchEvent: (cb) => {
       watchCallback = cb;
       return () => {
@@ -140,7 +145,7 @@ function mountApp(
     autoSave: false,
     language: 'zh-CN',
     viewMode: initialViewMode,
-    toolbarVisible: false,
+    toolbarVisible,
     outlineVisible: false,
     fileTreeVisible: false,
   });
@@ -156,6 +161,7 @@ function mountApp(
       await act(async () => root.render(React.createElement(App)));
       await act(async () => {
         await import('./components/SourceEditor');
+        await import('./components/LargeMarkdownReader');
       });
       await waitFor(
         () => !!editorHandle.current && !!sourceEditorHandle.current && !!openFileCallback,
@@ -186,7 +192,7 @@ function buttonByText(host: HTMLElement, text: string): HTMLButtonElement {
   return button;
 }
 
-describe('大文档自动源码模式与惰性所见即所得加载', () => {
+describe('大文档所见即所得只读预览与源码编辑切换', () => {
   beforeEach(() => {
     editorSpies.setMarkdown.mockClear();
     editorSpies.clear.mockClear();
@@ -208,85 +214,111 @@ describe('大文档自动源码模式与惰性所见即所得加载', () => {
     useStore.setState(initialStore);
   });
 
-  it('超过 1 MB 的 Markdown 文件自动用源码模式秒开、不触发所见即所得解析，且不影响其他普通标签', async () => {
+  it('超过 1 MB 的 Markdown 在所见即所得模式下使用分段只读预览、不加载 Milkdown、隐藏工具栏并同步大纲字数', async () => {
     const largePath = 'D:/docs/huge.md';
     const smallPath = 'D:/docs/small.md';
-    const largeContent = `# Big Title\n\n${'x'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 2048)}`;
+    const largeContent = `# Big Title\n\nFirst paragraph.\n\n## Second Section\n\n${'x'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 2048)}`;
     const smallContent = '# Small Title\n\nNormal body';
 
-    const app = mountApp({ [largePath]: largeContent, [smallPath]: smallContent }, 'wysiwyg');
+    const app = mountApp({ [largePath]: largeContent, [smallPath]: smallContent }, 'wysiwyg', true);
     await app.start();
 
     await app.openFile(largePath);
     await waitFor(
-      () => sourceEditorHandle.current?.getValue() === largeContent,
-      '大文档未加载到源码编辑器',
+      () => !!app.host.querySelector('.large-reader-body') && !!largeReaderHandle.current,
+      '大文档只读预览未挂载',
     );
 
     expect(editorSpies.setMarkdown).not.toHaveBeenCalled();
-    expect(selectViewMode(useStore.getState())).toBe('source');
-    expect(useStore.getState().viewMode).toBe('wysiwyg');
-    expect(app.host.textContent).toContain('当前文档较大，已自动使用源码模式打开以保持流畅。');
+    expect(selectViewMode(useStore.getState())).toBe('wysiwyg');
+    expect(app.host.textContent).toContain(
+      '文档超过 1 MB，所见即所得模式仅支持流畅阅读；如需编辑请切到源码模式。',
+    );
+    expect(app.host.querySelector('[data-testid="mock-toolbar"]')).toBeNull();
+    expect(app.host.querySelector('.large-reader-body h1')?.textContent).toBe('Big Title');
 
     const largeTab = useStore.getState().tabs.find((t) => t.filePath === largePath)!;
-    expect(largeTab.largeDocSourceForced).toBe(true);
-    expect(largeTab.charCount).toBeGreaterThan(LARGE_MARKDOWN_THRESHOLD_BYTES);
+    expect(largeTab.outline.map((h) => h.text)).toEqual(['Big Title', 'Second Section']);
+    expect(largeTab.charCount).toBe(largeContent.length);
 
-    // 再打开普通大小 Markdown 文档，应自动恢复用户的所见即所得偏好
+    // 打开普通大小文档时恢复可编辑的 Milkdown 与工具栏
     await app.openFile(smallPath);
     await waitFor(
       () => editorSpies.setMarkdown.mock.calls.some((call) => call[0] === smallContent),
-      '普通文档未切回所见即所得并装载正文',
+      '普通文档未装载到所见即所得编辑器',
     );
-    expect(selectViewMode(useStore.getState())).toBe('wysiwyg');
-    expect(app.host.textContent).not.toContain('当前文档较大，已自动使用源码模式打开以保持流畅。');
+    expect(app.host.querySelector('.large-reader-body')).toBeNull();
+    expect(app.host.querySelector('[data-testid="mock-toolbar"]')).not.toBeNull();
   });
 
-  it('点击仍用所见即所得打开时弹出确认框：取消留在源码，确认后才装载所见即所得', async () => {
-    const largePath = 'D:/docs/huge-switch.md';
-    const largeContent = `# Big\n\n${'y'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
+  it('点击切到源码编辑直接进入源码修改，切回所见即所得立即反映修改后的只读渲染', async () => {
+    const largePath = 'D:/docs/huge-edit.md';
+    const largeContent = `# Original Title\n\n${'y'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
 
-    const app = mountApp({ [largePath]: largeContent }, 'wysiwyg');
+    const app = mountApp({ [largePath]: largeContent }, 'wysiwyg', true);
     await app.start();
     await app.openFile(largePath);
-    await waitFor(
-      () => sourceEditorHandle.current?.getValue() === largeContent,
-      '大文档未加载到源码编辑器',
-    );
+    await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未进入大文档只读预览');
 
-    // 点击提示条按钮后选择「保持源码模式」
     await act(async () => {
-      buttonByText(app.host, '仍用所见即所得打开').click();
-    });
-    await waitFor(
-      () => app.host.textContent?.includes('切换到所见即所得模式') ?? false,
-      '未弹出大文档切换确认框',
-    );
-    await act(async () => {
-      buttonByText(app.host, '保持源码模式').click();
+      buttonByText(app.host, '切到源码编辑').click();
     });
 
-    expect(editorSpies.setMarkdown).not.toHaveBeenCalled();
-    expect(selectViewMode(useStore.getState())).toBe('source');
-    expect(useStore.getState().tabs[0].largeDocSourceForced).toBe(true);
+    await waitFor(
+      () =>
+        selectViewMode(useStore.getState()) === 'source' &&
+        sourceEditorHandle.current?.getValue() === largeContent,
+      '未切换到源码模式',
+    );
+    expect(app.host.querySelector('.large-document-banner')).toBeNull();
+    expect(app.host.querySelector('[data-testid="mock-toolbar"]')).not.toBeNull();
 
-    // 通过状态栏切换按钮再次触发并确认「继续切换」
+    const updatedContent = largeContent.replace('# Original Title', '# Edited In Source');
+    await act(async () => {
+      sourceEditorHandle.current?.setValue(updatedContent);
+    });
+
     const modeBtn = app.host.querySelector('.status-mode-btn') as HTMLButtonElement;
     await act(async () => {
       modeBtn.click();
     });
+
     await waitFor(
-      () => app.host.textContent?.includes('切换到所见即所得模式') ?? false,
-      '状态栏按钮未触发确认框',
+      () =>
+        selectViewMode(useStore.getState()) === 'wysiwyg' &&
+        app.host.querySelector('.large-reader-body h1')?.textContent === 'Edited In Source',
+      '切回阅读模式后未显示源码修改结果',
     );
+    expect(editorSpies.setMarkdown).not.toHaveBeenCalled();
+  });
+
+  it('在只读预览中输入按键会高亮提示条，按下 Ctrl+F 会自动切到源码模式并打开查找栏', async () => {
+    const largePath = 'D:/docs/huge-keys.md';
+    const largeContent = `# Search Target\n\n${'k'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
+
+    const app = mountApp({ [largePath]: largeContent }, 'wysiwyg');
+    await app.start();
+    await app.openFile(largePath);
+    await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未进入大文档只读预览');
+
+    const readerBody = app.host.querySelector('.large-reader-body') as HTMLElement;
     await act(async () => {
-      buttonByText(app.host, '继续切换').click();
+      readerBody.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    });
+    expect(app.host.querySelector('.large-document-banner')?.className).toContain('is-highlighted');
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }),
+      );
     });
 
-    await waitFor(() => editorSpies.setMarkdown.mock.calls.length === 1, '确认后未装载所见即所得');
-    expect(editorSpies.setMarkdown).toHaveBeenCalledWith(largeContent);
-    expect(selectViewMode(useStore.getState())).toBe('wysiwyg');
-    expect(useStore.getState().tabs[0].largeDocSourceForced).toBe(false);
+    await waitFor(
+      () =>
+        selectViewMode(useStore.getState()) === 'source' &&
+        !!app.host.querySelector('.find-replace-bar'),
+      '按下 Ctrl+F 后未切到源码模式并打开查找栏',
+    );
   });
 
   it('源码模式下打开和切换普通 Markdown 文档不会在后台装载所见即所得编辑器', async () => {
@@ -309,40 +341,49 @@ describe('大文档自动源码模式与惰性所见即所得加载', () => {
     expect(editorSpies.setMarkdown).not.toHaveBeenCalled();
   });
 
-  it('大文档在外部修改缩小到 1 MB 以下后点击重新加载，不会恢复旧源码正文', async () => {
-    const docPath = 'D:/docs/shrunk.md';
-    const largeContent = `# Old\n\n${'z'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
-    const smallContent = '# New Small\n\nUpdated body';
+  it('外部重载跨过 1 MB 边界时，大变小恢复可编辑所见即所得，小变大清空 Milkdown 并切入只读预览', async () => {
+    const docPath = 'D:/docs/boundary.md';
+    const largeContent = `# Old Big\n\n${'z'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
+    const smallContent = '# New Small\n\nEditable now';
+    const hugeAgain = `# Huge Again\n\n${'w'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 2048)}`;
     const files: Record<string, string> = { [docPath]: largeContent };
 
     const app = mountApp(files, 'wysiwyg');
     await app.start();
     await app.openFile(docPath);
-    await waitFor(
-      () => sourceEditorHandle.current?.getValue() === largeContent,
-      '大文档未加载到源码编辑器',
-    );
+    await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未进入大文档只读预览');
 
+    // 大 -> 小：恢复 Milkdown
     await app.triggerExternalChange(docPath, smallContent, 2);
     await waitFor(
       () => app.host.textContent?.includes('重新加载') ?? false,
       '未显示外部更新提示条',
     );
-
     await act(async () => {
       buttonByText(app.host, '重新加载').click();
     });
+    await waitFor(
+      () =>
+        editorHandle.current?.getMarkdown() === smallContent &&
+        !app.host.querySelector('.large-reader-body'),
+      '大变小重载后未恢复可编辑所见即所得',
+    );
 
+    // 小 -> 大：清空 Milkdown 并显示只读预览
+    await app.triggerExternalChange(docPath, hugeAgain, 3);
     await waitFor(
-      () => selectViewMode(useStore.getState()) === 'wysiwyg',
-      '重载缩小文档后未解除源码限制',
+      () => app.host.textContent?.includes('重新加载') ?? false,
+      '未显示第二次外部更新提示条',
     );
+    await act(async () => {
+      buttonByText(app.host, '重新加载').click();
+    });
     await waitFor(
-      () => editorHandle.current?.getMarkdown() === smallContent,
-      '重载后所见即所得编辑器未同步为新正文',
+      () =>
+        app.host.querySelector('.large-reader-body h1')?.textContent === 'Huge Again' &&
+        editorSpies.clear.mock.calls.length >= 1,
+      '小变大重载后未清空旧编辑器并切换只读预览',
     );
-    expect(useStore.getState().tabs[0].sourceContent).toBe(smallContent);
-    expect(useStore.getState().tabs[0].largeDocSourceForced).toBe(false);
   });
 
   it('从普通所见即所得标签切到开始页并新建空白文档时，会清空上一标签编辑状态', async () => {
@@ -357,7 +398,6 @@ describe('大文档自动源码模式与惰性所见即所得加载', () => {
       '前置文档未装载到所见即所得编辑器',
     );
 
-    // 新建开始页标签，再点「新建空白文档」
     await act(async () => {
       useStore.getState().addTab();
     });

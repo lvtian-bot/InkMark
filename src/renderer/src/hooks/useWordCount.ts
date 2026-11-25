@@ -67,5 +67,12 @@ export function useWordCount() {
     [scheduleCount],
   );
 
-  return { wordCount, charCount, updateWordCount, updateSourceWordCount };
+  const updateRawWordCount = useCallback(
+    (text: string, immediate = false) => {
+      scheduleCount(text, immediate);
+    },
+    [scheduleCount],
+  );
+
+  return { wordCount, charCount, updateWordCount, updateSourceWordCount, updateRawWordCount };
 }

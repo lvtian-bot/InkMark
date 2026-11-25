@@ -73,6 +73,7 @@ import { expandToLinkBounds } from '../link-selection';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { ImagePreview } from './ImagePreview';
 import {
+  isLargeMarkdownTab,
   selectAppTheme,
   selectContentTheme,
   selectIsReadOnly,
@@ -935,6 +936,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       activeTab &&
       activeTab.sourceContent &&
       !activeTab.isStartPage &&
+      !isLargeMarkdownTab(activeTab) &&
       selectViewMode(state) === 'wysiwyg'
     ) {
       ed.action(replaceAllAction(activeTab.sourceContent, true));
