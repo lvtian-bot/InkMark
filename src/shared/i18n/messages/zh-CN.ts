@@ -386,6 +386,14 @@ export const messages = {
 
   'externalUpdate.banner': '文件已被外部更新',
 
+  'largeDoc.banner': '当前文档较大，已自动使用源码模式打开以保持流畅。',
+  'largeDoc.switchToWysiwyg': '仍用所见即所得打开',
+  'largeDoc.confirmTitle': '切换到所见即所得模式',
+  'largeDoc.confirmBody':
+    '该文档体积较大（{size}），切换到所见即所得模式可能需要数秒加载并占用较多内存，是否继续？',
+  'largeDoc.confirmContinue': '继续切换',
+  'largeDoc.confirmKeepSource': '保持源码模式',
+
   'image.alt': '图片',
   'image.readFailed': '读取图片失败，请重新选择图片。',
   'image.switchedDuringUpload': '保存图片期间切换或另存了文档，本次图片未插入，请重新操作。',

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   hasOpenableDocumentExtension,
+  isLargeMarkdownContent,
   isMarkdownDocumentPath,
+  LARGE_MARKDOWN_THRESHOLD_BYTES,
   MAX_OPEN_FILE_SIZE_BYTES,
+  measureUtf8ByteLength,
   OPENABLE_DOCUMENT_EXTENSIONS,
   resolveDocumentKind,
 } from './openable-document';
@@ -50,6 +53,23 @@ describe('isMarkdownDocumentPath', () => {
 describe('MAX_OPEN_FILE_SIZE_BYTES', () => {
   it('matches the 10 MB limit referenced by user-facing messages', () => {
     expect(MAX_OPEN_FILE_SIZE_BYTES).toBe(10 * 1024 * 1024);
+  });
+});
+
+describe('LARGE_MARKDOWN_THRESHOLD_BYTES & isLargeMarkdownContent', () => {
+  it('uses 1 MB threshold and accounts for UTF-8 multi-byte characters', () => {
+    expect(LARGE_MARKDOWN_THRESHOLD_BYTES).toBe(1024 * 1024);
+    expect(isLargeMarkdownContent('a'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES))).toBe(false);
+    expect(isLargeMarkdownContent('a'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1))).toBe(true);
+
+    // 中文单字 UTF-8 占 3 字节，40 万字（length < 1M）实际字节已超过 1 MB
+    const cjkOverLimit = '字'.repeat(400_000);
+    expect(measureUtf8ByteLength(cjkOverLimit)).toBe(1_200_000);
+    expect(isLargeMarkdownContent(cjkOverLimit)).toBe(true);
+
+    const cjkUnderLimit = '字'.repeat(300_000);
+    expect(measureUtf8ByteLength(cjkUnderLimit)).toBe(900_000);
+    expect(isLargeMarkdownContent(cjkUnderLimit)).toBe(false);
   });
 });
 

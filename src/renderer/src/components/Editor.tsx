@@ -20,7 +20,6 @@ import {
 import { gfm, toggleStrikethroughCommand, createTable } from '@milkdown/kit/preset/gfm';
 import { history, undoCommand, redoCommand } from '@milkdown/kit/plugin/history';
 import { nord } from '@milkdown/theme-nord';
-import { listener, listenerCtx } from '@milkdown/plugin-listener';
 import { block } from '@milkdown/plugin-block';
 import { clipboard } from '@milkdown/plugin-clipboard';
 import { upload, uploadConfig } from '@milkdown/plugin-upload';
@@ -62,6 +61,8 @@ import { frontmatter } from '../plugins/frontmatter';
 import { listMarker, listMarkerHandler } from '../plugins/list-marker';
 import { breaks } from '../plugins/breaks';
 import { cellBrRemark, cellAwareHardbreak } from '../plugins/table-cell-breaks';
+import { fastSerializer } from '../plugins/fast-serializer';
+import { createDocChangeListener } from '../plugins/doc-change-listener';
 import { tableEnterKeymap } from '../plugins/table-enter-keymap';
 import { tableCopyPlugin, copyTableAtPos, selectTableAtPos } from '../plugins/table-copy';
 import { CellSelection, cellAround } from '@milkdown/kit/prose/tables';
@@ -378,18 +379,6 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           // 代码块内仍禁止。
           ctx.update(hardbreakFilterNodes.key, (nodes) => nodes.filter((name) => name !== 'table'));
         })
-        .config((ctx) => {
-          const manager = ctx.get(listenerCtx);
-          manager.updated((ctx, doc) => {
-            if (!armedRef.current || selectViewMode(useStore.getState()) !== 'wysiwyg') return;
-            // listener 会延迟 200ms 上报。切换/加载后的旧事务不能反写当前正文，
-            // 已程序加载或上报过的正文也无需再次序列化。
-            const currentDoc = ctx.get(editorViewCtx).state.doc;
-            if (!doc.eq(currentDoc) || syncedDocRef.current?.eq(doc)) return;
-            syncedDocRef.current = doc;
-            onDocChangeRef.current(doc);
-          });
-        })
         .use((ctx) => {
           // theme-nord 把 nord 的类型声明为 (ctx) => void，与 MilkdownPlugin
           // 期望的返回值不匹配，这里包一层使其符合插件类型
@@ -416,7 +405,18 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         .use(tableCopyPlugin)
         .use(linkGesture)
         .use(history)
-        .use(listener)
+        .use(fastSerializer)
+        .use(
+          createDocChangeListener((ctx, doc) => {
+            if (!armedRef.current || selectViewMode(useStore.getState()) !== 'wysiwyg') return;
+            // 防抖 200ms 后上报。切换/加载后的旧事务不能反写当前正文，
+            // 已程序加载或上报过的正文也无需再次序列化。
+            const currentDoc = ctx.get(editorViewCtx).state.doc;
+            if (!doc.eq(currentDoc) || syncedDocRef.current?.eq(doc)) return;
+            syncedDocRef.current = doc;
+            onDocChangeRef.current(doc);
+          }),
+        )
         .use(findReplacePlugin)
         .use(findScopePlugin)
         .use(block)
@@ -510,9 +510,18 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           ed.action(replaceAllAction(md, true));
           const view = ed.ctx.get(editorViewCtx);
           syncedDocRef.current = view.state.doc;
-          onDocChangeRef.current(view.state.doc);
+          onDocInitRef.current(view.state.doc);
         } catch (e) {
           console.error('setMarkdown error:', e);
+        }
+      },
+      clear: () => {
+        try {
+          ed.action(replaceAllAction('', true));
+          const view = ed.ctx.get(editorViewCtx);
+          syncedDocRef.current = view.state.doc;
+        } catch (e) {
+          console.error('clear error:', e);
         }
       },
       replaceDocumentUndoable: (md: string) => {
@@ -873,7 +882,12 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
     // Sync editor with active tab content (handles cold-start file open race)
     const state = useStore.getState();
     const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
-    if (activeTab && activeTab.sourceContent) {
+    if (
+      activeTab &&
+      activeTab.sourceContent &&
+      !activeTab.isStartPage &&
+      selectViewMode(state) === 'wysiwyg'
+    ) {
       ed.action(replaceAllAction(activeTab.sourceContent, true));
       const view = ed.ctx.get(editorViewCtx);
       onDocInitRef.current(view.state.doc);

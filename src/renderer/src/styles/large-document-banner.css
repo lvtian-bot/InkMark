@@ -1,0 +1,59 @@
+/* 大 Markdown 文档自动以源码模式打开时的顶部提示条：与外部更新提示条同宽对齐，
+   使用中性强调色区分于外部修改告警，不抢编辑区焦点。 */
+.large-document-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 24px);
+  max-width: var(--editor-max-width);
+  margin: 8px auto 0;
+  padding: 6px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-primary));
+  color: var(--text-primary);
+  font: 13px var(--font-family);
+  text-align: left;
+  user-select: none;
+}
+
+.large-document-banner-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.large-document-banner-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.large-document-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.large-document-banner-btn {
+  padding: 3px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font: 13px var(--font-family);
+  cursor: pointer;
+}
+
+.large-document-banner-btn:hover {
+  border-color: var(--accent);
+}
+
+.large-document-banner-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

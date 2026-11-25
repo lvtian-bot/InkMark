@@ -15,7 +15,13 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
 import { resolveDocumentKind } from '../../../shared/openable-document';
-import { selectAppTheme, selectContentTheme, tabDocumentPath, useStore } from '../stores/useStore';
+import {
+  selectAppTheme,
+  selectContentTheme,
+  selectViewMode,
+  tabDocumentPath,
+  useStore,
+} from '../stores/useStore';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { sourceBackspaceKeymap, sourceListKeymap } from '../source-list-keymap';
 import { serializeDoc } from '../source-document';
@@ -93,6 +99,8 @@ const findScopeField = StateField.define<DecorationSet>({
 
 interface SourceEditorProps {
   onChange: (state: EditorState) => void;
+  /** 懒加载首次挂载且以源码模式打开非空文档时同步一次大纲与字数。 */
+  onInit?: (state: EditorState) => void;
   /** Ctrl/Cmd+点击链接时回调（href 为链接的原始地址）。 */
   onFollowLink: (href: string) => void;
 }
@@ -132,12 +140,13 @@ const fadedMarksHighlight = HighlightStyle.define([
   // 列表项文字（tags.list）保持正文色，不加样式
 ]);
 
-export function SourceEditor({ onChange, onFollowLink }: SourceEditorProps) {
+export function SourceEditor({ onChange, onInit, onFollowLink }: SourceEditorProps) {
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  const onInitRef = useRef(onInit);
   // 抑制标记：setValue / replaceRangeQuiet 等程序化写入不应触发 onChange。
   const suppressRef = useRef(false);
   // 链接跳转回调容器：扩展内经它取最新回调。
@@ -154,6 +163,10 @@ export function SourceEditor({ onChange, onFollowLink }: SourceEditorProps) {
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onInitRef.current = onInit;
+  }, [onInit]);
 
   useEffect(() => {
     followLinkRef.current = onFollowLink;
@@ -227,6 +240,15 @@ export function SourceEditor({ onChange, onFollowLink }: SourceEditorProps) {
 
     const view = new EditorView({ state, parent: hostRef.current });
     viewRef.current = view;
+
+    if (
+      initialTab &&
+      !initialTab.isStartPage &&
+      initialDoc &&
+      selectViewMode(useStore.getState()) === 'source'
+    ) {
+      onInitRef.current?.(state);
+    }
 
     sourceEditorHandle.current = {
       getValue: () => serializeDoc(view.state),
