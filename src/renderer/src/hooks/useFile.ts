@@ -16,7 +16,7 @@ import {
   resolveConflictChoice,
 } from '../file-conflict-decision';
 import { isPathInside } from '../../../shared/file-tree-follow';
-import { resolveDocumentKind } from '../../../shared/openable-document';
+import { isLargeMarkdownContent, resolveDocumentKind } from '../../../shared/openable-document';
 import type { EditorState as SourceEditorState } from '@codemirror/state';
 import type {
   FileResult,
@@ -73,7 +73,6 @@ export function useFile(
   const setDirty = useStore((s) => s.setDirty);
   const autoSave = useStore((s) => s.autoSave);
 
-  const suppressDirtyRef = useRef(false);
   const checkingRef = useRef(false);
   const pendingFullCheckRef = useRef(false);
   const pendingWatchEventsRef = useRef(new Map<string, FileWatchEvent>());
@@ -126,21 +125,28 @@ export function useFile(
       autoSaveSuppressedTabIdsRef.current.delete(tabId);
       if (rewritten) {
         editorStateCache.dispose(tabId);
+        const isTextDoc = resolveDocumentKind(result.path) === 'text';
+        const largeDocSourceForced =
+          !isTextDoc && current.largeDocSourceForced && isLargeMarkdownContent(result.content);
+        if (largeDocSourceForced !== current.largeDocSourceForced) {
+          updateTab(tabId, { largeDocSourceForced });
+        }
         if (state.activeTabId === tabId) {
-          if (selectViewMode(useStore.getState()) === 'source') {
-            const isTextDoc = resolveDocumentKind(result.path) === 'text';
+          const prevMode = selectViewMode(state);
+          const activeMode = selectViewMode(useStore.getState());
+          if (prevMode === 'source') {
             sourceEditorHandle.current?.setValue(result.content, {
               preserveLineSeparator: isTextDoc,
               plainText: isTextDoc,
             });
-            const loaded = sourceEditorHandle.current?.getEditorState();
-            if (loaded) refreshSourceMetadata(loaded);
-          } else {
-            suppressDirtyRef.current = true;
-            if (!stateRef.current.setMarkdown(result.content)) suppressDirtyRef.current = false;
+            if (activeMode === 'source') {
+              const loaded = sourceEditorHandle.current?.getEditorState();
+              if (loaded) refreshSourceMetadata(loaded);
+            }
+          } else if (activeMode === 'wysiwyg') {
+            stateRef.current.setMarkdown(result.content);
           }
         }
-        // 所见即所得装载会同步回调并重新序列化；保留主进程实际写出的原文排版。
         updateTab(tabId, { sourceContent: result.content, isDirty: false });
       }
       return true;
@@ -341,25 +347,22 @@ export function useFile(
       ) {
         editorStateCache.dispose(activeTab.id);
         const isTextDoc = resolveDocumentKind(result.path) === 'text';
-        // 纯文本/代码文件不装入所见即所得编辑器（序列化可能改动内容），
-        // 也不依赖其迟到通知清除抑制标志。
-        if (!isTextDoc) {
-          suppressDirtyRef.current = true;
-          if (!s.setMarkdown(result.content)) {
-            suppressDirtyRef.current = false;
-          }
-        }
+        const largeDocSourceForced = !isTextDoc && isLargeMarkdownContent(result.content);
+        const nextMode =
+          isTextDoc || largeDocSourceForced ? 'source' : useStore.getState().viewMode;
         updateTab(activeTab.id, {
           filePath: result.path,
           fileName: result.path.split(/[/\\]/).pop()!,
           sourceContent: result.content,
           fileMtime: result.mtime,
           isStartPage: false,
+          largeDocSourceForced,
         });
-        // 偏好已是源码模式时必须在此处直接装载：复用标签不改变活动标签，
-        // 生效模式不会翻转，模式切换 effect 不会运行，错过装载会展示空正文，
-        // 首次编辑会把空内容当成原文覆盖保存。
-        if (s.viewMode === 'source') {
+        if (nextMode === 'wysiwyg') {
+          s.setMarkdown(result.content);
+        } else if (s.viewMode === 'source') {
+          // 偏好已是源码模式时必须在此处直接装载：复用标签不改变活动标签，
+          // 生效模式不会翻转，模式切换 effect 不会运行。
           sourceEditorHandle.current?.setValue(result.content, {
             preserveLineSeparator: isTextDoc,
             plainText: isTextDoc,
@@ -654,10 +657,6 @@ export function useFile(
   }, [prepareToClose]);
 
   const markDirty = useCallback(() => {
-    if (suppressDirtyRef.current) {
-      suppressDirtyRef.current = false;
-      return;
-    }
     setDirty(true);
     // 用户开始编辑后，等待重载的提示条不再有意义——继续显示会诱使用户点击
     // 而丢弃刚输入的未保存内容；之后的外部改动会走脏标签的冲突弹窗。
@@ -728,31 +727,37 @@ export function useFile(
       const liveTab = useStore.getState().tabs.find((item) => item.id === tabId);
       if (!liveTab || liveTab.filePath !== tab.filePath) return 'missing';
       editorStateCache.dispose(tabId);
-      // 文本/代码文件不装入隐藏的所见即所得编辑器（整篇解析只是开销），
-      // 也没有它的迟到通知需要抑制。
       const isTextDoc = resolveDocumentKind(tab.filePath) === 'text';
-      if (!isTextDoc) suppressDirtyRef.current = true;
-      if (tabId === current.activeTabId) {
-        if (!isTextDoc && !current.setMarkdown(result.content)) {
-          suppressDirtyRef.current = false;
-        }
-        if (current.viewMode === 'source') {
-          sourceEditorHandle.current?.setValue(result.content, {
-            preserveLineSeparator: isTextDoc,
-            plainText: isTextDoc,
-          });
-          const loaded = sourceEditorHandle.current?.getEditorState();
-          if (loaded) refreshSourceMetadata(loaded);
-        }
-      } else if (!isTextDoc) {
-        suppressDirtyRef.current = false;
-      }
+      const nextLarge = !isTextDoc && isLargeMarkdownContent(result.content);
+      const nextLargeForced =
+        nextLarge &&
+        (liveTab.largeDocSourceForced ||
+          current.viewMode === 'source' ||
+          !isLargeMarkdownContent(liveTab.sourceContent));
       updateTab(tabId, {
         sourceContent: result.content,
         fileMtime: result.mtime,
         isDirty: false,
         externalUpdatePending: false,
+        largeDocSourceForced: nextLargeForced,
       });
+      if (tabId === current.activeTabId) {
+        const nextMode = selectViewMode(useStore.getState());
+        if (current.viewMode === 'source') {
+          // 无论重载后留在源码还是因缩小而切回所见即所得，都先同步源码编辑器，
+          // 防止随后的模式切换 effect 读回旧正文覆盖磁盘最新版本。
+          sourceEditorHandle.current?.setValue(result.content, {
+            preserveLineSeparator: isTextDoc,
+            plainText: isTextDoc,
+          });
+          if (nextMode === 'source') {
+            const loaded = sourceEditorHandle.current?.getEditorState();
+            if (loaded) refreshSourceMetadata(loaded);
+          }
+        } else if (nextMode === 'wysiwyg') {
+          current.setMarkdown(result.content);
+        }
+      }
       setDiskBaseline(tabId, result.content);
       missingNotifiedTabIdsRef.current.delete(tabId);
       return 'ok';

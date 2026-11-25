@@ -74,6 +74,22 @@ export type DocumentKind = 'markdown' | 'text';
 /** 打开文件的大小上限。超过此值的文件拒绝打开（提示文案与此保持一致：10 MB）。 */
 export const MAX_OPEN_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
+/** 超过此体积的 Markdown 文档默认先用源码模式打开，避免全量解析与 DOM 渲染卡顿。 */
+export const LARGE_MARKDOWN_THRESHOLD_BYTES = 1 * 1024 * 1024;
+
+const utf8Encoder = new TextEncoder();
+
+export function measureUtf8ByteLength(content: string): number {
+  return utf8Encoder.encode(content).byteLength;
+}
+
+/** 判断正文按 UTF-8 编码后的体积是否超过大文档阈值。 */
+export function isLargeMarkdownContent(content: string): boolean {
+  if (content.length * 3 <= LARGE_MARKDOWN_THRESHOLD_BYTES) return false;
+  if (content.length > LARGE_MARKDOWN_THRESHOLD_BYTES) return true;
+  return measureUtf8ByteLength(content) > LARGE_MARKDOWN_THRESHOLD_BYTES;
+}
+
 /** 判断文件名/路径是否落在可打开文档的扩展名白名单内（大小写不敏感）。 */
 export function hasOpenableDocumentExtension(name: string): boolean {
   const lower = name.toLowerCase();

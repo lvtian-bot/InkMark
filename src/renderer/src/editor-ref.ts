@@ -12,6 +12,8 @@ export interface EditorHandle {
   getPendingMarkdown: () => string | null;
   getSelectedMarkdown: () => string;
   setMarkdown: (md: string) => void;
+  /** 清空隐藏所见即所得编辑器内容以释放大文档内存，不触发文档变更回调。 */
+  clear: () => void;
   /// 以整篇替换的方式写入正文，作为一次可撤销编辑提交（不清空撤销历史）。
   replaceDocumentUndoable: (md: string) => void;
   skipFrontmatterIfSelected: () => void;

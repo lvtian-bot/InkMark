@@ -11,6 +11,7 @@ import { StartPage } from './components/StartPage';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { FindReplaceBar } from './components/FindReplaceBar';
 import { ExternalUpdateBanner } from './components/ExternalUpdateBanner';
+import { LargeDocumentBanner } from './components/LargeDocumentBanner';
 import { ExportProgressDialog } from './components/ExportProgressDialog';
 import { useTheme } from './hooks/useTheme';
 import { useEditorFont } from './hooks/useEditorFont';
@@ -23,7 +24,7 @@ import { useResizablePanel } from './hooks/useResizablePanel';
 import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
 import { useWordCount } from './hooks/useWordCount';
-import { tabDocumentPath, useStore } from './stores/useStore';
+import { tabDocumentPath, resolveTabViewMode, selectViewMode, useStore } from './stores/useStore';
 import { I18nProvider, t as tt, useI18n } from './i18n';
 import { tabDisplayName } from './tab-name';
 import { isThemeId } from './types';
@@ -38,9 +39,13 @@ import { followDocumentLinkHref } from './document-link';
 import { comboMatchesEvent } from './shortcut-recorder';
 import { serializeDoc } from './source-document';
 import { EDITOR_BUILTIN_COMBOS, EDITOR_SHORTCUT_ACTIONS } from '../../shared/shortcuts';
-import { hasOpenableDocumentExtension, resolveDocumentKind } from '../../shared/openable-document';
+import {
+  hasOpenableDocumentExtension,
+  isLargeMarkdownContent,
+  measureUtf8ByteLength,
+  resolveDocumentKind,
+} from '../../shared/openable-document';
 import { runEditorCommand } from './editor-commands';
-import { selectViewMode } from './stores/useStore';
 import type { MessageKey } from '../../shared/i18n';
 import {
   findTabsUnderPath,
@@ -122,6 +127,9 @@ function AppContent() {
   const externalUpdatePending = useStore(
     (s) => s.tabs.find((t) => t.id === s.activeTabId)?.externalUpdatePending ?? false,
   );
+  const activeTabLargeDocForced = useStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.largeDocSourceForced ?? false,
+  );
   const viewMode = useStore(selectViewMode);
   const activeTabIsText = useStore((s) => {
     const tab = s.tabs.find((item) => item.id === s.activeTabId);
@@ -163,10 +171,38 @@ function AppContent() {
   const setMarkdown = useCallback((md: string) => {
     if (!editorHandle.current) return false;
     editorHandle.current.setMarkdown(md);
-    // useFile 以返回值判断加载通知是否已消费 suppressDirty。隐藏模式的
-    // 通知被拦下时返回 false，不能让下一次真实源码输入被误当成加载事件。
     return selectViewMode(useStore.getState()) === 'wysiwyg' && !switchingRef.current;
   }, []);
+
+  const handleRequestLargeDocWysiwyg = useCallback(async () => {
+    const state = useStore.getState();
+    const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+    if (!activeTab || !activeTab.largeDocSourceForced) return;
+    if (resolveDocumentKind(tabDocumentPath(activeTab)) === 'text') return;
+    const size = `${(measureUtf8ByteLength(activeTab.sourceContent) / (1024 * 1024)).toFixed(1)} MB`;
+    const choice = await confirmDialog(
+      t('largeDoc.confirmTitle'),
+      t('largeDoc.confirmBody', { size }),
+      [t('largeDoc.confirmContinue'), t('largeDoc.confirmKeepSource')],
+    );
+    if (choice !== 0) return;
+    const live = useStore.getState();
+    const liveTab = live.tabs.find((tab) => tab.id === activeTab.id);
+    if (!liveTab || live.activeTabId !== activeTab.id) return;
+    updateTab(activeTab.id, { largeDocSourceForced: false });
+    live.setViewMode('wysiwyg');
+  }, [t, updateTab]);
+
+  const handleToggleViewMode = useCallback(() => {
+    const state = useStore.getState();
+    const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
+    if (activeTab && resolveDocumentKind(tabDocumentPath(activeTab)) === 'text') return;
+    if (activeTab?.largeDocSourceForced) {
+      void handleRequestLargeDocWysiwyg();
+      return;
+    }
+    toggleViewMode();
+  }, [handleRequestLargeDocWysiwyg, toggleViewMode]);
 
   const refreshSourceMetadata = useCallback(
     (state: SourceEditorState) => {
@@ -474,10 +510,11 @@ function AppContent() {
 
   const handleDocInit = useCallback(
     (doc: unknown) => {
+      notifyFindContentChanged();
       updateOutline(doc);
       updateWordCount(doc, true);
     },
-    [updateOutline, updateWordCount],
+    [notifyFindContentChanged, updateOutline, updateWordCount],
   );
 
   const handleSourceChange = useCallback(
@@ -506,11 +543,6 @@ function AppContent() {
       ]);
       return;
     }
-    if (!editorHandle.current) {
-      prevTabIdRef.current = activeTabId;
-      return;
-    }
-
     const oldTabId = prevTabIdRef.current;
     const newTabId = activeTabId;
     const newTab = useStore.getState().tabs.find((t) => t.id === newTabId);
@@ -520,39 +552,44 @@ function AppContent() {
     }
 
     // 目标模式按目标标签同步推导：布局 effect 早于 viewModeRef 的被动更新，
-    // 直接读 ref 会拿到旧模式，把纯文本内容先装进所见即所得再经序列化搬运。
-    const targetMode =
-      newTab && resolveDocumentKind(tabDocumentPath(newTab)) === 'text'
-        ? 'source'
-        : useStore.getState().viewMode;
-    // 旧标签此前展示用的模式：切到纯文本标签会强制源码，两个模式可能不同，
+    // 直接读 ref 会拿到旧模式，把受限标签内容先装进所见即所得再经序列化搬运。
+    const targetMode = resolveTabViewMode(newTab, useStore.getState().viewMode);
+    // 旧标签此前展示用的模式：切到纯文本或大文档保护标签会强制源码，两个模式可能不同，
     // 此时两个编辑器的内容分属新旧两个标签，捕获必须按展示模式取。
     const captureMode = displayedModeRef.current;
+    if (targetMode === 'wysiwyg' && !editorHandle.current) {
+      prevTabIdRef.current = activeTabId;
+      return;
+    }
 
+    let oldTabWasLarge = false;
     if (oldTabId) {
       const oldTab = useStore.getState().tabs.find((item) => item.id === oldTabId);
+      const oldTabSkippedWysiwyg =
+        !!oldTab &&
+        (resolveDocumentKind(tabDocumentPath(oldTab)) === 'text' || oldTab.largeDocSourceForced);
       const scrollTop =
         captureMode === 'source'
           ? (sourceEditorHandle.current?.getScrollTop() ?? 0)
-          : editorHandle.current.getScrollTop();
+          : (editorHandle.current?.getScrollTop() ?? 0);
       // 句柄未就绪（懒加载未完成）不等于正文为空：回退用标签已存的正文，
       // 否则启动连开多个文件会把尚未展示标签的正文清空。
       const sourceContent =
         captureMode === 'source'
           ? (sourceEditorHandle.current?.getValue() ?? oldTab?.sourceContent ?? '')
-          : oldTab && resolveDocumentKind(tabDocumentPath(oldTab)) === 'text'
-            ? // 文本旧标签的内容从未装入所见即所得编辑器（批量打开时展示
-              // 模式也可能尚未切换）：其中的空白不代表正文，回退用已存正文。
+          : oldTabSkippedWysiwyg
+            ? // 文本或源码保护旧标签的内容从未装入所见即所得编辑器：其中的空白不代表正文，回退用已存正文。
               (oldTab.sourceContent ?? '')
-            : editorHandle.current.getMarkdown();
+            : (editorHandle.current?.getMarkdown() ?? oldTab?.sourceContent ?? '');
+      oldTabWasLarge = isLargeMarkdownContent(sourceContent);
       if (captureMode === 'source') {
         const state = sourceEditorHandle.current?.getEditorState();
         if (state) editorStateCache.capture(oldTabId, 'source', sourceContent, state);
       } else {
-        const state = editorHandle.current.getEditorState();
-        // 文本旧标签不同步所见即所得缓存：其中的空白状态会在类型切回时
-        // 被误恢复成编辑器内容。
-        if (state && oldTab && resolveDocumentKind(tabDocumentPath(oldTab)) !== 'text') {
+        const state = editorHandle.current?.getEditorState();
+        // 文本/源码保护旧标签以及超大文档不同步所见即所得缓存：
+        // 前者空白会误恢复，后者保留完整 ProseMirror 状态与 DOM 占用过多内存。
+        if (state && oldTab && !oldTabSkippedWysiwyg && !oldTabWasLarge) {
           editorStateCache.capture(oldTabId, 'wysiwyg', sourceContent, state);
         }
       }
@@ -561,16 +598,18 @@ function AppContent() {
 
     switchingRef.current = true;
 
-    // 文本/代码目标不装载隐藏的所见即所得编辑器：内容不会被展示，
-    // 整篇 Markdown 解析只是开销，接近上限的大文件会拖慢切换。
-    if (resolveDocumentKind(tabDocumentPath(newTab)) !== 'text') {
+    // 仅在目标标签实际使用所见即所得模式时才装载 Milkdown；源码模式下及开始页
+    // 不预先解析 Markdown，避免大文件在后台白白耗时与占内存。
+    if (targetMode === 'wysiwyg' && !newTab.isStartPage) {
       const savedState = editorStateCache.restore(newTabId, 'wysiwyg', newTab.sourceContent);
       if (savedState) {
-        editorHandle.current.setEditorState(savedState);
+        editorHandle.current?.setEditorState(savedState);
       } else {
-        editorHandle.current.setMarkdown(newTab.sourceContent);
+        editorHandle.current?.setMarkdown(newTab.sourceContent);
       }
-      editorHandle.current.skipFrontmatterIfSelected();
+      editorHandle.current?.skipFrontmatterIfSelected();
+    } else if (newTab.isStartPage || (captureMode === 'wysiwyg' && oldTabWasLarge)) {
+      editorHandle.current?.clear();
     }
 
     if (targetMode === 'source') {
@@ -593,8 +632,8 @@ function AppContent() {
         updateSourceOutline(sourceState);
         updateSourceWordCount(sourceState, true);
       }
-    } else {
-      const doc = editorHandle.current.getEditorState()?.doc;
+    } else if (!newTab.isStartPage) {
+      const doc = editorHandle.current?.getEditorState()?.doc;
       if (doc) {
         updateOutline(doc);
         updateWordCount(doc, true);
@@ -648,23 +687,32 @@ function AppContent() {
     if (viewMode === 'source') {
       const tab = useStore.getState().tabs.find((item) => item.id === tabId);
       const tabIsText = !!tab && resolveDocumentKind(tabDocumentPath(tab)) === 'text';
-      const md = tabIsText ? tab.sourceContent : (editorHandle.current?.getMarkdown() ?? '');
+      const tabSkippedWysiwyg = !!tab && (tabIsText || tab.largeDocSourceForced);
+      const md = tabSkippedWysiwyg
+        ? tab.sourceContent
+        : (editorHandle.current?.getMarkdown() ?? '');
       const state = editorHandle.current?.getEditorState();
-      // 文本文档从未装载所见即所得编辑器：其当前状态（可能为空白）不代表正文，
-      // 缓存它会在类型切回 Markdown 时被当作有效状态恢复出空白编辑器。
-      if (state && !tabIsText) editorStateCache.capture(tabId, 'wysiwyg', md, state);
+      const largeContent = isLargeMarkdownContent(md);
+      // 未装载所见即所得编辑器的标签以及超大文档不缓存所见即所得状态，并及时清空超大 DOM 释放内存。
+      if (state && !tabSkippedWysiwyg && !largeContent) {
+        editorStateCache.capture(tabId, 'wysiwyg', md, state);
+      }
+      if (largeContent) {
+        editorHandle.current?.clear();
+      }
       setSourceContent(md);
       const sourceState = editorStateCache.restore(tabId, 'source', md);
       if (sourceState) {
         sourceEditorHandle.current?.setEditorState(sourceState);
       } else {
         sourceEditorHandle.current?.setValue(md, {
-          preserveLineSeparator: tab ? resolveDocumentKind(tabDocumentPath(tab)) === 'text' : false,
-          plainText: tab ? resolveDocumentKind(tabDocumentPath(tab)) === 'text' : false,
+          preserveLineSeparator: tabIsText,
+          plainText: tabIsText,
         });
       }
     } else {
-      const md = sourceEditorHandle.current?.getValue() ?? '';
+      const tab = useStore.getState().tabs.find((item) => item.id === tabId);
+      const md = sourceEditorHandle.current?.getValue() ?? tab?.sourceContent ?? '';
       const state = sourceEditorHandle.current?.getEditorState();
       if (state) editorStateCache.capture(tabId, 'source', md, state);
       setSourceContent(md);
@@ -741,7 +789,11 @@ function AppContent() {
     // （Markdown 文件丢高亮/大纲，文本文件丢 CRLF 分隔符）。先前的作废放在
     // 模式判断之后，所见即所得偏好的「文本→Markdown」方向会漏掉。
     editorStateCache.dispose(tab.id);
-    if (selectViewMode(state) !== 'source') return;
+    const largeForced = !isText && isLargeMarkdownContent(tab.sourceContent);
+    if (largeForced && !tab.largeDocSourceForced) {
+      updateTab(tab.id, { largeDocSourceForced: true });
+    }
+    if (selectViewMode(useStore.getState()) !== 'source') return;
     sourceEditorHandle.current?.setValue(tab.sourceContent, {
       preserveLineSeparator: isText,
       plainText: isText,
@@ -750,7 +802,7 @@ function AppContent() {
     if (loaded) refreshSourceMetadata(loaded);
     // 依赖纳入活动标签：同类型标签切换也要更新记录，否则后续重命名
     // 会被误判为跨标签切换而跳过重建。
-  }, [activeTabId, activeTabIsText, refreshSourceMetadata]);
+  }, [activeTabId, activeTabIsText, refreshSourceMetadata, updateTab]);
 
   useEffect(() => {
     if (window.inkmark.syncOutlineVisible) {
@@ -824,7 +876,7 @@ function AppContent() {
       });
     }
     if (window.inkmark.onMenuToggleSource) {
-      window.inkmark.onMenuToggleSource(() => toggleViewMode());
+      window.inkmark.onMenuToggleSource(() => handleToggleViewMode());
     }
     if (window.inkmark.onMenuToggleOutline) {
       window.inkmark.onMenuToggleOutline(() => {
@@ -905,7 +957,7 @@ function AppContent() {
     runExport,
     setFileTreeVisible,
     setThemeId,
-    toggleViewMode,
+    handleToggleViewMode,
   ]);
 
   useEffect(() => {
@@ -993,7 +1045,7 @@ function AppContent() {
           void fileOps.newBlankDoc();
           useStore.getState().setViewMode('source');
         } else {
-          toggleViewMode();
+          handleToggleViewMode();
         }
         return;
       }
@@ -1147,7 +1199,7 @@ function AppContent() {
     openFindReplace,
     setFileTreeVisible,
     shortcuts,
-    toggleViewMode,
+    handleToggleViewMode,
   ]);
 
   useEffect(() => {
@@ -1268,6 +1320,17 @@ function AppContent() {
     }
   }, [isStartPage, closeFileTreeRoot]);
 
+  const handleCreateBlankFromStartPage = useCallback(() => {
+    setStartPage(false);
+    if (selectViewMode(useStore.getState()) === 'wysiwyg') {
+      editorHandle.current?.setMarkdown('');
+    } else {
+      sourceEditorHandle.current?.setValue('');
+      const loaded = sourceEditorHandle.current?.getEditorState();
+      if (loaded) refreshSourceMetadata(loaded);
+    }
+  }, [refreshSourceMetadata, setStartPage]);
+
   const outlinePanel = useResizablePanel({
     width: outlineWidth,
     onWidthChange: setOutlineWidth,
@@ -1324,7 +1387,7 @@ function AppContent() {
         <main className={`editor-main toolbar-width-${toolbarWidth}`}>
           {isStartPage && (
             <StartPage
-              onCreateBlank={() => setStartPage(false)}
+              onCreateBlank={handleCreateBlankFromStartPage}
               onOpenFile={() => void fileOps.openFile()}
               onOpenFolder={(path) => {
                 if (path == null) return fileTree.openFolderDialog();
@@ -1341,6 +1404,9 @@ function AppContent() {
           {!isStartPage && externalUpdatePending && (
             <ExternalUpdateBanner onReload={fileOps.reloadActiveTab} />
           )}
+          {!isStartPage && activeTabLargeDocForced && (
+            <LargeDocumentBanner onSwitchToWysiwyg={() => void handleRequestLargeDocWysiwyg()} />
+          )}
           {!isStartPage && isFindReplaceOpen && <FindReplaceBar controller={findReplace} />}
           <div
             className={`editor-view ${viewMode === 'wysiwyg' && !isStartPage ? '' : 'is-hidden'}`}
@@ -1355,10 +1421,17 @@ function AppContent() {
             className={`source-view ${viewMode === 'source' && !isStartPage ? '' : 'is-hidden'}`}
           >
             <Suspense fallback={null}>
-              <SourceEditor onChange={handleSourceChange} onFollowLink={handleFollowLink} />
+              <SourceEditor
+                onChange={handleSourceChange}
+                onInit={refreshSourceMetadata}
+                onFollowLink={handleFollowLink}
+              />
             </Suspense>
           </div>
-          <StatusBar onOpenSettings={() => setIsSettingsOpen(true)} />
+          <StatusBar
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            onToggleViewMode={handleToggleViewMode}
+          />
         </main>
         {outlineVisible && outlineSide === 'right' && (
           <>
