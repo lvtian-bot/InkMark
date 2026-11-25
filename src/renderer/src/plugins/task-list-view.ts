@@ -52,6 +52,7 @@ export const taskListCheckboxPlugin = $prose(() => {
       },
       handleDOMEvents: {
         click(view, event) {
+          if (!view.editable) return false;
           const target = event.target as HTMLElement | null;
           if (!target) return false;
           const box = target.closest<HTMLElement>('.task-checkbox');

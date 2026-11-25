@@ -284,6 +284,8 @@ export const messages: Record<MessageKey, string> = {
   'statusBar.charCount': '{charCount} chars',
 
   'externalUpdate.reload': 'Reload',
+  'externalUpdate.saveAsNewFile': 'Save as New File...',
+  'externalUpdate.reviewConflict': 'View Diff & Resolve',
 
   'tabBar.menu': 'Menu',
   'tabBar.closeTab': 'Close Tab',
@@ -364,13 +366,11 @@ export const messages: Record<MessageKey, string> = {
   'confirm.saveFailedShort': '"{name}" could not be saved.',
   'confirm.saveFailedGeneric': 'Save failed, please try again.',
   'confirm.externalModified': 'File Modified Externally',
-  'confirm.externalModifiedCoverHint':
-    'Below shows the differences between the disk version and your current edit. Overwriting will replace the external changes on disk.',
   'confirm.overwriteDisk': 'Overwrite Disk Version',
   'confirm.externalModifiedChooseHint':
-    'Below shows the differences between the disk version and your current edit. Choose which version to use.',
+    'Below shows the differences between the disk version and your current edit. Choose how to proceed.',
+  'confirm.saveAsNewFile': 'Save as New File...',
   'confirm.useDisk': 'Use Disk Version',
-  'confirm.keepAndOverride': 'Keep Mine and Overwrite on Next Save',
   'dialog.supportedDocuments': 'Supported Documents',
   'confirm.openFailed': 'Open Failed',
   'confirm.openDialogFailed': 'Could not open the file dialog, please try again.',
@@ -404,7 +404,8 @@ export const messages: Record<MessageKey, string> = {
   'confirm.diffDisk': '− Disk Version',
   'confirm.diffCurrent': '+ Current Edit',
 
-  'externalUpdate.banner': 'File changed externally',
+  'externalUpdate.banner': 'File changed externally. Reload before editing.',
+  'externalUpdate.conflictBanner': 'File modified externally. Editing and auto-save are paused.',
 
   'largeDoc.banner': 'Large document opened in source mode for smooth performance.',
   'largeDoc.switchToWysiwyg': 'Open in WYSIWYG',

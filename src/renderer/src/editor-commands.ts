@@ -335,6 +335,7 @@ const MARKDOWN_ONLY_ACTIONS = new Set<EditorShortcutAction>([
 export function runEditorCommand(action: EditorShortcutAction): void {
   const state = useStore.getState();
   const activeTab = state.tabs.find((item) => item.id === state.activeTabId);
+  if (activeTab?.externalUpdatePending) return;
   // 纯文本/代码文件没有 Markdown 格式操作：工具栏按钮已隐藏，快捷键在此拦下。
   if (
     activeTab &&

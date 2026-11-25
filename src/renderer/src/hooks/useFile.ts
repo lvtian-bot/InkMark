@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { selectViewMode, tabDocumentPath, useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
+import { editorHandle } from '../editor-ref';
 import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
 import { sourceEditorHandle } from '../source-editor-ref';
@@ -78,15 +79,25 @@ export function useFile(
   const pendingWatchEventsRef = useRef(new Map<string, FileWatchEvent>());
   const watchedPathsRef = useRef(new Map<string, string>());
   const missingNotifiedTabIdsRef = useRef(new Set<string>());
+  const conflictDialogTabIdsRef = useRef(new Set<string>());
   // 自动保存抑制中的标签:文件树删除执行期间暂停(取消既有定时器且不再排期),
   // 删除被拒后恢复并为仍脏的标签重新排期。
   const autoSaveSuppressedTabIdsRef = useRef(new Set<string>());
   const autoSaveTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const prevActiveTabIdRef = useRef(activeTabId);
+  const prevAutoSaveRef = useRef(autoSave);
 
-  const stateRef = useRef({ tabs, activeTabId, setMarkdown, viewMode });
+  const cancelAutoSaveTimer = useCallback((tabId: string): void => {
+    const timer = autoSaveTimersRef.current.get(tabId);
+    if (timer) {
+      clearTimeout(timer);
+      autoSaveTimersRef.current.delete(tabId);
+    }
+  }, []);
+
+  const stateRef = useRef({ tabs, activeTabId, setMarkdown, viewMode, refreshSourceMetadata });
   useEffect(() => {
-    stateRef.current = { tabs, activeTabId, setMarkdown, viewMode };
+    stateRef.current = { tabs, activeTabId, setMarkdown, viewMode, refreshSourceMetadata };
   });
 
   const getTabMarkdown = useCallback((tabId: string): string => {
@@ -141,7 +152,7 @@ export function useFile(
             });
             if (activeMode === 'source') {
               const loaded = sourceEditorHandle.current?.getEditorState();
-              if (loaded) refreshSourceMetadata(loaded);
+              if (loaded) stateRef.current.refreshSourceMetadata(loaded);
             }
           } else if (activeMode === 'wysiwyg') {
             stateRef.current.setMarkdown(result.content);
@@ -151,7 +162,221 @@ export function useFile(
       }
       return true;
     },
-    [refreshSourceMetadata, updateTab],
+    [updateTab],
+  );
+
+  const saveTabAs = useCallback(
+    async (tabId: string): Promise<boolean> => {
+      if (isImageUploadInProgress()) {
+        await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingSaveAs'), [
+          t('common.ok'),
+        ]);
+        return false;
+      }
+      const currentState = useStore.getState();
+      const targetTab = currentState.tabs.find((tab) => tab.id === tabId);
+      if (!targetTab) return false;
+      const content = getTabMarkdown(tabId);
+      let result;
+      try {
+        result = await window.inkmark.saveFileAs(content, tabDocumentPath(targetTab));
+      } catch {
+        await confirmDialog(t('confirm.saveFailed'), t('confirm.saveFailedGeneric'), [
+          t('common.ok'),
+        ]);
+        return false;
+      }
+      if (result) {
+        if ('status' in result) {
+          await confirmDialog(t('confirm.saveFailed'), result.message, [t('common.ok')]);
+          return false;
+        }
+        const applied = applySavedCopy(targetTab.id, targetTab.filePath, content, result);
+        if (applied) cancelAutoSaveTimer(targetTab.id);
+        return applied;
+      }
+      return false;
+    },
+    [applySavedCopy, cancelAutoSaveTimer, getTabMarkdown],
+  );
+
+  const reloadTab = useCallback(
+    async (tabId: string): Promise<'ok' | 'missing' | 'rejected'> => {
+      const s = stateRef.current;
+      const tab = s.tabs.find((t) => t.id === tabId);
+      if (!tab?.filePath) return 'missing';
+      let result;
+      try {
+        result = await window.inkmark.openFilePath(tab.filePath);
+      } catch {
+        return 'missing';
+      }
+      // 磁盘版本被守卫拒绝（过大/非 UTF-8）时给出具体原因，不按文件丢失处理。
+      if (result && 'status' in result) {
+        await showOpenRejection(result, tab.filePath);
+        return 'rejected';
+      }
+      if (!result) return 'missing';
+      const current = stateRef.current;
+      const liveTab = useStore.getState().tabs.find((item) => item.id === tabId);
+      if (!liveTab || liveTab.filePath !== tab.filePath) return 'missing';
+      editorStateCache.dispose(tabId);
+      cancelAutoSaveTimer(tabId);
+      const isTextDoc = resolveDocumentKind(tab.filePath) === 'text';
+      const nextLarge = !isTextDoc && isLargeMarkdownContent(result.content);
+      const nextLargeForced =
+        nextLarge &&
+        (liveTab.largeDocSourceForced ||
+          current.viewMode === 'source' ||
+          !isLargeMarkdownContent(liveTab.sourceContent));
+      updateTab(tabId, {
+        sourceContent: result.content,
+        fileMtime: result.mtime,
+        isDirty: false,
+        externalUpdatePending: false,
+        largeDocSourceForced: nextLargeForced,
+      });
+      if (tabId === current.activeTabId) {
+        const nextMode = selectViewMode(useStore.getState());
+        if (current.viewMode === 'source') {
+          // 无论重载后留在源码还是因缩小而切回所见即所得，都先同步源码编辑器，
+          // 防止随后的模式切换 effect 读回旧正文覆盖磁盘最新版本。
+          sourceEditorHandle.current?.setValue(result.content, {
+            preserveLineSeparator: isTextDoc,
+            plainText: isTextDoc,
+          });
+          if (nextMode === 'source') {
+            const loaded = sourceEditorHandle.current?.getEditorState();
+            if (loaded) current.refreshSourceMetadata(loaded);
+          }
+        } else if (nextMode === 'wysiwyg') {
+          current.setMarkdown(result.content);
+        }
+      }
+      setDiskBaseline(tabId, result.content);
+      missingNotifiedTabIdsRef.current.delete(tabId);
+      return 'ok';
+    },
+    [cancelAutoSaveTimer, updateTab],
+  );
+
+  const notifyMissingFile = useCallback(
+    async (tabId: string, fileName: string): Promise<void> => {
+      if (missingNotifiedTabIdsRef.current.has(tabId)) return;
+      missingNotifiedTabIdsRef.current.add(tabId);
+      // 文件已丢失，等待重载的提示条不再有意义。
+      updateTab(tabId, { externalUpdatePending: false });
+      await confirmDialog(t('confirm.fileGone'), t('confirm.fileGoneBody', { name: fileName }), [
+        t('common.ok'),
+      ]);
+    },
+    [updateTab],
+  );
+
+  // 统一处理外部修改冲突（监听触发、保存撞上冲突、点击冲突提示条共用）。
+  // 进入即暂停自动保存并锁定只读，提供「另存为新文件…」「使用磁盘版本」「覆盖磁盘版本」「取消」。
+  const resolveExternalConflict = useCallback(
+    async (tabId: string): Promise<'saved' | 'reloaded' | 'unresolved'> => {
+      if (conflictDialogTabIdsRef.current.has(tabId)) return 'unresolved';
+      conflictDialogTabIdsRef.current.add(tabId);
+      cancelAutoSaveTimer(tabId);
+      updateTab(tabId, { externalUpdatePending: true });
+      try {
+        for (;;) {
+          const liveTab = useStore.getState().tabs.find((item) => item.id === tabId);
+          if (!liveTab?.filePath) return 'unresolved';
+          const path = liveTab.filePath;
+          let diskRead: FileResult | OpenFileRejection | null;
+          try {
+            diskRead = await window.inkmark.openFilePath(path);
+          } catch {
+            diskRead = null;
+          }
+          if (diskRead && 'status' in diskRead) {
+            // 磁盘版本已过大或非 UTF-8：说明原因并终止；不带差异对比的
+            // 覆盖选项会让用户在不知情下毁掉无法读取的外部新版本。
+            await showOpenRejection(diskRead, path);
+            return 'unresolved';
+          }
+          if (!diskRead) {
+            await notifyMissingFile(liveTab.id, liveTab.fileName);
+            return 'unresolved';
+          }
+          const diskVersion = diskRead;
+          const afterRead = useStore.getState().tabs.find((tab) => tab.id === tabId);
+          if (!afterRead || afterRead.filePath !== path) return 'unresolved';
+          const content = getTabMarkdown(tabId);
+          const choices = [
+            t('confirm.saveAsNewFile'),
+            t('confirm.useDisk'),
+            t('confirm.overwriteDisk'),
+            t('common.cancel'),
+          ];
+          const choice = await confirmDialog(
+            t('confirm.externalModified'),
+            t('confirm.externalModifiedChooseHint'),
+            choices,
+            {
+              defaultId: 0,
+              cancelId: 3,
+              diff: buildConflictDiff(diskVersion.content, content),
+            },
+          );
+          const afterDialog = useStore.getState().tabs.find((tab) => tab.id === tabId);
+          if (!afterDialog || afterDialog.filePath !== path) return 'unresolved';
+          const conflictAction = resolveConflictChoice(choice);
+          if (conflictAction === 'save-as') {
+            const savedAs = await saveTabAs(tabId);
+            return savedAs ? 'saved' : 'unresolved';
+          }
+          if (conflictAction === 'reload') {
+            const reloaded = await reloadTab(tabId);
+            if (reloaded === 'missing') {
+              const latestTab = useStore.getState().tabs.find((tab) => tab.id === tabId);
+              if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
+              return 'unresolved';
+            }
+            return reloaded === 'ok' ? 'reloaded' : 'unresolved';
+          }
+          if (conflictAction === 'overwrite') {
+            let overwriteResult: SaveResult;
+            try {
+              overwriteResult = await saveWithAuthorization(
+                path,
+                () => window.inkmark.saveFile(content, path, diskVersion.mtime, false),
+                () => {
+                  const current = useStore.getState().tabs.find((item) => item.id === tabId);
+                  return current?.filePath === path && getTabMarkdown(tabId) === content;
+                },
+              );
+            } catch {
+              await confirmDialog(
+                t('confirm.saveFailed'),
+                t('confirm.saveFailedHint1', { name: tabDisplayName(afterDialog, t) }),
+                [t('common.ok')],
+              );
+              return 'unresolved';
+            }
+            const afterOverwrite = useStore.getState().tabs.find((item) => item.id === tabId);
+            if (!afterOverwrite || afterOverwrite.filePath !== path) return 'unresolved';
+            if (overwriteResult.status === 'authorization-required') return 'unresolved';
+            if (overwriteResult.status === 'conflict') continue;
+            missingNotifiedTabIdsRef.current.delete(tabId);
+            updateTab(tabId, {
+              isDirty: getTabMarkdown(tabId) !== content,
+              fileMtime: overwriteResult.mtime,
+              externalUpdatePending: false,
+            });
+            setDiskBaseline(tabId, content);
+            return 'saved';
+          }
+          return 'unresolved';
+        }
+      } finally {
+        conflictDialogTabIdsRef.current.delete(tabId);
+      }
+    },
+    [cancelAutoSaveTimer, getTabMarkdown, notifyMissingFile, reloadTab, saveTabAs, updateTab],
   );
 
   const saveTab = useCallback(
@@ -163,6 +388,11 @@ export function useFile(
 
       const path = tab.filePath;
       if (path) {
+        if (tab.externalUpdatePending) {
+          if (!tab.isDirty) return false;
+          const outcome = await resolveExternalConflict(tabId);
+          return outcome === 'saved';
+        }
         let result;
         try {
           result = await saveWithAuthorization(
@@ -192,56 +422,8 @@ export function useFile(
         }
         if (result.status === 'authorization-required') return false;
         if (result.status === 'conflict') {
-          let diskRead: FileResult | OpenFileRejection | null;
-          try {
-            diskRead = await window.inkmark.openFilePath(path);
-          } catch {
-            diskRead = null;
-          }
-          if (diskRead && 'status' in diskRead) {
-            // 磁盘版本已过大或非 UTF-8：说明原因并终止；不带差异对比的
-            // 覆盖选项会让用户在不知情下毁掉无法读取的外部新版本。
-            await showOpenRejection(diskRead, path);
-            return false;
-          }
-          const diskVersion = diskRead;
-          const choice = await confirmDialog(
-            t('confirm.externalModified'),
-            t('confirm.externalModifiedCoverHint'),
-            [t('confirm.overwriteDisk'), t('common.cancel')],
-            {
-              defaultId: 1,
-              cancelId: 1,
-              diff: diskVersion ? buildConflictDiff(diskVersion.content, content) : undefined,
-            },
-          );
-          if (choice !== 0) return false;
-          const afterConfirm = useStore.getState().tabs.find((item) => item.id === tabId);
-          if (!afterConfirm || afterConfirm.filePath !== path) {
-            return false;
-          }
-          let forceResult;
-          try {
-            forceResult = await window.inkmark.saveFile(content, path, null, true);
-          } catch {
-            await confirmDialog(
-              t('confirm.saveFailed'),
-              t('confirm.saveFailedShort', { name: tabDisplayName(tab, t) }),
-              [t('common.ok')],
-            );
-            return false;
-          }
-          if (forceResult.status === 'ok') {
-            missingNotifiedTabIdsRef.current.delete(tabId);
-            updateTab(tabId, {
-              isDirty: getTabMarkdown(tabId) !== content,
-              fileMtime: forceResult.mtime,
-              externalUpdatePending: false,
-            });
-            setDiskBaseline(tabId, content);
-            return true;
-          }
-          return false;
+          const outcome = await resolveExternalConflict(tabId);
+          return outcome === 'saved';
         }
         missingNotifiedTabIdsRef.current.delete(tabId);
         updateTab(tabId, {
@@ -273,12 +455,12 @@ export function useFile(
       }
       return false;
     },
-    [applySavedCopy, getTabMarkdown, updateTab],
+    [applySavedCopy, getTabMarkdown, resolveExternalConflict, updateTab],
   );
 
   // —— 自动保存 ——
   // 停止编辑 3 秒后落盘；切换/关闭标签与退出窗口时立即补存。
-  // 只处理已落盘文件，无路径的新文档仍走手动保存（isAutoSaveEligible）。
+  // 只处理已落盘且没有待处理外部更新的文档（isAutoSaveEligible）。
   const flushAutoSave = useCallback(
     async (tabId: string): Promise<void> => {
       autoSaveTimersRef.current.delete(tabId);
@@ -292,6 +474,7 @@ export function useFile(
           enabled: state.autoSave,
           filePath: tab?.filePath ?? null,
           isDirty: tab?.isDirty ?? false,
+          externalUpdatePending: tab?.externalUpdatePending ?? false,
         });
       };
       if (!isEligible()) return;
@@ -307,6 +490,8 @@ export function useFile(
   const scheduleAutoSave = useCallback(
     (tabId: string): void => {
       if (autoSaveSuppressedTabIdsRef.current.has(tabId)) return;
+      const tab = useStore.getState().tabs.find((t) => t.id === tabId);
+      if (tab?.externalUpdatePending) return;
       const timers = autoSaveTimersRef.current;
       const existing = timers.get(tabId);
       if (existing) clearTimeout(existing);
@@ -434,33 +619,8 @@ export function useFile(
   }, [saveTab]);
 
   const saveAs = useCallback(async () => {
-    if (isImageUploadInProgress()) {
-      await confirmDialog(t('confirm.imageSaving'), t('confirm.imageSavingSaveAs'), [
-        t('common.ok'),
-      ]);
-      return;
-    }
-    const currentState = useStore.getState();
-    const content = getTabMarkdown(currentState.activeTabId);
-    const activeTab = currentState.tabs.find((tab) => tab.id === currentState.activeTabId);
-    if (!activeTab) return;
-    let result;
-    try {
-      result = await window.inkmark.saveFileAs(content, tabDocumentPath(activeTab));
-    } catch {
-      await confirmDialog(t('confirm.saveFailed'), t('confirm.saveFailedGeneric'), [
-        t('common.ok'),
-      ]);
-      return;
-    }
-    if (result) {
-      if ('status' in result) {
-        await confirmDialog(t('confirm.saveFailed'), result.message, [t('common.ok')]);
-        return;
-      }
-      applySavedCopy(activeTab.id, activeTab.filePath, content, result);
-    }
-  }, [applySavedCopy, getTabMarkdown]);
+    await saveTabAs(useStore.getState().activeTabId);
+  }, [saveTabAs]);
 
   const closeTab = useCallback(
     async (tabId?: string): Promise<boolean> => {
@@ -476,8 +636,15 @@ export function useFile(
       if (!tab) return false;
 
       let dirty = tab.isDirty;
-      // 自动保存开启时先补存：干净关闭不打扰；保存失败（如冲突被取消）仍走原有询问。
-      if (dirty && useStore.getState().autoSave && tab.filePath) {
+      // 自动保存开启时先补存：干净关闭不打扰；冲突或保存失败仍走原有询问。
+      if (
+        isAutoSaveEligible({
+          enabled: useStore.getState().autoSave,
+          filePath: tab.filePath,
+          isDirty: dirty,
+          externalUpdatePending: tab.externalUpdatePending,
+        })
+      ) {
         await flushAutoSave(id);
         dirty = useStore.getState().tabs.find((t) => t.id === id)?.isDirty ?? false;
       }
@@ -496,6 +663,7 @@ export function useFile(
         }
       }
 
+      cancelAutoSaveTimer(id);
       editorStateCache.dispose(id);
       clearDiskBaseline(id);
 
@@ -504,7 +672,7 @@ export function useFile(
       closeTabStore(id);
       return true;
     },
-    [saveTab, closeTabStore, flushAutoSave],
+    [cancelAutoSaveTimer, closeTabStore, flushAutoSave, saveTab],
   );
 
   // 文件树重命名后同步标签身份：路径、文件名与磁盘基线一起切换，未保存
@@ -589,11 +757,12 @@ export function useFile(
         const state = useStore.getState();
         const tab = state.tabs.find((t) => t.id === id);
         if (
-          tab?.isDirty &&
+          tab &&
           isAutoSaveEligible({
             enabled: state.autoSave,
             filePath: tab.filePath,
             isDirty: tab.isDirty,
+            externalUpdatePending: tab.externalUpdatePending,
           })
         ) {
           scheduleAutoSave(id);
@@ -618,7 +787,14 @@ export function useFile(
       if (!liveTab.isDirty) continue;
 
       let shouldAsk = true;
-      if (useStore.getState().autoSave && tab.filePath) {
+      if (
+        isAutoSaveEligible({
+          enabled: useStore.getState().autoSave,
+          filePath: liveTab.filePath,
+          isDirty: liveTab.isDirty,
+          externalUpdatePending: liveTab.externalUpdatePending,
+        })
+      ) {
         await flushAutoSave(tab.id);
         shouldAsk = useStore.getState().tabs.find((t) => t.id === tab.id)?.isDirty ?? false;
       }
@@ -657,14 +833,12 @@ export function useFile(
   }, [prepareToClose]);
 
   const markDirty = useCallback(() => {
-    setDirty(true);
-    // 用户开始编辑后，等待重载的提示条不再有意义——继续显示会诱使用户点击
-    // 而丢弃刚输入的未保存内容；之后的外部改动会走脏标签的冲突弹窗。
     const state = useStore.getState();
     const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
-    updateTab(state.activeTabId, { externalUpdatePending: false });
+    if (activeTab?.externalUpdatePending) return;
+    setDirty(true);
     if (state.autoSave && activeTab?.filePath) scheduleAutoSave(state.activeTabId);
-  }, [setDirty, updateTab, scheduleAutoSave]);
+  }, [setDirty, scheduleAutoSave]);
 
   // 切换标签时立即补存上一个标签：自动保存开启时基本见不到未保存状态。
   useEffect(() => {
@@ -680,6 +854,7 @@ export function useFile(
         enabled: true,
         filePath: prevTab.filePath,
         isDirty: prevTab.isDirty,
+        externalUpdatePending: prevTab.externalUpdatePending,
       })
     ) {
       void flushAutoSave(prevId);
@@ -688,16 +863,21 @@ export function useFile(
 
   // 开启自动保存时把已积累的未保存内容立即落盘；关闭时清掉未触发的定时器。
   useEffect(() => {
+    const prevAutoSave = prevAutoSaveRef.current;
+    prevAutoSaveRef.current = autoSave;
     if (autoSave) {
-      for (const tab of useStore.getState().tabs) {
-        if (
-          isAutoSaveEligible({
-            enabled: true,
-            filePath: tab.filePath,
-            isDirty: tab.isDirty,
-          })
-        ) {
-          void flushAutoSave(tab.id);
+      if (!prevAutoSave) {
+        for (const tab of useStore.getState().tabs) {
+          if (
+            isAutoSaveEligible({
+              enabled: true,
+              filePath: tab.filePath,
+              isDirty: tab.isDirty,
+              externalUpdatePending: tab.externalUpdatePending,
+            })
+          ) {
+            void flushAutoSave(tab.id);
+          }
         }
       }
       return;
@@ -705,78 +885,6 @@ export function useFile(
     for (const timer of autoSaveTimersRef.current.values()) clearTimeout(timer);
     autoSaveTimersRef.current.clear();
   }, [autoSave, flushAutoSave]);
-
-  const reloadTab = useCallback(
-    async (tabId: string): Promise<'ok' | 'missing' | 'rejected'> => {
-      const s = stateRef.current;
-      const tab = s.tabs.find((t) => t.id === tabId);
-      if (!tab?.filePath) return 'missing';
-      let result;
-      try {
-        result = await window.inkmark.openFilePath(tab.filePath);
-      } catch {
-        return 'missing';
-      }
-      // 磁盘版本被守卫拒绝（过大/非 UTF-8）时给出具体原因，不按文件丢失处理。
-      if (result && 'status' in result) {
-        await showOpenRejection(result, tab.filePath);
-        return 'rejected';
-      }
-      if (!result) return 'missing';
-      const current = stateRef.current;
-      const liveTab = useStore.getState().tabs.find((item) => item.id === tabId);
-      if (!liveTab || liveTab.filePath !== tab.filePath) return 'missing';
-      editorStateCache.dispose(tabId);
-      const isTextDoc = resolveDocumentKind(tab.filePath) === 'text';
-      const nextLarge = !isTextDoc && isLargeMarkdownContent(result.content);
-      const nextLargeForced =
-        nextLarge &&
-        (liveTab.largeDocSourceForced ||
-          current.viewMode === 'source' ||
-          !isLargeMarkdownContent(liveTab.sourceContent));
-      updateTab(tabId, {
-        sourceContent: result.content,
-        fileMtime: result.mtime,
-        isDirty: false,
-        externalUpdatePending: false,
-        largeDocSourceForced: nextLargeForced,
-      });
-      if (tabId === current.activeTabId) {
-        const nextMode = selectViewMode(useStore.getState());
-        if (current.viewMode === 'source') {
-          // 无论重载后留在源码还是因缩小而切回所见即所得，都先同步源码编辑器，
-          // 防止随后的模式切换 effect 读回旧正文覆盖磁盘最新版本。
-          sourceEditorHandle.current?.setValue(result.content, {
-            preserveLineSeparator: isTextDoc,
-            plainText: isTextDoc,
-          });
-          if (nextMode === 'source') {
-            const loaded = sourceEditorHandle.current?.getEditorState();
-            if (loaded) refreshSourceMetadata(loaded);
-          }
-        } else if (nextMode === 'wysiwyg') {
-          current.setMarkdown(result.content);
-        }
-      }
-      setDiskBaseline(tabId, result.content);
-      missingNotifiedTabIdsRef.current.delete(tabId);
-      return 'ok';
-    },
-    [refreshSourceMetadata, updateTab],
-  );
-
-  const notifyMissingFile = useCallback(
-    async (tabId: string, fileName: string): Promise<void> => {
-      if (missingNotifiedTabIdsRef.current.has(tabId)) return;
-      missingNotifiedTabIdsRef.current.add(tabId);
-      // 文件已丢失，等待重载的提示条不再有意义。
-      updateTab(tabId, { externalUpdatePending: false });
-      await confirmDialog(t('confirm.fileGone'), t('confirm.fileGoneBody', { name: fileName }), [
-        t('common.ok'),
-      ]);
-    },
-    [updateTab],
-  );
 
   const checkExternalChanges = useCallback(
     async (watchEvent?: FileWatchEvent): Promise<void> => {
@@ -819,62 +927,30 @@ export function useFile(
             missingNotifiedTabIdsRef.current.delete(snapshotTab.id);
             const currentTab = useStore.getState().tabs.find((tab) => tab.id === snapshotTab.id);
             if (!currentTab?.filePath || currentTab.filePath !== snapshotTab.filePath) continue;
+            let liveDirty = currentTab.isDirty;
+            if (
+              currentTab.id === useStore.getState().activeTabId &&
+              selectViewMode(useStore.getState()) === 'wysiwyg'
+            ) {
+              const pendingMd = editorHandle.current?.getPendingMarkdown();
+              if (pendingMd != null && pendingMd !== currentTab.sourceContent) {
+                updateTab(currentTab.id, { sourceContent: pendingMd, isDirty: true });
+                liveDirty = true;
+              }
+            }
             const changeDecision = decideExternalChange({
               fileMtime: currentTab.fileMtime,
               diskMtime: res.mtime,
-              isDirty: currentTab.isDirty,
+              isDirty: liveDirty,
+              externalUpdatePending: currentTab.externalUpdatePending,
             });
             if (changeDecision === 'noop') continue;
 
             if (changeDecision === 'conflict') {
-              let diskRead: FileResult | OpenFileRejection | null;
-              try {
-                diskRead = await window.inkmark.openFilePath(currentTab.filePath);
-              } catch {
-                diskRead = null;
-              }
-              if (diskRead && 'status' in diskRead) {
-                // 磁盘版本已变得过大或编码不受支持：说明原因，按无法比对处理。
-                await showOpenRejection(diskRead, currentTab.filePath);
-                continue;
-              }
-              const diskVersion = diskRead;
-              if (!diskVersion) {
-                await notifyMissingFile(currentTab.id, currentTab.fileName);
-                continue;
-              }
-              const afterRead = useStore.getState().tabs.find((tab) => tab.id === currentTab.id);
-              if (!afterRead || afterRead.filePath !== currentTab.filePath) continue;
-              const choices = [
-                t('confirm.useDisk'),
-                t('confirm.keepAndOverride'),
-                t('common.cancel'),
-              ];
-              const choice = await confirmDialog(
-                t('confirm.externalModified'),
-                t('confirm.externalModifiedChooseHint'),
-                choices,
-                {
-                  defaultId: choices.length - 1,
-                  cancelId: choices.length - 1,
-                  diff: buildConflictDiff(diskVersion.content, getTabMarkdown(currentTab.id)),
-                },
-              );
-              const afterDialog = useStore.getState().tabs.find((tab) => tab.id === currentTab.id);
-              if (!afterDialog || afterDialog.filePath !== currentTab.filePath) continue;
-              const conflictAction = resolveConflictChoice(choice);
-              if (conflictAction === 'reload') {
-                const reloaded = await reloadTab(currentTab.id);
-                if (reloaded === 'missing') {
-                  const latestTab = stateRef.current.tabs.find((tab) => tab.id === currentTab.id);
-                  if (latestTab) await notifyMissingFile(latestTab.id, latestTab.fileName);
-                }
-              } else if (conflictAction === 'keep-and-override') {
-                updateTab(currentTab.id, { fileMtime: diskVersion.mtime });
-                setDiskBaseline(currentTab.id, diskVersion.content);
-              }
+              await resolveExternalConflict(currentTab.id);
             } else {
-              // 保持当前正文，等用户点击顶部提示条上的「重新加载」。
+              // 保持当前正文并锁定只读，等用户点击顶部提示条上的「重新加载」。
+              cancelAutoSaveTimer(currentTab.id);
               updateTab(currentTab.id, { externalUpdatePending: true });
             }
           }
@@ -883,7 +959,7 @@ export function useFile(
         checkingRef.current = false;
       }
     },
-    [getTabMarkdown, notifyMissingFile, reloadTab, updateTab],
+    [cancelAutoSaveTimer, notifyMissingFile, resolveExternalConflict, updateTab],
   );
 
   const reloadActiveTab = useCallback(async (): Promise<void> => {
@@ -897,6 +973,11 @@ export function useFile(
       if (latestTab?.filePath) await notifyMissingFile(latestTab.id, latestTab.fileName);
     }
   }, [notifyMissingFile, reloadTab]);
+
+  const resolveActiveConflict = useCallback(async (): Promise<void> => {
+    const tabId = useStore.getState().activeTabId;
+    await resolveExternalConflict(tabId);
+  }, [resolveExternalConflict]);
 
   useEffect(() => {
     return window.inkmark.onFileWatchEvent((event) => {
@@ -955,6 +1036,7 @@ export function useFile(
       markDirty,
       checkExternalChanges,
       reloadActiveTab,
+      resolveActiveConflict,
       renameTabFile,
       forceCloseTabsUnderPath,
       suppressAutoSaveForTabs,
@@ -973,6 +1055,7 @@ export function useFile(
       markDirty,
       checkExternalChanges,
       reloadActiveTab,
+      resolveActiveConflict,
       renameTabFile,
       forceCloseTabsUnderPath,
       suppressAutoSaveForTabs,

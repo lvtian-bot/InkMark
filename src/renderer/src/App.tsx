@@ -24,7 +24,13 @@ import { useResizablePanel } from './hooks/useResizablePanel';
 import { useFindReplace } from './hooks/useFindReplace';
 import { useOutline } from './hooks/useOutline';
 import { useWordCount } from './hooks/useWordCount';
-import { tabDocumentPath, resolveTabViewMode, selectViewMode, useStore } from './stores/useStore';
+import {
+  tabDocumentPath,
+  resolveTabViewMode,
+  selectIsReadOnly,
+  selectViewMode,
+  useStore,
+} from './stores/useStore';
 import { I18nProvider, t as tt, useI18n } from './i18n';
 import { tabDisplayName } from './tab-name';
 import { isThemeId } from './types';
@@ -497,7 +503,11 @@ function AppContent() {
   const handleDocChange = useCallback(
     (doc: unknown) => {
       // 所见即所得编辑器隐藏后，延迟到达的旧通知不能覆盖源码正文。
-      if (selectViewMode(useStore.getState()) !== 'wysiwyg') return;
+      if (
+        selectViewMode(useStore.getState()) !== 'wysiwyg' ||
+        selectIsReadOnly(useStore.getState())
+      )
+        return;
       notifyFindContentChanged();
       if (switchingRef.current) return;
       setSourceContent(editorHandle.current?.getMarkdown() ?? '');
@@ -519,6 +529,7 @@ function AppContent() {
 
   const handleSourceChange = useCallback(
     (state: SourceEditorState) => {
+      if (selectIsReadOnly(useStore.getState())) return;
       setSourceContent(serializeDoc(state));
       fileOps.markDirty();
       notifyFindContentChanged();
@@ -1402,7 +1413,12 @@ function AppContent() {
           )}
           {!isStartPage && toolbarVisible && <Toolbar onSave={() => void fileOps.save()} />}
           {!isStartPage && externalUpdatePending && (
-            <ExternalUpdateBanner onReload={fileOps.reloadActiveTab} />
+            <ExternalUpdateBanner
+              mode={isDirty ? 'conflict' : 'reload'}
+              onReload={fileOps.reloadActiveTab}
+              onSaveAs={fileOps.saveAs}
+              onResolveConflict={fileOps.resolveActiveConflict}
+            />
           )}
           {!isStartPage && activeTabLargeDocForced && (
             <LargeDocumentBanner onSwitchToWysiwyg={() => void handleRequestLargeDocWysiwyg()} />

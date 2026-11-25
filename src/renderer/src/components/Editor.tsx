@@ -5,6 +5,7 @@ import {
   rootCtx,
   defaultValueCtx,
   editorViewCtx,
+  editorViewOptionsCtx,
   serializerCtx,
   remarkStringifyOptionsCtx,
 } from '@milkdown/kit/core';
@@ -71,7 +72,13 @@ import { pickLinkHrefFromClick, isFollowLinkCombo, shouldHintFollowLink } from '
 import { expandToLinkBounds } from '../link-selection';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { ImagePreview } from './ImagePreview';
-import { selectAppTheme, selectContentTheme, selectViewMode, useStore } from '../stores/useStore';
+import {
+  selectAppTheme,
+  selectContentTheme,
+  selectIsReadOnly,
+  selectViewMode,
+  useStore,
+} from '../stores/useStore';
 import { useI18n } from '../i18n';
 import '../styles/editor.css';
 import '../styles/prism.css';
@@ -132,6 +139,8 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   const syncedDocRef = useRef<ProseNode | null>(null);
   const contentTheme = useStore(selectContentTheme);
   const theme = useStore(selectAppTheme);
+  const isReadOnly = useStore(selectIsReadOnly);
+  const readOnlyRef = useRef(isReadOnly);
   const [contextMenu, setContextMenu] = useState<MenuSnapshot | null>(null);
   const [previewImage, setPreviewImage] = useState<PreviewImage | null>(null);
   const menuSeqRef = useRef(0);
@@ -203,6 +212,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
   ): ContextMenuItem[] => {
     const exec = (action: Parameters<typeof window.inkmark.execClipboardCommand>[0]) => () =>
       void window.inkmark.execClipboardCommand(action);
+    const readOnly = readOnlyRef.current;
     const entries: ContextMenuItem[] = [];
 
     if (target.kind === 'table') {
@@ -216,31 +226,35 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           label: t('toolbar.tableCopyTable'),
           onSelect: () => runTableContextMenuOp({ kind: 'copy-table' }),
         },
-        {
-          label: t('toolbar.tableAddRowAbove'),
-          onSelect: () => runTableContextMenuOp({ kind: 'add-row', position: 'before' }),
-        },
-        {
-          label: t('toolbar.tableAddRowBelow'),
-          onSelect: () => runTableContextMenuOp({ kind: 'add-row', position: 'after' }),
-        },
-        {
-          label: t('toolbar.tableAddColLeft'),
-          onSelect: () => runTableContextMenuOp({ kind: 'add-col', position: 'before' }),
-        },
-        {
-          label: t('toolbar.tableAddColRight'),
-          onSelect: () => runTableContextMenuOp({ kind: 'add-col', position: 'after' }),
-        },
-        {
-          label: t('toolbar.tableDeleteRow'),
-          onSelect: () => runTableContextMenuOp({ kind: 'delete-row' }),
-        },
-        {
-          label: t('toolbar.tableDeleteCol'),
-          onSelect: () => runTableContextMenuOp({ kind: 'delete-col' }),
-        },
       );
+      if (!readOnly) {
+        entries.push(
+          {
+            label: t('toolbar.tableAddRowAbove'),
+            onSelect: () => runTableContextMenuOp({ kind: 'add-row', position: 'before' }),
+          },
+          {
+            label: t('toolbar.tableAddRowBelow'),
+            onSelect: () => runTableContextMenuOp({ kind: 'add-row', position: 'after' }),
+          },
+          {
+            label: t('toolbar.tableAddColLeft'),
+            onSelect: () => runTableContextMenuOp({ kind: 'add-col', position: 'before' }),
+          },
+          {
+            label: t('toolbar.tableAddColRight'),
+            onSelect: () => runTableContextMenuOp({ kind: 'add-col', position: 'after' }),
+          },
+          {
+            label: t('toolbar.tableDeleteRow'),
+            onSelect: () => runTableContextMenuOp({ kind: 'delete-row' }),
+          },
+          {
+            label: t('toolbar.tableDeleteCol'),
+            onSelect: () => runTableContextMenuOp({ kind: 'delete-col' }),
+          },
+        );
+      }
     } else if (target.kind === 'link') {
       entries.push(
         { label: t('contextMenu.openLink'), onSelect: () => onFollowLink(target.href) },
@@ -248,8 +262,13 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
           label: t('contextMenu.copyLinkAddress'),
           onSelect: () => void window.inkmark.copyText(target.href),
         },
-        { label: t('contextMenu.removeLink'), onSelect: () => runRemoveLink(target.pos) },
       );
+      if (!readOnly) {
+        entries.push({
+          label: t('contextMenu.removeLink'),
+          onSelect: () => runRemoveLink(target.pos),
+        });
+      }
     } else if (target.kind === 'code') {
       entries.push({
         label: t('contextMenu.copyCodeBlock'),
@@ -258,12 +277,12 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
     }
 
     entries.push(
-      { label: t('menu.cut'), disabled: !hasSelection, onSelect: exec('cut') },
+      { label: t('menu.cut'), disabled: readOnly || !hasSelection, onSelect: exec('cut') },
       { label: t('menu.copy'), disabled: !hasSelection, onSelect: exec('copy') },
-      { label: t('menu.paste'), disabled: !clipboardHasText, onSelect: exec('paste') },
+      { label: t('menu.paste'), disabled: readOnly || !clipboardHasText, onSelect: exec('paste') },
       {
         label: t('menu.pasteAsPlainText'),
-        disabled: !clipboardHasText,
+        disabled: readOnly || !clipboardHasText,
         onSelect: exec('pasteAndMatchStyle'),
       },
       { label: t('menu.selectAll'), onSelect: exec('selectAll') },
@@ -359,6 +378,10 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         .config((ctx) => {
           ctx.set(rootCtx, root);
           ctx.set(defaultValueCtx, '');
+          ctx.update(editorViewOptionsCtx, (prev) => ({
+            ...prev,
+            editable: () => !readOnlyRef.current,
+          }));
           // 与默认的 handlers/encode 合并，不能覆盖，否则会丢掉 Milkdown 内置的序列化处理器。
           ctx.update(remarkStringifyOptionsCtx, (options) => ({
             ...options,
@@ -408,7 +431,12 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         .use(fastSerializer)
         .use(
           createDocChangeListener((ctx, doc) => {
-            if (!armedRef.current || selectViewMode(useStore.getState()) !== 'wysiwyg') return;
+            if (
+              !armedRef.current ||
+              selectViewMode(useStore.getState()) !== 'wysiwyg' ||
+              selectIsReadOnly(useStore.getState())
+            )
+              return;
             // 防抖 200ms 后上报。切换/加载后的旧事务不能反写当前正文，
             // 已程序加载或上报过的正文也无需再次序列化。
             const currentDoc = ctx.get(editorViewCtx).state.doc;
@@ -525,6 +553,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       replaceDocumentUndoable: (md: string) => {
+        if (selectIsReadOnly(useStore.getState())) return;
         // 以一次普通事务替换整篇内容（flush=false）：保留撤销历史，
         // 用户按 Ctrl+Z 可一步撤回（大纲拖动搬移章节使用）。
         try {
@@ -613,6 +642,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         writeScrollTop(container, top);
       },
       undo: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(undoCommand.key));
         } catch (e) {
@@ -620,6 +650,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       redo: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(redoCommand.key));
         } catch (e) {
@@ -627,6 +658,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       toggleBold: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleStrongCommand.key));
         } catch (e) {
@@ -634,6 +666,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       toggleItalic: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleEmphasisCommand.key));
         } catch (e) {
@@ -641,6 +674,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       toggleStrike: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleStrikethroughCommand.key));
         } catch (e) {
@@ -648,6 +682,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       toggleInlineCode: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleInlineCodeCommand.key));
         } catch (e) {
@@ -655,6 +690,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       wrapHeading: (level: number) => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleHeadingCommand.key, level));
         } catch (e) {
@@ -662,6 +698,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       wrapBulletList: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleBulletListCommand.key));
         } catch (e) {
@@ -669,6 +706,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       wrapOrderedList: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleOrderedListCommand.key));
         } catch (e) {
@@ -676,6 +714,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       wrapTaskList: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(wrapInTaskListCommand.key));
         } catch (e) {
@@ -683,6 +722,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       insertCodeBlock: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(createCodeBlockCommand.key));
         } catch (e) {
@@ -690,6 +730,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       insertLink: (href: string, title?: string) => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           ed.action(callCommand(toggleLinkCommand.key, { href, title }));
         } catch (e) {
@@ -697,6 +738,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       insertTable: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           const view = ed.ctx.get(editorViewCtx);
           const table = createTable(ed.ctx, 3, 3);
@@ -707,6 +749,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       insertText: (text: string) => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           const view = ed.ctx.get(editorViewCtx);
           view.dispatch(view.state.tr.insertText(text).scrollIntoView());
@@ -716,6 +759,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       deleteLine: () => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           const view = ed.ctx.get(editorViewCtx);
           const tr = deleteEditorLines(view.state);
@@ -725,6 +769,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       addTableLine: (kind, position) => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           const view = ed.ctx.get(editorViewCtx);
           const tr = applyAddTableLine(view.state, ed.ctx, kind, position);
@@ -734,6 +779,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       deleteTableLine: (kind) => {
+        if (selectIsReadOnly(useStore.getState())) return;
         try {
           const view = ed.ctx.get(editorViewCtx);
           const tr = applyDeleteTableLine(view.state, kind);
@@ -780,6 +826,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       },
       showFindScope: (scope) => setFindScope(ed.ctx.get(editorViewCtx), scope),
       replaceTextMatches: (replacements) => {
+        if (selectIsReadOnly(useStore.getState())) return 0;
         try {
           const view = ed.ctx.get(editorViewCtx);
           if (
@@ -834,6 +881,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       replaceTextMatch: (match: TextMatch, replacement: string) => {
+        if (selectIsReadOnly(useStore.getState())) return false;
         try {
           const view = ed.ctx.get(editorViewCtx);
           const docSize = view.state.doc.content.size;
@@ -848,6 +896,7 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
         }
       },
       replaceAllTextMatches: (matches: readonly TextMatch[], replacement: string) => {
+        if (selectIsReadOnly(useStore.getState())) return 0;
         try {
           const view = ed.ctx.get(editorViewCtx);
           let transaction = view.state.tr;
@@ -911,6 +960,19 @@ export function Editor({ onDocChange, onDocInit, onFollowLink }: EditorProps) {
       editorHandle.current = null;
     };
   }, [loading, get]);
+
+  useEffect(() => {
+    readOnlyRef.current = isReadOnly;
+    if (loading) return;
+    const ed = get();
+    if (!ed) return;
+    try {
+      const view = ed.ctx.get(editorViewCtx);
+      view.setProps({ editable: () => !readOnlyRef.current });
+    } catch {
+      /* 编辑器尚未就绪时由初始化配置接管 */
+    }
+  }, [get, isReadOnly, loading]);
 
   return (
     <div
