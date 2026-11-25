@@ -4,6 +4,7 @@ import { editorStateCache } from '../editor-state-cache';
 import { editorHandle } from '../editor-ref';
 import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
+import { clearLargeReaderScrollTop } from '../large-reader-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { buildConflictDiff } from '../conflict-diff';
 import { t } from '../i18n';
@@ -688,6 +689,7 @@ export function useFile(
       cancelAutoSaveTimer(id);
       editorStateCache.dispose(id);
       clearDiskBaseline(id);
+      clearLargeReaderScrollTop(id);
 
       // 关闭最后一个标签页时回到欢迎页，而非关闭整个窗口；
       // store 的 closeTab 会在标签页清空后自动新建一个欢迎页标签页。
@@ -750,6 +752,7 @@ export function useFile(
         missingNotifiedTabIdsRef.current.delete(tab.id);
         editorStateCache.dispose(tab.id);
         clearDiskBaseline(tab.id);
+        clearLargeReaderScrollTop(tab.id);
         closeTabStore(tab.id);
       }
       return kept;

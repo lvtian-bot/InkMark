@@ -16,7 +16,7 @@ import {
   type LargeMarkdownChunk,
   type LargeMarkdownDocument,
 } from '../large-markdown-chunks';
-import { largeReaderHandle } from '../large-reader-ref';
+import { largeReaderHandle, recordLargeReaderScrollTop } from '../large-reader-ref';
 import type { PreviewImage } from '../plugins/image-view';
 import { selectContentTheme, useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
@@ -132,6 +132,10 @@ export function LargeMarkdownReader({
   const onEditAttemptRef = useRef(onEditAttempt);
   const docRef = useRef(doc);
   const filePathRef = useRef(filePath);
+  const tabIdRef = useRef(tabId);
+  const contentRef = useRef(content);
+  const isAllSelectedRef = useRef(false);
+  const selectingAllRef = useRef(false);
   const measuredHeightsRef = useRef<Map<number, number>>(new Map());
   const pinnedRangeRef = useRef<{ from: number; to: number } | null>(null);
   const pendingScrollPosRef = useRef<number | null>(null);
@@ -160,8 +164,19 @@ export function LargeMarkdownReader({
     onEditAttemptRef.current = onEditAttempt;
     docRef.current = doc;
     filePathRef.current = filePath;
+    tabIdRef.current = tabId;
+    contentRef.current = content;
     mountedIdsRef.current = mountedIds;
-  }, [doc, filePath, mountedIds, onDocInit, onEditAttempt, onFollowLink]);
+  }, [content, doc, filePath, mountedIds, onDocInit, onEditAttempt, onFollowLink, tabId]);
+
+  useEffect(() => {
+    const handleSelectionChange = (): void => {
+      if (selectingAllRef.current) return;
+      isAllSelectedRef.current = false;
+    };
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, []);
 
   const [contextMenu, setContextMenu] = useState<{
     doc: LargeMarkdownDocument;
@@ -182,6 +197,26 @@ export function LargeMarkdownReader({
     previewImage && previewImage.doc === doc && previewImage.tabId === tabId
       ? previewImage.image
       : null;
+
+  const isFullDocumentSelection = useCallback((): boolean => {
+    if (isAllSelectedRef.current) return true;
+    const body = bodyRef.current;
+    const selection = window.getSelection();
+    if (!body || !selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+    const range = selection.getRangeAt(0);
+    const firstChunk = body.firstElementChild;
+    const lastChunk = body.lastElementChild;
+    if (!firstChunk || !lastChunk) return false;
+    const startsAtBeginning =
+      range.startContainer === body
+        ? range.startOffset === 0
+        : firstChunk.contains(range.startContainer) && range.startOffset === 0;
+    const endsAtEnd =
+      range.endContainer === body
+        ? range.endOffset >= body.childNodes.length
+        : lastChunk.contains(range.endContainer);
+    return startsAtBeginning && endsAtEnd && docRef.current.chunks.length > 1;
+  }, []);
 
   const syncWindowToScroll = useCallback(() => {
     const container = containerRef.current;
@@ -207,10 +242,14 @@ export function LargeMarkdownReader({
     });
   }, []);
 
-  // 文档或标签变化时重置可变的高度/滚动锚点，并恢复该标签的阅读滚动位置。
+  // 文档或标签变化时重置可变的高度/滚动锚点，恢复该标签的阅读滚动位置；
+  // 在清理函数里先落盘旧标签的滚动偏移，早于父级切换和 DOM 卸载。
   useLayoutEffect(() => {
     docRef.current = doc;
     filePathRef.current = filePath;
+    tabIdRef.current = tabId;
+    contentRef.current = content;
+    isAllSelectedRef.current = false;
     measuredHeightsRef.current = new Map();
     pinnedRangeRef.current = null;
     pendingScrollPosRef.current = null;
@@ -220,6 +259,7 @@ export function LargeMarkdownReader({
     if (container) {
       container.scrollTop = targetTop;
     }
+    recordLargeReaderScrollTop(tabId, targetTop);
     mountedIdsRef.current = computeWindowChunkIds(
       doc.chunks,
       EMPTY_HEIGHTS,
@@ -227,7 +267,13 @@ export function LargeMarkdownReader({
       container?.clientHeight ?? 900,
       null,
     );
-  }, [doc, filePath, tabId, initialScrollTop]);
+
+    return () => {
+      if (container) {
+        recordLargeReaderScrollTop(tabId, container.scrollTop);
+      }
+    };
+  }, [content, doc, filePath, tabId, initialScrollTop]);
 
   // 文档切分完成后立即同步大纲与字数统计。
   useEffect(() => {
@@ -258,7 +304,9 @@ export function LargeMarkdownReader({
       targetEl.getBoundingClientRect().top -
       container.getBoundingClientRect().top -
       HEADING_SCROLL_OFFSET_PX;
-    container.scrollTop = Math.max(0, container.scrollTop + delta);
+    const nextTop = Math.max(0, container.scrollTop + delta);
+    container.scrollTop = nextTop;
+    recordLargeReaderScrollTop(tabIdRef.current, nextTop);
   }, [doc, mountedIds]);
 
   // 测量已挂载片段真实高度，用于卸载后占位与向上滚动时的视口稳定。
@@ -294,7 +342,9 @@ export function LargeMarkdownReader({
       }
 
       if (scrollDelta !== 0) {
-        container.scrollTop = Math.max(0, container.scrollTop + scrollDelta);
+        const nextTop = Math.max(0, container.scrollTop + scrollDelta);
+        container.scrollTop = nextTop;
+        recordLargeReaderScrollTop(tabIdRef.current, nextTop);
       }
       if (commitState && changed) {
         const snapshot = new Map(heights);
@@ -408,17 +458,21 @@ export function LargeMarkdownReader({
     };
   }, [doc, filePath, mountedIds]);
 
-  // 暴露与 Editor 对齐的句柄，供滚动恢复、大纲跳转与源码切换使用。
+  // 暴露与 Editor 对齐的句柄，供滚动恢复、大纲跳转、全选复制与源码切换使用。
   useEffect(() => {
     largeReaderHandle.current = {
       getScrollTop: () => containerRef.current?.scrollTop ?? 0,
       setScrollTop: (top: number) => {
         const container = containerRef.current;
         if (!container) return;
-        container.scrollTop = Number.isFinite(top) ? Math.max(0, top) : 0;
+        const safeTop = Number.isFinite(top) ? Math.max(0, top) : 0;
+        container.scrollTop = safeTop;
+        recordLargeReaderScrollTop(tabIdRef.current, safeTop);
         syncWindowToScroll();
       },
       getScrollContainer: () => containerRef.current,
+      getSelectedText: () =>
+        isFullDocumentSelection() ? contentRef.current : (window.getSelection()?.toString() ?? ''),
       scrollToPos: (pos: number) => {
         const currentDoc = docRef.current;
         let chunkId = currentDoc.headingToChunk.get(pos);
@@ -465,7 +519,9 @@ export function LargeMarkdownReader({
               targetEl.getBoundingClientRect().top -
               container.getBoundingClientRect().top -
               HEADING_SCROLL_OFFSET_PX;
-            container.scrollTop = Math.max(0, container.scrollTop + delta);
+            const nextTop = Math.max(0, container.scrollTop + delta);
+            container.scrollTop = nextTop;
+            recordLargeReaderScrollTop(tabIdRef.current, nextTop);
           }
         }
       },
@@ -474,7 +530,7 @@ export function LargeMarkdownReader({
     return () => {
       largeReaderHandle.current = null;
     };
-  }, [syncWindowToScroll]);
+  }, [isFullDocumentSelection, syncWindowToScroll]);
 
   useEffect(() => {
     return () => {
@@ -486,6 +542,9 @@ export function LargeMarkdownReader({
 
   const handleScroll = (): void => {
     pinnedRangeRef.current = null;
+    if (containerRef.current) {
+      recordLargeReaderScrollTop(tabIdRef.current, containerRef.current.scrollTop);
+    }
     if (scrollRafRef.current !== null) return;
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null;
@@ -498,10 +557,26 @@ export function LargeMarkdownReader({
     if (!body) return;
     const selection = window.getSelection();
     if (!selection) return;
+    selectingAllRef.current = true;
     const range = document.createRange();
     range.selectNodeContents(body);
     selection.removeAllRanges();
     selection.addRange(range);
+    isAllSelectedRef.current = true;
+    queueMicrotask(() => {
+      selectingAllRef.current = false;
+    });
+  };
+
+  const handleCopy = (event: ReactClipboardEvent<HTMLDivElement>): void => {
+    if (!isFullDocumentSelection()) return;
+    event.preventDefault();
+    const fullText = contentRef.current;
+    if (event.clipboardData) {
+      event.clipboardData.setData('text/plain', fullText);
+    } else {
+      void window.inkmark.copyText(fullText);
+    }
   };
 
   const handleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
@@ -538,9 +613,11 @@ export function LargeMarkdownReader({
     event.preventDefault();
 
     const href = pickLinkHrefFromClick(target);
+    const fullDocSelected = isFullDocumentSelection();
     const selection = window.getSelection();
     const hasSelection =
-      !!selection && !selection.isCollapsed && !!bodyRef.current?.contains(selection.anchorNode);
+      fullDocSelected ||
+      (!!selection && !selection.isCollapsed && !!bodyRef.current?.contains(selection.anchorNode));
 
     const items: ContextMenuItem[] = [];
     if (href) {
@@ -556,7 +633,13 @@ export function LargeMarkdownReader({
       {
         label: t('menu.copy'),
         disabled: !hasSelection,
-        onSelect: () => void window.inkmark.execClipboardCommand('copy'),
+        onSelect: () => {
+          if (fullDocSelected) {
+            void window.inkmark.copyText(contentRef.current);
+          } else {
+            void window.inkmark.execClipboardCommand('copy');
+          }
+        },
       },
       {
         label: t('menu.selectAll'),
@@ -618,6 +701,10 @@ export function LargeMarkdownReader({
         tabIndex={0}
         role="document"
         aria-readonly="true"
+        onMouseDown={() => {
+          isAllSelectedRef.current = false;
+        }}
+        onCopy={handleCopy}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
       >

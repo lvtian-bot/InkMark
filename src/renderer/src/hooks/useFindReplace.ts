@@ -14,6 +14,7 @@ import type { ViewMode } from '../types';
 interface UseFindReplaceOptions {
   activeTabId: string;
   viewMode: ViewMode;
+  isLargeReader?: boolean;
 }
 
 interface Range {
@@ -58,6 +59,7 @@ export interface FindReplaceController {
 export function useFindReplace({
   activeTabId,
   viewMode,
+  isLargeReader = false,
 }: UseFindReplaceOptions): FindReplaceController {
   const [isOpen, setIsOpen] = useState(false);
   const [showReplace, setShowReplace] = useState(false);
@@ -80,19 +82,21 @@ export function useFindReplace({
   const matchesRef = useRef<readonly TextMatch[]>([]);
   const indexRef = useRef(-1);
   const openRef = useRef(false);
-  const contextRef = useRef(`${activeTabId}:${viewMode}`);
+  const contextRef = useRef(`${activeTabId}:${viewMode}:${isLargeReader ? 'reader' : 'edit'}`);
 
   const segments = useCallback((): readonly Segment[] => {
+    if (isLargeReader) return [];
     if (viewMode === 'wysiwyg') return editorHandle.current?.getFindSegments() ?? [];
     return [{ from: 0, text: sourceEditorHandle.current?.getDocText() ?? '' }];
-  }, [viewMode]);
+  }, [isLargeReader, viewMode]);
   const snapshot = useCallback(() => JSON.stringify(segments()), [segments]);
   const showScope = useCallback(
     (scope: Range | null) => {
+      if (isLargeReader) return;
       if (viewMode === 'wysiwyg') editorHandle.current?.showFindScope(scope);
       else sourceEditorHandle.current?.showFindScope(scope);
     },
-    [viewMode],
+    [isLargeReader, viewMode],
   );
   const clear = useCallback(() => {
     editorHandle.current?.showTextMatches([], -1);
@@ -100,6 +104,7 @@ export function useFindReplace({
   }, []);
   const select = useCallback(
     (match: TextMatch, all: readonly TextMatch[], index: number) => {
+      if (isLargeReader) return;
       if (viewMode === 'wysiwyg') {
         editorHandle.current?.showTextMatches(all, index);
       } else {
@@ -109,7 +114,7 @@ export function useFindReplace({
         requestAnimationFrame(() => queryInputRef.current?.focus({ preventScroll: true }));
       }
     },
-    [clear, viewMode],
+    [clear, isLargeReader, viewMode],
   );
 
   const compute = useCallback(() => {
@@ -161,7 +166,7 @@ export function useFindReplace({
   }, [clear, compute, inSelection, select, showScope]);
 
   useEffect(() => {
-    const context = `${activeTabId}:${viewMode}`;
+    const context = `${activeTabId}:${viewMode}:${isLargeReader ? 'reader' : 'edit'}`;
     if (contextRef.current !== context) {
       contextRef.current = context;
       selectedScope.current = null;
@@ -173,13 +178,14 @@ export function useFindReplace({
       // 标签或模式切换可能恢复缓存的编辑器装饰。关闭查找时也要清理新激活的状态。
       if (!isOpen) clear();
     }
-    if (!isOpen) return;
+    if (!isOpen || isLargeReader) return;
     const frame = requestAnimationFrame(refresh);
     return () => cancelAnimationFrame(frame);
-  }, [activeTabId, clear, contentRevision, isOpen, refresh, showScope, viewMode]);
+  }, [activeTabId, clear, contentRevision, isLargeReader, isOpen, refresh, showScope, viewMode]);
 
   const open = useCallback(
     (withReplace: boolean) => {
+      if (isLargeReader) return;
       if (!openRef.current) {
         const selection =
           viewMode === 'wysiwyg'
@@ -199,7 +205,7 @@ export function useFindReplace({
         queryInputRef.current?.select();
       });
     },
-    [snapshot, viewMode],
+    [isLargeReader, snapshot, viewMode],
   );
 
   const close = useCallback(() => {
@@ -216,9 +222,9 @@ export function useFindReplace({
     setActiveIndex(-1);
     showScope(null);
     clear();
-    if (viewMode === 'wysiwyg') editorHandle.current?.focus();
-    else sourceEditorHandle.current?.focus();
-  }, [clear, showScope, viewMode]);
+    if (!isLargeReader && viewMode === 'wysiwyg') editorHandle.current?.focus();
+    else if (viewMode === 'source') sourceEditorHandle.current?.focus();
+  }, [clear, isLargeReader, showScope, viewMode]);
 
   const setInSelection = useCallback(
     (value: boolean) => {
@@ -248,7 +254,7 @@ export function useFindReplace({
 
   const replace = useCallback(
     (all: boolean) => {
-      if (selectIsReadOnly(useStore.getState())) return;
+      if (isLargeReader || selectIsReadOnly(useStore.getState())) return;
       const result = compute();
       if (result.invalidPattern || scopeInvalid.current) return;
       const current = activeMatch.current;
@@ -285,7 +291,7 @@ export function useFindReplace({
       requestAnimationFrame(refresh);
       requestAnimationFrame(() => queryInputRef.current?.focus({ preventScroll: true }));
     },
-    [compute, inSelection, refresh, replacement, showScope, snapshot, viewMode],
+    [compute, inSelection, isLargeReader, refresh, replacement, showScope, snapshot, viewMode],
   );
 
   const notifyContentChanged = useCallback(() => {

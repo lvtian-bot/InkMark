@@ -6,7 +6,7 @@ import { LARGE_MARKDOWN_THRESHOLD_BYTES } from '../../shared/openable-document';
 import { clearDiskBaseline } from './disk-baseline';
 import { editorHandle, type EditorHandle } from './editor-ref';
 import { editorStateCache } from './editor-state-cache';
-import { largeReaderHandle } from './large-reader-ref';
+import { clearLargeReaderScrollTop, largeReaderHandle } from './large-reader-ref';
 import { sourceEditorHandle } from './source-editor-ref';
 import { resetToggleViewModeThrottleForTesting, selectViewMode, useStore } from './stores/useStore';
 import type { InkMarkAPI } from './types';
@@ -15,6 +15,7 @@ const editorSpies = vi.hoisted(() => ({
   setMarkdown: vi.fn(),
   clear: vi.fn(),
   getMarkdown: vi.fn(() => ''),
+  replaceTextMatches: vi.fn(),
 }));
 
 vi.mock('./components/Editor', async () => {
@@ -31,6 +32,11 @@ vi.mock('./components/Editor', async () => {
           },
           getPendingMarkdown: () => null,
           getSelectedMarkdown: () => '',
+          getFindSegments: () => [{ from: 0, text: currentMd }],
+          replaceTextMatches: () => {
+            editorSpies.replaceTextMatches();
+            return 1;
+          },
           setMarkdown: (md: string) => {
             currentMd = md;
             editorSpies.setMarkdown(md);
@@ -197,6 +203,7 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
     editorSpies.setMarkdown.mockClear();
     editorSpies.clear.mockClear();
     editorSpies.getMarkdown.mockClear();
+    editorSpies.replaceTextMatches.mockClear();
     resetToggleViewModeThrottleForTesting();
   });
 
@@ -208,6 +215,7 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
     mountedRoots.clear();
     for (const tab of useStore.getState().tabs) {
       clearDiskBaseline(tab.id);
+      clearLargeReaderScrollTop(tab.id);
       editorStateCache.dispose(tab.id);
     }
     document.body.replaceChildren();
@@ -410,5 +418,124 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
 
     expect(editorHandle.current?.getMarkdown()).toBe('');
     expect(useStore.getState().tabs[1].sourceContent).toBe('');
+  });
+
+  it('源码模式下打开替换栏后切回大文档只读阅读，自动关闭查找栏且不篡改正文与隐藏编辑器', async () => {
+    const largePath = 'D:/docs/huge-replace.md';
+    const largeContent = `# Keep Me Intact\n\n${'m'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
+    const app = mountApp({ [largePath]: largeContent }, 'source');
+    await app.start();
+    await app.openFile(largePath);
+    await waitFor(
+      () => sourceEditorHandle.current?.getValue() === largeContent,
+      '未在源码模式加载大文档',
+    );
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'h', ctrlKey: true, bubbles: true }),
+      );
+    });
+    await waitFor(() => !!app.host.querySelector('.find-replace-bar'), '未打开查找替换栏');
+
+    await act(async () => {
+      useStore.getState().setViewMode('wysiwyg');
+    });
+
+    await waitFor(
+      () =>
+        !!app.host.querySelector('.large-reader-body') &&
+        !app.host.querySelector('.find-replace-bar'),
+      '切入大文档只读阅读后未关闭替换栏',
+    );
+    expect(editorSpies.replaceTextMatches).not.toHaveBeenCalled();
+    expect(useStore.getState().tabs[0].sourceContent).toBe(largeContent);
+    expect(useStore.getState().tabs[0].isDirty).toBe(false);
+  });
+
+  it('大文档只读阅读器之间以及切往普通文档再切回，完整保留各自阅读滚动位置', async () => {
+    const docA = 'D:/docs/big-a.md';
+    const docB = 'D:/docs/big-b.md';
+    const docSmall = 'D:/docs/small-c.md';
+    const contentA = Array.from(
+      { length: 400 },
+      (_, i) => `- Entry A ${i} ${'a'.repeat(3000)}`,
+    ).join('\n');
+    const contentB = Array.from(
+      { length: 400 },
+      (_, i) => `- Entry B ${i} ${'b'.repeat(3000)}`,
+    ).join('\n');
+    const app = mountApp({ [docA]: contentA, [docB]: contentB, [docSmall]: '# Small' }, 'wysiwyg');
+    await app.start();
+
+    await app.openFile(docA);
+    await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未加载大文档 A');
+    const tabAId = useStore.getState().tabs.find((t) => t.filePath === docA)!.id;
+
+    await act(async () => {
+      largeReaderHandle.current?.setScrollTop(520);
+      app.host.querySelector('.large-reader-container')?.dispatchEvent(new Event('scroll'));
+    });
+
+    // 切到另一个大文档 B
+    await app.openFile(docB);
+    await waitFor(
+      () => app.host.querySelector('.large-reader-body')?.textContent?.includes('Entry B') ?? false,
+      '未切换到大文档 B',
+    );
+    expect(useStore.getState().tabs.find((t) => t.id === tabAId)!.wysiwygScrollTop).toBe(520);
+
+    // 滚动大文档 B 后切换到普通小文档（卸载 LargeMarkdownReader）
+    const tabBId = useStore.getState().tabs.find((t) => t.filePath === docB)!.id;
+    await act(async () => {
+      largeReaderHandle.current?.setScrollTop(840);
+      app.host.querySelector('.large-reader-container')?.dispatchEvent(new Event('scroll'));
+    });
+    await app.openFile(docSmall);
+    await waitFor(() => !app.host.querySelector('.large-reader-body'), '未切到普通文档');
+    expect(useStore.getState().tabs.find((t) => t.id === tabBId)!.wysiwygScrollTop).toBe(840);
+
+    // 切回大文档 A 时恢复 520 滚动位置
+    await act(async () => {
+      useStore.getState().setActiveTab(tabAId);
+    });
+    await waitFor(
+      () => app.host.querySelector('.large-reader-body')?.textContent?.includes('Entry A') ?? false,
+      '未切回大文档 A',
+    );
+    expect(app.host.querySelector('.large-reader-container')?.scrollTop).toBe(520);
+  });
+
+  it('在包含未挂载占位片段的大文档只读视图中全选并复制，输出完整原文而非仅首屏片段', async () => {
+    const largePath = 'D:/docs/huge-copy-all.md';
+    const lines = Array.from({ length: 400 }, (_, i) => `- Row ${i} ${'c'.repeat(3000)}`);
+    const largeContent = `# Copy Full\n\n${lines.join('\n')}`;
+    const app = mountApp({ [largePath]: largeContent }, 'wysiwyg');
+    await app.start();
+    await app.openFile(largePath);
+    await waitFor(() => !!app.host.querySelector('.large-reader-body'), '未加载只读预览');
+    // 确认确实存在未挂载占位片段
+    expect(
+      app.host.querySelectorAll('.large-reader-chunk[data-mounted="0"]').length,
+    ).toBeGreaterThan(0);
+
+    const readerBody = app.host.querySelector('.large-reader-body') as HTMLElement;
+    await act(async () => {
+      readerBody.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }),
+      );
+    });
+
+    const setDataSpy = vi.fn();
+    const copyEvent = Object.assign(new Event('copy', { bubbles: true, cancelable: true }), {
+      clipboardData: { setData: setDataSpy },
+    });
+    await act(async () => {
+      readerBody.dispatchEvent(copyEvent);
+    });
+
+    expect(copyEvent.defaultPrevented).toBe(true);
+    expect(setDataSpy).toHaveBeenCalledWith('text/plain', largeContent);
+    expect(largeReaderHandle.current?.getSelectedText()).toBe(largeContent);
   });
 });

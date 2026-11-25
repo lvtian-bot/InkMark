@@ -37,7 +37,7 @@ import { tabDisplayName } from './tab-name';
 import { isThemeId, type Heading } from './types';
 import type { WorkspaceEntry } from './types';
 import { editorHandle } from './editor-ref';
-import { largeReaderHandle } from './large-reader-ref';
+import { largeReaderHandle, readLargeReaderScrollTop } from './large-reader-ref';
 import { readTabScrollTop, scrollPositionUpdate } from './editor-position';
 import { sourceEditorHandle } from './source-editor-ref';
 import { editorStateCache } from './editor-state-cache';
@@ -484,7 +484,11 @@ function AppContent() {
   );
 
   const { closeRoot: closeFileTreeRoot } = fileTree;
-  const findReplace = useFindReplace({ activeTabId, viewMode });
+  const findReplace = useFindReplace({
+    activeTabId,
+    viewMode,
+    isLargeReader: isLargeReaderActive,
+  });
   const {
     close: closeFindReplace,
     isOpen: isFindReplaceOpen,
@@ -522,10 +526,13 @@ function AppContent() {
 
   const handleDocChange = useCallback(
     (doc: unknown) => {
-      // 所见即所得编辑器隐藏后，延迟到达的旧通知不能覆盖源码正文。
+      const state = useStore.getState();
+      const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+      // 所见即所得编辑器隐藏或大文档只读阅读期间，拒绝迟到或误触发的编辑通知覆盖源码真源。
       if (
-        selectViewMode(useStore.getState()) !== 'wysiwyg' ||
-        selectIsReadOnly(useStore.getState())
+        selectViewMode(state) !== 'wysiwyg' ||
+        selectIsReadOnly(state) ||
+        isLargeMarkdownTab(activeTab)
       )
         return;
       notifyFindContentChanged();
@@ -540,6 +547,9 @@ function AppContent() {
 
   const handleDocInit = useCallback(
     (doc: unknown) => {
+      const state = useStore.getState();
+      const activeTab = state.tabs.find((t) => t.id === state.activeTabId);
+      if (isLargeMarkdownTab(activeTab)) return;
       notifyFindContentChanged();
       updateOutline(doc);
       updateWordCount(doc, true);
@@ -607,7 +617,7 @@ function AppContent() {
         captureMode === 'source'
           ? (sourceEditorHandle.current?.getScrollTop() ?? 0)
           : oldTabUsesLargeReader
-            ? (largeReaderHandle.current?.getScrollTop() ?? 0)
+            ? (readLargeReaderScrollTop(oldTabId) ?? oldTab?.wysiwygScrollTop ?? 0)
             : (editorHandle.current?.getScrollTop() ?? 0);
       // 句柄未就绪（懒加载未完成）不等于正文为空：回退用标签已存的正文，
       // 否则启动连开多个文件会把尚未展示标签的正文清空。
@@ -727,7 +737,7 @@ function AppContent() {
       prev === 'source'
         ? (sourceEditorHandle.current?.getScrollTop() ?? 0)
         : currentTabIsLarge
-          ? (largeReaderHandle.current?.getScrollTop() ?? 0)
+          ? (readLargeReaderScrollTop(tabId) ?? currentTab?.wysiwygScrollTop ?? 0)
           : (editorHandle.current?.getScrollTop() ?? 0);
     updateTab(tabId, scrollPositionUpdate(prev, scrollTop));
     switchingRef.current = true;
@@ -995,7 +1005,9 @@ function AppContent() {
           viewModeRef.current === 'source'
             ? (sourceEditorHandle.current?.getSelectedText() ?? '')
             : isLargeMarkdownTab(activeTab)
-              ? (window.getSelection()?.toString() ?? '')
+              ? (largeReaderHandle.current?.getSelectedText() ??
+                window.getSelection()?.toString() ??
+                '')
               : (editorHandle.current?.getSelectedMarkdown() ?? '');
         if (text) {
           void navigator.clipboard.writeText(text);
@@ -1246,7 +1258,9 @@ function AppContent() {
           viewModeRef.current === 'source'
             ? (sourceEditorHandle.current?.getSelectedText() ?? '')
             : isLargeMarkdownTab(activeTab)
-              ? (window.getSelection()?.toString() ?? '')
+              ? (largeReaderHandle.current?.getSelectedText() ??
+                window.getSelection()?.toString() ??
+                '')
               : (editorHandle.current?.getSelectedMarkdown() ?? '');
         if (text) {
           void navigator.clipboard.writeText(text);
@@ -1278,8 +1292,8 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    if (isStartPage && isFindReplaceOpen) closeFindReplace();
-  }, [closeFindReplace, isFindReplaceOpen, isStartPage]);
+    if ((isStartPage || isLargeReaderActive) && isFindReplaceOpen) closeFindReplace();
+  }, [closeFindReplace, isFindReplaceOpen, isLargeReaderActive, isStartPage]);
 
   useEffect(() => {
     if (window.inkmark.syncThemeId) {

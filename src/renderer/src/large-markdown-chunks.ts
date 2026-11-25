@@ -177,7 +177,7 @@ export function splitMarkdownForReader(
   let fenceChar = '';
   let fenceLen = 0;
   let inTable = false;
-  let prevLineCanBeSetext = false;
+  let paragraphStartLine = -1;
 
   const flushChunk = (endLineInclusive: number): void => {
     const id = chunks.length;
@@ -196,6 +196,7 @@ export function splitMarkdownForReader(
     });
     chunkStartLine = endLineInclusive + 1;
     currentHeadingPositions = [];
+    paragraphStartLine = -1;
   };
 
   const lineCount = lines.length;
@@ -205,7 +206,7 @@ export function splitMarkdownForReader(
     const chunkId = chunks.length;
 
     if (inFrontmatter) {
-      prevLineCanBeSetext = false;
+      paragraphStartLine = -1;
       inTable = false;
       // 前置 YAML 块禁止拆开，只在最后一行完成后考虑切分。
       if (i === frontmatterEndLine && i - chunkStartLine + 1 >= maxLines && i + 1 < lineCount) {
@@ -219,7 +220,7 @@ export function splitMarkdownForReader(
         fenceChar = '';
         fenceLen = 0;
       }
-      prevLineCanBeSetext = false;
+      paragraphStartLine = -1;
       inTable = false;
       if (fenceChar === '' && i - chunkStartLine + 1 >= targetLines && i + 1 < lineCount) {
         const nextLine = lines[i + 1];
@@ -237,7 +238,7 @@ export function splitMarkdownForReader(
       if (marker[0] !== '`' || !info.includes('`')) {
         fenceChar = marker[0];
         fenceLen = marker.length;
-        prevLineCanBeSetext = false;
+        paragraphStartLine = -1;
         inTable = false;
         continue;
       }
@@ -251,13 +252,14 @@ export function splitMarkdownForReader(
       TABLE_SEPARATOR_RE.test(lines[i + 1])
     ) {
       inTable = true;
+      paragraphStartLine = -1;
     } else if (inTable) {
       if (isBlankLine(line) || ATX_HEADING_RE.test(line) || !looksLikeTableRow(line)) {
         inTable = false;
       }
     }
 
-    // 标题提取（ATX 或两行 Setext）
+    // 标题提取（ATX 或单行/多行 Setext）
     const atxMatch = ATX_HEADING_RE.exec(line);
     if (atxMatch) {
       const level = atxMatch[1].length;
@@ -265,30 +267,29 @@ export function splitMarkdownForReader(
       const pos = lineStarts[i];
       currentHeadingPositions.push(pos);
       registerHeading(level, rawBody, pos, chunkId);
-      prevLineCanBeSetext = false;
+      paragraphStartLine = -1;
+    } else if (paragraphStartLine !== -1 && !inTable && SETEXT_UNDERLINE_RE.test(line)) {
+      const level = line.trimStart()[0] === '=' ? 1 : 2;
+      const pos = lineStarts[paragraphStartLine];
+      const rawBody = lines
+        .slice(paragraphStartLine, i)
+        .map((item) => item.trim())
+        .join(' ');
+      currentHeadingPositions.push(pos);
+      registerHeading(level, rawBody, pos, chunkId);
+      paragraphStartLine = -1;
     } else {
-      const nextLine = i + 1 < lineCount ? lines[i + 1] : null;
-      const setextNextMatch =
-        nextLine !== null && !inTable && !isBlankLine(line) && prevLineCanBeSetext !== null
-          ? SETEXT_UNDERLINE_RE.exec(nextLine)
-          : null;
       const isPlainCandidate =
         !inTable &&
         !isBlankLine(line) &&
         !TOP_LEVEL_LIST_RE.test(line.trimStart()) &&
         !BLOCKQUOTE_OR_HR_RE.test(line) &&
         !REF_DEF_RE.test(line);
-
-      if (isPlainCandidate && setextNextMatch) {
-        const level = setextNextMatch[1][0] === '=' ? 1 : 2;
-        const pos = lineStarts[i];
-        currentHeadingPositions.push(pos);
-        registerHeading(level, line.trim(), pos, chunkId);
-        // 下划线行留在同一个 chunk 内
-        prevLineCanBeSetext = false;
-        continue;
+      if (isPlainCandidate) {
+        if (paragraphStartLine === -1) paragraphStartLine = i;
+      } else {
+        paragraphStartLine = -1;
       }
-      prevLineCanBeSetext = isPlainCandidate;
     }
 
     // 收集引用式链接定义，确保跨片段也能正常解析。
@@ -306,17 +307,15 @@ export function splitMarkdownForReader(
 
     // 决定是否在当前行后切分
     if (i + 1 >= lineCount) continue;
+    // GFM 表格无论多少行都保持完整，避免拆开后后续行退化为普通文本。
+    if (inTable) continue;
+
     const countInChunk = i - chunkStartLine + 1;
     if (countInChunk < targetLines) continue;
 
-    // 不在块级元素内部切分
-    if (inTable) {
-      if (countInChunk < maxLines * 3) continue;
-    }
-
     const nextLine = lines[i + 1];
-    const isNextSetextUnderline = prevLineCanBeSetext && SETEXT_UNDERLINE_RE.test(nextLine);
-    if (isNextSetextUnderline) continue;
+    // 正在累积的段落若紧跟 Setext 下划线，不得提前拆开。
+    if (paragraphStartLine !== -1 && SETEXT_UNDERLINE_RE.test(nextLine)) continue;
 
     const atSafeGap = isBlankLine(line) || isBlankLine(nextLine) || ATX_HEADING_RE.test(nextLine);
     if (atSafeGap) {

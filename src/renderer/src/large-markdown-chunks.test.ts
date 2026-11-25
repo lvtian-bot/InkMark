@@ -143,4 +143,36 @@ describe('splitMarkdownForReader & renderMarkdownChunkToHtml', () => {
     expect(html).toContain('data-inkmark-src="./assets/demo.png"');
     expect(html).not.toMatch(/<img[^>]*\ssrc="/);
   });
+
+  it('超过 360 行的超长 GFM 表格保持在同一片段中，不被切分破坏表格语义', () => {
+    const tableLines = ['| 列A | 列B |', '| --- | --- |'];
+    for (let i = 0; i < 420; i++) {
+      tableLines.push(`| 行${i} | 值${i} |`);
+    }
+    const content = `# 表格测试\n\n${tableLines.join('\n')}\n\n表格后段落`;
+
+    const doc = splitMarkdownForReader(content, 60, 90);
+    const tableChunk = doc.chunks.find((c) => c.markdown.includes('| 列A | 列B |'));
+    expect(tableChunk).toBeDefined();
+    expect(tableChunk!.markdown).toContain('| 行419 | 值419 |');
+
+    const html = renderMarkdownChunkToHtml(tableChunk!, doc.referenceDefs);
+    expect(html).toContain('<table>');
+    expect(html).toContain('<td>行419</td>');
+  });
+
+  it('记录多行 Setext 标题的完整起点偏移与全文标题文本并标记 data-heading-pos', () => {
+    const content = ['Title', 'continued', '---', '', '正文段落'].join('\n');
+
+    const doc = splitMarkdownForReader(content);
+    expect(doc.headings).toHaveLength(1);
+    expect(doc.headings[0]).toMatchObject({
+      level: 2,
+      text: 'Title continued',
+      pos: 0,
+    });
+
+    const html = renderMarkdownChunkToHtml(doc.chunks[0], doc.referenceDefs);
+    expect(html).toContain('<h2 data-heading-pos="0">Title<br>continued</h2>');
+  });
 });
