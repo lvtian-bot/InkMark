@@ -4,7 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import { isLargeMarkdownTab, useStore, selectViewMode } from '../stores/useStore';
 import { useI18n } from '../i18n';
 import { editorHandle } from '../editor-ref';
-import { largeReaderHandle } from '../large-reader-ref';
+import { largeReaderHandle, subscribeLargeReaderChange } from '../large-reader-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
 import {
   computeCollapsibleIds,
@@ -44,7 +44,6 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
     ids: EMPTY_IDS,
   });
   const collapsedIds = collapsed.tabId === activeTabId ? collapsed.ids : EMPTY_IDS;
-  const tickingRef = useRef(false);
 
   const visibleHeadings = useMemo(
     () => computeVisibleHeadings(outline, collapsedIds),
@@ -89,80 +88,108 @@ export function Outline({ side }: { side?: 'left' | 'right' }) {
         ? (largeReaderHandle.current?.getScrollContainer() ?? null)
         : (editorHandle.current?.getScrollContainer() ?? null);
 
-    const handleScroll = (): void => {
-      if (tickingRef.current) return;
-      tickingRef.current = true;
-      requestAnimationFrame(() => {
-        const container = getActiveContainer();
-        if (!container) {
-          tickingRef.current = false;
+    const syncActiveHeading = (): void => {
+      const container = getActiveContainer();
+      if (!container) return;
+      // 判定线以编辑容器顶为基准，与 scrollToPos 的落点同一参照系，
+      // 否则点击跳转后目标标题过不了判定线，高亮会落在上一个标题
+      const line = container.getBoundingClientRect().top + 80;
+      if (isLargeReader) {
+        if (outline.length === 0) {
+          setActiveId(null);
           return;
         }
-        // 判定线以编辑容器顶为基准，与 scrollToPos 的落点同一参照系，
-        // 否则点击跳转后目标标题过不了判定线，高亮会落在上一个标题
-        const line = container.getBoundingClientRect().top + 80;
-        if (isLargeReader) {
-          if (
-            outline.length > 0 &&
-            container.scrollTop + container.clientHeight >= container.scrollHeight - 2
-          ) {
-            setActiveId(outline[outline.length - 1].id);
-            tickingRef.current = false;
+        if (
+          container.scrollHeight > container.clientHeight + 2 &&
+          container.scrollTop + container.clientHeight >= container.scrollHeight - 2
+        ) {
+          setActiveId(outline[outline.length - 1].id);
+          return;
+        }
+        const mountedHeadings = container.querySelectorAll<HTMLElement>('[data-heading-pos]');
+        let matchedPos: number | null = null;
+        for (const headingEl of mountedHeadings) {
+          if (headingEl.getBoundingClientRect().top <= line) {
+            const parsed = Number(headingEl.dataset.headingPos);
+            if (Number.isFinite(parsed) && (matchedPos === null || parsed > matchedPos)) {
+              matchedPos = parsed;
+            }
+          }
+        }
+        // 虚拟化窗口中可能不包含当前章节标题（例如停在超长章节中部或刚快速拖动滚动条），
+        // 结合判定线处可见分块的源码偏移反推前置标题，并与已挂载标题取较后者。
+        const anchorOffset = largeReaderHandle.current?.getAnchorOffsetAtClientY(line) ?? null;
+        let inferredPos: number | null = null;
+        if (anchorOffset !== null) {
+          for (let i = outline.length - 1; i >= 0; i--) {
+            if (outline[i].pos <= anchorOffset) {
+              inferredPos = outline[i].pos;
+              break;
+            }
+          }
+        }
+        const bestPos =
+          matchedPos !== null && inferredPos !== null
+            ? Math.max(matchedPos, inferredPos)
+            : (matchedPos ?? inferredPos);
+        if (bestPos !== null) {
+          const match = outline.find((item) => item.pos === bestPos);
+          if (match) {
+            setActiveId(match.id);
             return;
           }
-          const mountedHeadings = container.querySelectorAll<HTMLElement>('[data-heading-pos]');
-          let matchedPos: number | null = null;
-          for (const headingEl of mountedHeadings) {
-            if (headingEl.getBoundingClientRect().top <= line) {
-              const parsed = Number(headingEl.dataset.headingPos);
-              if (Number.isFinite(parsed)) matchedPos = parsed;
-            }
-          }
-          if (matchedPos !== null) {
-            const match = outline.find((item) => item.pos === matchedPos);
-            if (match) setActiveId(match.id);
-          } else if (mountedHeadings.length > 0) {
-            const firstPos = Number(mountedHeadings[0].dataset.headingPos);
-            if (Number.isFinite(firstPos)) {
-              for (let i = outline.length - 1; i >= 0; i--) {
-                if (outline[i].pos < firstPos) {
-                  setActiveId(outline[i].id);
-                  break;
-                }
-              }
-            }
-          }
-          tickingRef.current = false;
-          return;
         }
+        setActiveId(null);
+        return;
+      }
 
-        const domHeadings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        let activeIndex = -1;
-        domHeadings.forEach((h, i) => {
-          if (h.getBoundingClientRect().top <= line) {
-            activeIndex = i;
-          }
-        });
-        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
-          activeIndex = domHeadings.length - 1;
+      const domHeadings = container.querySelectorAll('h1, h2, h3, h4, h5, h6');
+      let activeIndex = -1;
+      domHeadings.forEach((h, i) => {
+        if (h.getBoundingClientRect().top <= line) {
+          activeIndex = i;
         }
-        // 按索引匹配而非文本，避免同名标题只能高亮第一个
-        if (activeIndex >= 0 && activeIndex < outline.length) {
-          setActiveId(outline[activeIndex].id);
-        }
-        tickingRef.current = false;
+      });
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
+        activeIndex = domHeadings.length - 1;
+      }
+      // 按索引匹配而非文本，避免同名标题只能高亮第一个
+      if (activeIndex >= 0 && activeIndex < outline.length) {
+        setActiveId(outline[activeIndex].id);
+      }
+    };
+
+    let rafId: number | null = null;
+    const handleScroll = (): void => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        syncActiveHeading();
       });
     };
 
-    const container = getActiveContainer();
-    if (container) {
-      container.addEventListener('scroll', handleScroll);
-      return () => container.removeEventListener('scroll', handleScroll);
-    } else {
-      window.addEventListener('scroll', handleScroll);
-      return () => window.removeEventListener('scroll', handleScroll);
-    }
-  }, [isLargeReader, outline]);
+    let boundTarget: EventTarget | null = null;
+    const syncAndBind = (): void => {
+      const nextTarget: EventTarget = getActiveContainer() ?? window;
+      if (boundTarget !== nextTarget) {
+        if (boundTarget) boundTarget.removeEventListener('scroll', handleScroll);
+        boundTarget = nextTarget;
+        boundTarget.addEventListener('scroll', handleScroll);
+      }
+      if (isLargeReader && nextTarget !== window) {
+        syncActiveHeading();
+      }
+    };
+
+    syncAndBind();
+    const unsubscribeReader = isLargeReader ? subscribeLargeReaderChange(syncAndBind) : undefined;
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      unsubscribeReader?.();
+      if (boundTarget) boundTarget.removeEventListener('scroll', handleScroll);
+    };
+  }, [activeTabId, isLargeReader, outline]);
 
   const handleClick = (pos: number): void => {
     // 拖动结束后的补发 click 不触发跳转，否则会跳到已被搬走的标题位置。

@@ -324,4 +324,104 @@ describe('splitMarkdownForReader & renderMarkdownChunkToHtml', () => {
     expect(doc.chunks[0].markdown).toContain('indented continuation');
     expect(doc.chunks[1].markdown.trim()).toBe('2. Second');
   });
+
+  it('引用式本地图片与跨片段图片统一输出 data-inkmark-src，未定义引用按原文回退', () => {
+    const filler = Array.from({ length: 90 }, (_, i) => `段落 ${i}`).join('\n\n');
+    const content = [
+      '[photo]: ./assets/first.png "首图"',
+      '',
+      '![本地图][photo] 与 ![缺失图][missing]',
+      '',
+      filler,
+      '',
+      '后文再引用 ![重复图][photo]',
+      '',
+      '[photo]: ./assets/second.png "重复定义"',
+    ].join('\n');
+
+    const doc = splitMarkdownForReader(content, 60, 90);
+    expect(doc.chunks.length).toBeGreaterThanOrEqual(2);
+
+    const html0 = renderMarkdownChunkToHtml(doc.chunks[0], doc.referenceDefs);
+    expect(html0).toContain('data-inkmark-src="./assets/first.png"');
+    expect(html0).toContain('alt="本地图"');
+    expect(html0).toContain('title="首图"');
+    expect(html0).not.toMatch(/<img[^>]*\ssrc="/);
+    expect(html0).toContain('![缺失图][missing]');
+
+    const htmlLast = renderMarkdownChunkToHtml(
+      doc.chunks[doc.chunks.length - 1],
+      doc.referenceDefs,
+    );
+    expect(htmlLast).toContain('data-inkmark-src="./assets/first.png"');
+    expect(htmlLast).not.toContain('./assets/second.png');
+
+    const readable = extractReadableMarkdownText('看图 ![示例文字][photo]\n\n[photo]: ./a.png');
+    expect(readable).toContain('示例文字');
+    expect(readable).not.toContain('!示例文字');
+  });
+
+  it('引用块内嵌超长围栏代码块、嵌套引用围栏、引用表格与列表行内围栏保持完整，未闭合引用围栏随引用块结束', () => {
+    const quotedCode = [
+      '> ```js',
+      ...Array.from({ length: 250 }, (_, i) => `> const line${i} = ${i};`),
+      '> ```',
+      '',
+      '正常正文',
+    ].join('\n');
+    const quotedDoc = splitMarkdownForReader(quotedCode, 80, 120);
+    const fenceChunk = quotedDoc.chunks.find((c) => c.markdown.includes('> ```js'));
+    expect(fenceChunk).toBeDefined();
+    expect(fenceChunk!.markdown).toContain('> const line249 = 249;');
+    expect(fenceChunk!.markdown).toContain('\n> ```');
+    const fenceHtml = renderMarkdownChunkToHtml(fenceChunk!, quotedDoc.referenceDefs);
+    expect(fenceHtml).toContain('<blockquote>');
+    expect(fenceHtml).toContain('<code class="language-js">');
+    expect(fenceHtml).toContain('const line249 = 249;');
+
+    // 未闭合的引用块围栏在空行结束引用块后自动关闭，后续真实标题正常提取
+    const unclosedQuoted = [
+      '> ```js',
+      '> const orphan = 1;',
+      '',
+      '# Real Heading After Quote',
+    ].join('\n');
+    const unclosedDoc = splitMarkdownForReader(unclosedQuoted, 80, 120);
+    expect(unclosedDoc.headings.map((h) => h.text)).toEqual(['Real Heading After Quote']);
+
+    // 引用块内超长 GFM 表格不拆散
+    const quotedTable = [
+      '> | Col1 | Col2 |',
+      '> | --- | --- |',
+      ...Array.from({ length: 160 }, (_, i) => `> | R${i} | V${i} |`),
+      '',
+      '表后文本',
+    ].join('\n');
+    const tableDoc = splitMarkdownForReader(quotedTable, 60, 90);
+    const tableChunk = tableDoc.chunks.find((c) => c.markdown.includes('> | Col1 | Col2 |'));
+    expect(tableChunk).toBeDefined();
+    expect(tableChunk!.markdown).toContain('> | R159 | V159 |');
+    const tableHtml = renderMarkdownChunkToHtml(tableChunk!, tableDoc.referenceDefs);
+    expect(tableHtml).toContain('<blockquote>');
+    expect(tableHtml).toContain('<table>');
+    expect(tableHtml).toContain('<td>R159</td>');
+
+    // 列表项行内围栏保持完整且继续累加有序列表编号
+    const listFence = [
+      '1. First',
+      '1. ```ts',
+      ...Array.from({ length: 130 }, (_, i) => `   const v${i} = ${i};`),
+      '   ```',
+      '',
+      '1. Third',
+    ].join('\n');
+    const listFenceDoc = splitMarkdownForReader(listFence, 60, 90);
+    expect(listFenceDoc.chunks).toHaveLength(2);
+    expect(listFenceDoc.chunks[0].markdown).toContain('const v129 = 129;');
+    const nextListHtml = renderMarkdownChunkToHtml(
+      listFenceDoc.chunks[1],
+      listFenceDoc.referenceDefs,
+    );
+    expect(nextListHtml).toContain('<ol start="3">');
+  });
 });

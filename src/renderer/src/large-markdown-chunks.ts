@@ -4,7 +4,13 @@ import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkRehype, { defaultHandlers, type Options as RemarkRehypeOptions } from 'remark-rehype';
 import rehypeStringify from 'rehype-stringify';
-import type { Heading as MdastHeading, Image as MdastImage, Parent, Root } from 'mdast';
+import type {
+  Heading as MdastHeading,
+  Image as MdastImage,
+  ImageReference as MdastImageReference,
+  Parent,
+  Root,
+} from 'mdast';
 import { transformBreaksInTree } from '../../shared/markdown-breaks';
 import { transformCellBrInTree } from './plugins/table-cell-breaks';
 import type { Heading } from './types';
@@ -36,12 +42,16 @@ const MIN_CHUNK_HEIGHT = 48;
 const ATX_HEADING_RE = /^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$/;
 const SETEXT_UNDERLINE_RE = /^ {0,3}(=+|-+)[ \t]*$/;
 const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const INDENTED_FENCE_OPEN_RE = /^[ \t]+(`{3,}|~{3,})(.*)$/;
 const TABLE_SEPARATOR_RE =
   /^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)+\|?\s*$|^ {0,3}\|\s*:?-+:?\s*\|?\s*$/;
 const TOP_LEVEL_LIST_RE = /^(?:[-*+]|\d{1,9}[.)])[ \t]/;
 const ANY_LIST_ITEM_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]/;
+const LIST_ITEM_PREFIX_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
 const ORDERED_LIST_ITEM_RE = /^( {0,3})(\d{1,9})([.)])(?:([ \t]+)(.*)|[ \t]*)$/;
 const UNORDERED_LIST_ITEM_RE = /^( {0,3})[-*+](?:[ \t]|$)/;
+const HR_LINE_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const BLOCKQUOTE_LINE_RE = /^ {0,3}>/;
 const BLOCKQUOTE_OR_HR_RE = /^ {0,3}(?:>|([-*_])(?:[ \t]*\1){2,}[ \t]*$)/;
 const REF_DEF_HEAD_RE = /^ {0,3}\[((?:[^\]\\]|\\.)+)\]:[ \t]*(.*)$/;
 const STANDALONE_TITLE_RE = /^[ \t]*(?:"[^"]*"|'[^']*'|\([^)]*\))[ \t]*$/;
@@ -50,6 +60,106 @@ interface ActiveOrderedList {
   delimiter: '.' | ')';
   nextOrdinal: number;
   contentIndent: number;
+}
+
+interface FenceOpenInfo {
+  char: string;
+  len: number;
+  quoteDepth: number;
+  allowIndentedClose: boolean;
+  openedFromListItem: boolean;
+}
+
+function stripBlockquotePrefix(line: string): { quoteDepth: number; rest: string } {
+  let pos = 0;
+  let quoteDepth = 0;
+  while (pos < line.length) {
+    let spaces = 0;
+    while (pos + spaces < line.length && line[pos + spaces] === ' ' && spaces < 3) {
+      spaces += 1;
+    }
+    if (pos + spaces < line.length && line[pos + spaces] === '>') {
+      quoteDepth += 1;
+      pos += spaces + 1;
+      if (pos < line.length && (line[pos] === ' ' || line[pos] === '\t')) {
+        pos += 1;
+      }
+    } else {
+      break;
+    }
+  }
+  return { quoteDepth, rest: line.slice(pos) };
+}
+
+function stripExactBlockquoteDepth(line: string, targetDepth: number): string | null {
+  if (targetDepth === 0) return line;
+  let pos = 0;
+  for (let d = 0; d < targetDepth; d++) {
+    let spaces = 0;
+    while (pos + spaces < line.length && line[pos + spaces] === ' ' && spaces < 3) {
+      spaces += 1;
+    }
+    if (pos + spaces >= line.length || line[pos + spaces] !== '>') {
+      return null;
+    }
+    pos += spaces + 1;
+    if (pos < line.length && (line[pos] === ' ' || line[pos] === '\t')) {
+      pos += 1;
+    }
+  }
+  return line.slice(pos);
+}
+
+function matchFenceOpen(line: string, inList: boolean): FenceOpenInfo | null {
+  const { quoteDepth, rest } = stripBlockquotePrefix(line);
+  const direct = FENCE_OPEN_RE.exec(rest);
+  if (direct) {
+    const marker = direct[1];
+    const info = direct[2];
+    if (marker[0] !== '`' || !info.includes('`')) {
+      return {
+        char: marker[0],
+        len: marker.length,
+        quoteDepth,
+        allowIndentedClose: false,
+        openedFromListItem: false,
+      };
+    }
+  }
+  const listPrefix = LIST_ITEM_PREFIX_RE.exec(rest);
+  if (listPrefix) {
+    const inlineFence = FENCE_OPEN_RE.exec(listPrefix[1]);
+    if (inlineFence) {
+      const marker = inlineFence[1];
+      const info = inlineFence[2];
+      if (marker[0] !== '`' || !info.includes('`')) {
+        return {
+          char: marker[0],
+          len: marker.length,
+          quoteDepth,
+          allowIndentedClose: true,
+          openedFromListItem: true,
+        };
+      }
+    }
+  }
+  if (inList) {
+    const indented = INDENTED_FENCE_OPEN_RE.exec(rest);
+    if (indented) {
+      const marker = indented[1];
+      const info = indented[2];
+      if (marker[0] !== '`' || !info.includes('`')) {
+        return {
+          char: marker[0],
+          len: marker.length,
+          quoteDepth,
+          allowIndentedClose: true,
+          openedFromListItem: true,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 function leadingIndentWidth(line: string): number {
@@ -87,14 +197,19 @@ function stripInlineMarkdown(raw: string): string {
     .trim();
 }
 
-function isClosingFence(line: string, fenceChar: string, fenceLen: number): boolean {
+function isClosingFence(
+  line: string,
+  fenceChar: string,
+  fenceLen: number,
+  allowAnyIndent = false,
+): boolean {
   let i = 0;
   let spaces = 0;
-  while (i < line.length && line[i] === ' ' && spaces < 4) {
+  while (i < line.length && (line[i] === ' ' || (allowAnyIndent && line[i] === '\t'))) {
     i += 1;
     spaces += 1;
+    if (!allowAnyIndent && spaces >= 4) return false;
   }
-  if (spaces >= 4) return false;
   let count = 0;
   while (i < line.length && line[i] === fenceChar) {
     count += 1;
@@ -237,7 +352,11 @@ export function splitMarkdownForReader(
   let currentHeadingPositions: number[] = [];
   let fenceChar = '';
   let fenceLen = 0;
+  let fenceQuoteDepth = 0;
+  let fenceAllowIndentedClose = false;
+  let fenceOpenedFromListItem = false;
   let inTable = false;
+  let tableQuoteDepth = 0;
   let inList = false;
   let paragraphStartLine = -1;
   let refDefConsumedUntil = -1;
@@ -282,6 +401,7 @@ export function splitMarkdownForReader(
     if (inFrontmatter) {
       paragraphStartLine = -1;
       inTable = false;
+      tableQuoteDepth = 0;
       inList = false;
       orderedListState.active = null;
       if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
@@ -293,73 +413,158 @@ export function splitMarkdownForReader(
     }
 
     if (fenceChar !== '') {
-      if (isClosingFence(line, fenceChar, fenceLen)) {
+      const fenceRest = stripExactBlockquoteDepth(line, fenceQuoteDepth);
+      const exitedBlockquote = fenceRest === null;
+      const exitedListItem =
+        !exitedBlockquote &&
+        fenceOpenedFromListItem &&
+        !isBlankLine(fenceRest) &&
+        leadingIndentWidth(fenceRest) === 0 &&
+        !isClosingFence(fenceRest, fenceChar, fenceLen, true);
+      if (exitedBlockquote || exitedListItem) {
+        // CommonMark 中引用块或列表项容器结束时，其内未闭合围栏同步隐式闭合，当前行按正常块处理。
         fenceChar = '';
         fenceLen = 0;
-      }
-      paragraphStartLine = -1;
-      inTable = false;
-      if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
-      if (fenceChar === '' && i - chunkStartLine + 1 >= targetLines && i + 1 < lineCount) {
-        const nextLine = lines[i + 1];
-        const nextNonBlankIdx = nextNonBlankLine[i + 1];
-        const nextContinuesList =
-          inList && nextNonBlankIdx !== -1 && /^[ \t]+\S/.test(lines[nextNonBlankIdx]);
-        if (!nextContinuesList && (isBlankLine(nextLine) || ATX_HEADING_RE.test(nextLine))) {
-          flushChunk(i);
+        fenceQuoteDepth = 0;
+        fenceAllowIndentedClose = false;
+        fenceOpenedFromListItem = false;
+      } else {
+        const closedQuoteDepth = fenceQuoteDepth;
+        if (isClosingFence(fenceRest, fenceChar, fenceLen, fenceAllowIndentedClose)) {
+          fenceChar = '';
+          fenceLen = 0;
+          fenceQuoteDepth = 0;
+          fenceAllowIndentedClose = false;
+          fenceOpenedFromListItem = false;
         }
-      }
-      continue;
-    }
-
-    const fenceMatch = FENCE_OPEN_RE.exec(line);
-    if (fenceMatch) {
-      const marker = fenceMatch[1];
-      const info = fenceMatch[2];
-      if (marker[0] !== '`' || !info.includes('`')) {
-        fenceChar = marker[0];
-        fenceLen = marker.length;
         paragraphStartLine = -1;
         inTable = false;
-        chunkFirstNonBlankSeen = true;
-        if (
-          orderedListState.active &&
-          leadingIndentWidth(line) < orderedListState.active.contentIndent
-        ) {
-          orderedListState.active = null;
-        }
-        if (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))) {
-          inList = false;
+        tableQuoteDepth = 0;
+        if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
+        if (fenceChar === '' && i - chunkStartLine + 1 >= targetLines && i + 1 < lineCount) {
+          const nextLine = lines[i + 1];
+          const nextNonBlankIdx = nextNonBlankLine[i + 1];
+          const nextContinuesList =
+            inList && nextNonBlankIdx !== -1 && /^[ \t]+\S/.test(lines[nextNonBlankIdx]);
+          const nextContinuesQuote =
+            closedQuoteDepth > 0 && stripExactBlockquoteDepth(nextLine, closedQuoteDepth) !== null;
+          if (
+            !nextContinuesList &&
+            !nextContinuesQuote &&
+            (isBlankLine(nextLine) || ATX_HEADING_RE.test(nextLine))
+          ) {
+            flushChunk(i);
+          }
         }
         continue;
       }
     }
 
-    if (i <= refDefConsumedUntil) {
+    const fenceOpen = matchFenceOpen(line, inList);
+    if (fenceOpen) {
+      fenceChar = fenceOpen.char;
+      fenceLen = fenceOpen.len;
+      fenceQuoteDepth = fenceOpen.quoteDepth;
+      fenceAllowIndentedClose = fenceOpen.allowIndentedClose;
+      fenceOpenedFromListItem = fenceOpen.openedFromListItem;
       paragraphStartLine = -1;
       inTable = false;
-      if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
-      if (i < refDefConsumedUntil || i + 1 >= lineCount) continue;
-    } else {
-      // 表格状态追踪：标题行 + 分隔行启动表格，直到空行、代码块、标题或无管道字符行结束。
-      if (
-        !inTable &&
-        i + 1 < lineCount &&
-        looksLikeTableRow(line) &&
-        TABLE_SEPARATOR_RE.test(lines[i + 1])
-      ) {
-        inTable = true;
-        paragraphStartLine = -1;
-        if (!/^[ \t]/.test(line)) inList = false;
-        if (
+      tableQuoteDepth = 0;
+      if (fenceOpen.openedFromListItem && fenceOpen.quoteDepth === 0) {
+        inList = true;
+        const ordInline = ORDERED_LIST_ITEM_RE.exec(line);
+        if (ordInline) {
+          const leadingSpaces = ordInline[1].length;
+          const digits = ordInline[2];
+          const delimiter = ordInline[3] as '.' | ')';
+          const spacesAfter = ordInline[4] ?? '';
+          const rest = ordInline[5] ?? '';
+          const contentIndent =
+            leadingSpaces +
+            digits.length +
+            1 +
+            (spacesAfter.length > 0 && spacesAfter.length <= 4 && rest.trim().length > 0
+              ? spacesAfter.length
+              : 1);
+          const currentOrd = orderedListState.active;
+          if (currentOrd && leadingSpaces >= currentOrd.contentIndent) {
+            // 子列表项
+          } else if (currentOrd && currentOrd.delimiter === delimiter) {
+            if (!chunkFirstNonBlankSeen && orderedListState.carried === currentOrd) {
+              chunkOrderedListStart = currentOrd.nextOrdinal;
+            }
+            currentOrd.nextOrdinal += 1;
+            currentOrd.contentIndent = contentIndent;
+          } else {
+            orderedListState.active = {
+              delimiter,
+              nextOrdinal: Number.parseInt(digits, 10) + 1,
+              contentIndent,
+            };
+          }
+        } else if (
+          UNORDERED_LIST_ITEM_RE.test(line) &&
           orderedListState.active &&
           leadingIndentWidth(line) < orderedListState.active.contentIndent
         ) {
           orderedListState.active = null;
         }
+      } else if (
+        orderedListState.active &&
+        (fenceOpen.quoteDepth > 0 ||
+          leadingIndentWidth(line) < orderedListState.active.contentIndent)
+      ) {
+        orderedListState.active = null;
+      }
+      chunkFirstNonBlankSeen = true;
+      if (
+        !fenceOpen.openedFromListItem &&
+        (fenceOpen.quoteDepth > 0 ||
+          (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))))
+      ) {
+        inList = false;
+      }
+      continue;
+    }
+
+    if (i <= refDefConsumedUntil) {
+      paragraphStartLine = -1;
+      inTable = false;
+      tableQuoteDepth = 0;
+      if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
+      if (i < refDefConsumedUntil || i + 1 >= lineCount) continue;
+    } else {
+      // 表格状态追踪：支持顶层及引用块内的 GFM 表格，避免拆开后退化为普通文本。
+      if (!inTable && i + 1 < lineCount) {
+        const curQuote = stripBlockquotePrefix(line);
+        const nextQuote = stripBlockquotePrefix(lines[i + 1]);
+        if (
+          curQuote.quoteDepth === nextQuote.quoteDepth &&
+          looksLikeTableRow(curQuote.rest) &&
+          TABLE_SEPARATOR_RE.test(nextQuote.rest)
+        ) {
+          inTable = true;
+          tableQuoteDepth = curQuote.quoteDepth;
+          paragraphStartLine = -1;
+          if (curQuote.quoteDepth > 0 || !/^[ \t]/.test(line)) inList = false;
+          if (
+            orderedListState.active &&
+            (curQuote.quoteDepth > 0 ||
+              leadingIndentWidth(line) < orderedListState.active.contentIndent)
+          ) {
+            orderedListState.active = null;
+          }
+        }
       } else if (inTable) {
-        if (isBlankLine(line) || ATX_HEADING_RE.test(line) || !looksLikeTableRow(line)) {
+        const tableRest = stripExactBlockquoteDepth(line, tableQuoteDepth);
+        if (
+          tableRest === null ||
+          isBlankLine(tableRest) ||
+          ATX_HEADING_RE.test(tableRest) ||
+          !looksLikeTableRow(tableRest)
+        ) {
           inTable = false;
+          tableQuoteDepth = 0;
         }
       }
 
@@ -515,8 +720,11 @@ export function splitMarkdownForReader(
     }
 
     if (countInChunk >= maxLines) {
+      const lineIsBlockquote = BLOCKQUOTE_LINE_RE.test(line);
       const atListOrBlockBoundary =
-        TOP_LEVEL_LIST_RE.test(nextLine) || BLOCKQUOTE_OR_HR_RE.test(nextLine);
+        TOP_LEVEL_LIST_RE.test(nextLine) ||
+        HR_LINE_RE.test(nextLine) ||
+        (!lineIsBlockquote && BLOCKQUOTE_LINE_RE.test(nextLine));
       if (atListOrBlockBoundary || countInChunk >= maxLines * 3) {
         flushChunk(i);
       }
@@ -660,6 +868,26 @@ const chunkHandlers: RemarkRehypeOptions['handlers'] = {
       children: [],
     };
   },
+  imageReference: (state, node) => {
+    const refNode = node as MdastImageReference;
+    const def = state.definitionById.get(String(refNode.identifier).toUpperCase());
+    if (!def) {
+      return defaultHandlers.imageReference(state, refNode);
+    }
+    const properties: Record<string, string> = {
+      dataInkmarkSrc: def.url ?? '',
+      alt: refNode.alt ?? '',
+    };
+    if (def.title) {
+      properties.title = def.title;
+    }
+    return {
+      type: 'element',
+      tagName: 'img',
+      properties,
+      children: [],
+    };
+  },
 };
 
 function createChunkProcessor(withFrontmatter: boolean) {
@@ -715,30 +943,36 @@ export function extractReadableMarkdownText(markdown: string): string {
 
   let fenceChar = '';
   let fenceLen = 0;
+  let fenceQuoteDepth = 0;
   let refEndUntil = -1;
 
   for (let i = startLine; i < lines.length; i++) {
     const line = lines[i];
 
     if (fenceChar !== '') {
-      if (isClosingFence(line, fenceChar, fenceLen)) {
+      const fenceRest = stripExactBlockquoteDepth(line, fenceQuoteDepth);
+      if (fenceRest === null) {
         fenceChar = '';
         fenceLen = 0;
+        fenceQuoteDepth = 0;
       } else {
-        output.push(line);
-      }
-      continue;
-    }
-
-    const fenceMatch = FENCE_OPEN_RE.exec(line);
-    if (fenceMatch) {
-      const marker = fenceMatch[1];
-      const info = fenceMatch[2];
-      if (marker[0] !== '`' || !info.includes('`')) {
-        fenceChar = marker[0];
-        fenceLen = marker.length;
+        if (isClosingFence(fenceRest, fenceChar, fenceLen)) {
+          fenceChar = '';
+          fenceLen = 0;
+          fenceQuoteDepth = 0;
+        } else {
+          output.push(fenceRest);
+        }
         continue;
       }
+    }
+
+    const fenceOpen = matchFenceOpen(line, false);
+    if (fenceOpen && !fenceOpen.openedFromListItem) {
+      fenceChar = fenceOpen.char;
+      fenceLen = fenceOpen.len;
+      fenceQuoteDepth = fenceOpen.quoteDepth;
+      continue;
     }
 
     if (i <= refEndUntil) continue;
@@ -766,6 +1000,7 @@ export function extractReadableMarkdownText(markdown: string): string {
 
     text = text
       .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/!\[([^\]]*)\]\[[^\]]*\]/g, '$1')
       .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
       .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
       .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/gi, '$1')

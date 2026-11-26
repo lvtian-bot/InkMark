@@ -16,7 +16,11 @@ import {
   type LargeMarkdownChunk,
   type LargeMarkdownDocument,
 } from '../large-markdown-chunks';
-import { largeReaderHandle, recordLargeReaderScrollTop } from '../large-reader-ref';
+import {
+  notifyLargeReaderLayoutChange,
+  recordLargeReaderScrollTop,
+  setLargeReaderHandle,
+} from '../large-reader-ref';
 import type { PreviewImage } from '../plugins/image-view';
 import { selectContentTheme, useStore } from '../stores/useStore';
 import { useI18n } from '../i18n';
@@ -321,6 +325,7 @@ export function LargeMarkdownReader({
     const nextTop = Math.max(0, container.scrollTop + delta);
     container.scrollTop = nextTop;
     recordLargeReaderScrollTop(tabIdRef.current, nextTop);
+    notifyLargeReaderLayoutChange();
   }, [doc, mountedIds]);
 
   // 测量已挂载片段真实高度，用于卸载后占位与向上滚动时的视口稳定。
@@ -473,8 +478,9 @@ export function LargeMarkdownReader({
   }, [doc, filePath, mountedIds]);
 
   // 暴露与 Editor 对齐的句柄，供滚动恢复、大纲跳转、全选复制与源码切换使用。
-  useEffect(() => {
-    largeReaderHandle.current = {
+  // 使用 useLayoutEffect 确保位于 JSX 前方的左侧 Outline 挂载时即可拿到容器句柄。
+  useLayoutEffect(() => {
+    setLargeReaderHandle({
       getScrollTop: () => containerRef.current?.scrollTop ?? 0,
       setScrollTop: (top: number) => {
         const container = containerRef.current;
@@ -483,8 +489,42 @@ export function LargeMarkdownReader({
         container.scrollTop = safeTop;
         recordLargeReaderScrollTop(tabIdRef.current, safeTop);
         syncWindowToScroll();
+        notifyLargeReaderLayoutChange();
       },
       getScrollContainer: () => containerRef.current,
+      getAnchorOffsetAtClientY: (lineClientY: number) => {
+        const body = bodyRef.current;
+        const currentDoc = docRef.current;
+        if (!body || currentDoc.chunks.length === 0) return null;
+        const children = body.children;
+        if (children.length === 0) return null;
+        let lo = 0;
+        let hi = children.length - 1;
+        let found = -1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (children[mid].getBoundingClientRect().top <= lineClientY) {
+            found = mid;
+            lo = mid + 1;
+          } else {
+            hi = mid - 1;
+          }
+        }
+        if (found === -1) return -1;
+        const el = children[found] as HTMLElement;
+        const idAttr = el.dataset.chunkId;
+        const chunkId = idAttr !== undefined ? Number(idAttr) : found;
+        const chunk = currentDoc.chunks[chunkId];
+        if (!chunk) return null;
+        if (el.dataset.mounted === '1') {
+          return chunk.startOffset - 1;
+        }
+        const rect = el.getBoundingClientRect();
+        const span = Math.max(0, chunk.endOffset - chunk.startOffset - 1);
+        const ratio =
+          rect.height > 0 ? Math.min(1, Math.max(0, (lineClientY - rect.top) / rect.height)) : 0;
+        return chunk.startOffset + Math.floor(ratio * span);
+      },
       getSelectedText: () =>
         isFullDocumentSelection() ? contentRef.current : (window.getSelection()?.toString() ?? ''),
       scrollToPos: (pos: number) => {
@@ -536,15 +576,21 @@ export function LargeMarkdownReader({
             const nextTop = Math.max(0, container.scrollTop + delta);
             container.scrollTop = nextTop;
             recordLargeReaderScrollTop(tabIdRef.current, nextTop);
+            notifyLargeReaderLayoutChange();
           }
         }
       },
-    };
+    });
 
     return () => {
-      largeReaderHandle.current = null;
+      setLargeReaderHandle(null);
     };
   }, [isFullDocumentSelection, syncWindowToScroll]);
+
+  // 片段窗口完成挂载切换后通知大纲重新校对当前高亮标题。
+  useEffect(() => {
+    notifyLargeReaderLayoutChange();
+  }, [doc, mountedIds]);
 
   useEffect(() => {
     return () => {
