@@ -255,4 +255,138 @@ describe('大文档只读预览与大纲同步及引用图片解析', () => {
       '滚动至无已挂载标题的 Section B 中段时大纲未更新为 Section B',
     );
   });
+
+  it('带链接的图片按住 Ctrl 点击优先打开外链，普通点击打开预览；大纲跳转不被前序高块高度差顶偏', async () => {
+    const padding = Array.from({ length: 420 }, (_, i) => `- Row ${i} ${'p'.repeat(2600)}`).join(
+      '\n',
+    );
+    const content = [
+      '# Top',
+      '',
+      '[![CI](https://example.com/badge.svg)](https://example.com/actions)',
+      '',
+      padding,
+      '',
+      '# Target Heading',
+      '',
+      'End content',
+    ].join('\n');
+    expect(Buffer.byteLength(content, 'utf8')).toBeGreaterThan(LARGE_MARKDOWN_THRESHOLD_BYTES);
+    const parsedDoc = splitMarkdownForReader(content);
+    const targetHeading = parsedDoc.headings.find((h) => h.text === 'Target Heading')!;
+    const targetChunkId = parsedDoc.headingToChunk.get(targetHeading.pos)!;
+    expect(targetChunkId).toBeGreaterThanOrEqual(3);
+
+    const followLinkSpy = vi.fn();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    mountedRoots.add(root);
+
+    await act(async () => {
+      root.render(
+        React.createElement(
+          I18nProvider,
+          null,
+          React.createElement(LargeMarkdownReader, {
+            tabId: 'tab-badge-jump',
+            content,
+            filePath: 'D:/docs/badge.md',
+            onDocInit: () => undefined,
+            onFollowLink: followLinkSpy,
+            onEditAttempt: () => undefined,
+          }),
+        ),
+      );
+    });
+
+    await waitFor(
+      () => !!host.querySelector('a[href="https://example.com/actions"] img'),
+      '未渲染带链接的徽章图片',
+    );
+    const badgeImg = host.querySelector<HTMLImageElement>(
+      'a[href="https://example.com/actions"] img',
+    )!;
+    // Ctrl+点击徽章应打开链接，而非弹出图片预览
+    await act(async () => {
+      badgeImg.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }),
+      );
+    });
+    expect(followLinkSpy).toHaveBeenCalledWith('https://example.com/actions');
+    expect(document.body.querySelector('.image-preview-dialog')).toBeNull();
+
+    // 普通点击徽章打开图片预览，不再触发链接打开
+    followLinkSpy.mockClear();
+    await act(async () => {
+      badgeImg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    expect(followLinkSpy).not.toHaveBeenCalled();
+    expect(document.body.querySelector('.image-preview-dialog')).not.toBeNull();
+
+    // 模拟前序分块实际高度（3800px）远大于估算高度，验证大纲跳转不发生二次补偿顶偏
+    const container = host.querySelector<HTMLElement>('.large-reader-container')!;
+    const predChunkEl = host.querySelector<HTMLElement>(
+      `.large-reader-chunk[data-chunk-id="${targetChunkId - 1}"]`,
+    )!;
+    const targetChunkEl = host.querySelector<HTMLElement>(
+      `.large-reader-chunk[data-chunk-id="${targetChunkId}"]`,
+    )!;
+    Object.defineProperty(predChunkEl, 'offsetHeight', { configurable: true, value: 3800 });
+    Object.defineProperty(predChunkEl, 'offsetTop', { configurable: true, value: 5000 });
+    vi.spyOn(container, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 600,
+      height: 600,
+      left: 0,
+      right: 800,
+      width: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(targetChunkEl, 'getBoundingClientRect').mockImplementation(() => ({
+      top: 9000 - container.scrollTop,
+      bottom: 9500 - container.scrollTop,
+      height: 500,
+      left: 0,
+      right: 800,
+      width: 800,
+      x: 0,
+      y: 9000 - container.scrollTop,
+      toJSON: () => ({}),
+    }));
+    // 给目标标题定位回落到 9000（即使挂载后用 headingEl.getBoundingClientRect）
+    const origGetBCR = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.dataset?.headingPos === String(targetHeading.pos)) {
+        const top = 9000 - container.scrollTop;
+        return {
+          top,
+          bottom: top + 32,
+          height: 32,
+          left: 0,
+          right: 800,
+          width: 800,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        };
+      }
+      return origGetBCR.call(this);
+    });
+
+    await act(async () => {
+      largeReaderHandle.current?.scrollToPos(targetHeading.pos);
+    });
+    await waitFor(
+      () => host.querySelector(`[data-heading-pos="${targetHeading.pos}"]`) !== null,
+      '目标章节分块未完成挂载',
+    );
+
+    // 应精准停在 9000 - 76 = 8924，而非被 predChunkEl 的 (3800 - estimatedHeight) 再次顶偏
+    expect(container.scrollTop).toBe(8924);
+  });
 });

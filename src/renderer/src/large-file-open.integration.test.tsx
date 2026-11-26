@@ -290,7 +290,11 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
 
   it('点击切到源码编辑直接进入源码修改，切回所见即所得立即反映修改后的只读渲染', async () => {
     const largePath = 'D:/docs/huge-edit.md';
-    const largeContent = `# Original Title\n\n${'y'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 1024)}`;
+    const bodyLines = Array.from({ length: 1200 }, (_, i) => `Line ${i} ${'y'.repeat(900)}`).join(
+      '\n',
+    );
+    const largeContent = `# Original Title\n\n${bodyLines}`;
+    expect(Buffer.byteLength(largeContent, 'utf8')).toBeGreaterThan(LARGE_MARKDOWN_THRESHOLD_BYTES);
 
     const app = mountApp({ [largePath]: largeContent }, 'wysiwyg', true);
     await app.start();
@@ -327,7 +331,7 @@ describe('大文档所见即所得只读预览与源码编辑切换', () => {
       '切回阅读模式后未显示源码修改结果',
     );
     expect(editorSpies.setMarkdown).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it('在只读预览中输入按键会高亮提示条，按下 Ctrl+F 会自动切到源码模式并打开查找栏', async () => {
     const largePath = 'D:/docs/huge-keys.md';

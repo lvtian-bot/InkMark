@@ -205,11 +205,58 @@ function slugify(text: string): string {
     .replace(/-+/g, '-');
 }
 
+function stripBracketConstructs(input: string, imagesOnly: boolean): string {
+  const trigger = imagesOnly ? '![' : '[';
+  let idx = input.indexOf(trigger);
+  if (idx === -1) return input;
+
+  let out = '';
+  let cursor = 0;
+  let noMoreCloseParen = false;
+  let noMoreCloseRef = false;
+
+  while (idx !== -1) {
+    const labelStart = idx + trigger.length;
+    const closeBracket = input.indexOf(']', labelStart);
+    if (closeBracket === -1) break;
+
+    const afterClose = closeBracket + 1;
+    const nextCh = input[afterClose];
+    const hasLabel = imagesOnly || closeBracket > labelStart;
+
+    if (hasLabel && nextCh === '(' && !noMoreCloseParen) {
+      const closeParen = input.indexOf(')', afterClose + 1);
+      if (closeParen !== -1) {
+        out += input.slice(cursor, idx) + input.slice(labelStart, closeBracket);
+        cursor = closeParen + 1;
+        idx = input.indexOf(trigger, cursor);
+        continue;
+      }
+      noMoreCloseParen = true;
+    } else if (hasLabel && nextCh === '[' && !noMoreCloseRef) {
+      const closeRef = input.indexOf(']', afterClose + 1);
+      if (closeRef !== -1) {
+        out += input.slice(cursor, idx) + input.slice(labelStart, closeBracket);
+        cursor = closeRef + 1;
+        idx = input.indexOf(trigger, cursor);
+        continue;
+      }
+      noMoreCloseRef = true;
+    }
+
+    idx = input.indexOf(trigger, closeBracket + 1);
+  }
+
+  if (cursor === 0) return input;
+  return out + input.slice(cursor);
+}
+
+function stripInlineLinksAndImages(raw: string): string {
+  return stripBracketConstructs(stripBracketConstructs(raw, true), false);
+}
+
 function stripInlineMarkdown(raw: string): string {
-  return raw
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
+  return stripInlineLinksAndImages(raw)
     .replace(/`([^`]*)`/g, '$1')
     .replace(/(\*\*|__|~~|\*|_)/g, '')
     .replace(/\\([\\`*_{}[\]()#+\-.!>~|])/g, '$1')
@@ -1084,11 +1131,7 @@ export function extractReadableMarkdownText(markdown: string): string {
         .replace(/^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/, '');
     }
 
-    text = text
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-      .replace(/!\[([^\]]*)\]\[[^\]]*\]/g, '$1')
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-      .replace(/\[([^\]]+)\]\[[^\]]*\]/g, '$1')
+    text = stripInlineLinksAndImages(text)
       .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/gi, '$1')
       .replace(/`([^`]*)`/g, '$1')
       .replace(/(\*\*|__|~~|\*|_)/g, '')

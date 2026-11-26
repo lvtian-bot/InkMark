@@ -298,7 +298,68 @@ export function LargeMarkdownReader({
     onDocInitRef.current(doc.headings, content);
   }, [content, doc, tabId]);
 
-  // 处理大纲点击后的精确定位滚动（在目标 chunk 完成挂载渲染后执行）。
+  // 测量已挂载片段真实高度，用于卸载后占位与向上滚动时的视口稳定；
+  // 先于大纲跳转定位执行，且在存在待执行大纲跳转时仅记录高度不做滚动补偿，避免把目标标题顶出视口。
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const body = bodyRef.current;
+    if (!container || !body) return;
+
+    const measureAndAnchor = (commitState: boolean, suppressAnchor = false): void => {
+      const elements = body.querySelectorAll<HTMLElement>('.large-reader-chunk[data-mounted="1"]');
+      const heights = measuredHeightsRef.current;
+      let scrollDelta = 0;
+      let changed = false;
+
+      for (const el of elements) {
+        const idAttr = el.dataset.chunkId;
+        if (!idAttr) continue;
+        const id = Number(idAttr);
+        const chunk = doc.chunks[id];
+        if (!chunk) continue;
+        const measured = el.offsetHeight;
+        if (measured <= 0) continue;
+
+        const prev = heights.get(id) ?? chunk.estimatedHeight;
+        if (measured !== prev) {
+          heights.set(id, measured);
+          changed = true;
+          // 仅当变化发生在当前可视顶部之上且非主动大纲跳转时补偿滚动位置，防止回滚跳动。
+          if (!suppressAnchor && el.offsetTop + prev <= container.scrollTop + 4) {
+            scrollDelta += measured - prev;
+          }
+        }
+      }
+
+      if (scrollDelta !== 0) {
+        const nextTop = Math.max(0, container.scrollTop + scrollDelta);
+        container.scrollTop = nextTop;
+        recordLargeReaderScrollTop(tabIdRef.current, nextTop);
+      }
+      if (commitState && changed) {
+        const snapshot = new Map(heights);
+        setWindowState((prev) => ({
+          doc,
+          mounted: prev.doc === doc ? prev.mounted : mountedIdsRef.current,
+          heights: snapshot,
+        }));
+      }
+    };
+
+    measureAndAnchor(false, pendingScrollPosRef.current !== null);
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      measureAndAnchor(true, pendingScrollPosRef.current !== null);
+    });
+    const elements = body.querySelectorAll<HTMLElement>('.large-reader-chunk[data-mounted="1"]');
+    for (const el of elements) {
+      observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, [doc, mountedIds]);
+
+  // 处理大纲点击后的精确定位滚动（在目标 chunk 完成挂载渲染与高度记录后执行）。
   useLayoutEffect(() => {
     const pos = pendingScrollPosRef.current;
     if (pos === null) return;
@@ -326,66 +387,6 @@ export function LargeMarkdownReader({
     container.scrollTop = nextTop;
     recordLargeReaderScrollTop(tabIdRef.current, nextTop);
     notifyLargeReaderLayoutChange();
-  }, [doc, mountedIds]);
-
-  // 测量已挂载片段真实高度，用于卸载后占位与向上滚动时的视口稳定。
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    const body = bodyRef.current;
-    if (!container || !body) return;
-
-    const measureAndAnchor = (commitState: boolean): void => {
-      const elements = body.querySelectorAll<HTMLElement>('.large-reader-chunk[data-mounted="1"]');
-      const heights = measuredHeightsRef.current;
-      let scrollDelta = 0;
-      let changed = false;
-
-      for (const el of elements) {
-        const idAttr = el.dataset.chunkId;
-        if (!idAttr) continue;
-        const id = Number(idAttr);
-        const chunk = doc.chunks[id];
-        if (!chunk) continue;
-        const measured = el.offsetHeight;
-        if (measured <= 0) continue;
-
-        const prev = heights.get(id) ?? chunk.estimatedHeight;
-        if (measured !== prev) {
-          heights.set(id, measured);
-          changed = true;
-          // 仅当变化发生在当前可视顶部之上时补偿滚动位置，防止回滚跳动。
-          if (el.offsetTop + prev <= container.scrollTop + 4) {
-            scrollDelta += measured - prev;
-          }
-        }
-      }
-
-      if (scrollDelta !== 0) {
-        const nextTop = Math.max(0, container.scrollTop + scrollDelta);
-        container.scrollTop = nextTop;
-        recordLargeReaderScrollTop(tabIdRef.current, nextTop);
-      }
-      if (commitState && changed) {
-        const snapshot = new Map(heights);
-        setWindowState((prev) => ({
-          doc,
-          mounted: prev.doc === doc ? prev.mounted : mountedIdsRef.current,
-          heights: snapshot,
-        }));
-      }
-    };
-
-    measureAndAnchor(false);
-
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      measureAndAnchor(true);
-    });
-    const elements = body.querySelectorAll<HTMLElement>('.large-reader-chunk[data-mounted="1"]');
-    for (const el of elements) {
-      observer.observe(el);
-    }
-    return () => observer.disconnect();
   }, [doc, mountedIds]);
 
   // IntersectionObserver 作为补充窗口驱动，快速拖动滚动条或内容高度变化时同步可见片段。
@@ -641,19 +642,23 @@ export function LargeMarkdownReader({
 
   const handleClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
     const target = event.target;
+    const href = pickLinkHrefFromClick(target);
+    // 与常规编辑器对齐：按住跟随链接组合键点击带链接的图片（如徽章）时优先打开链接。
+    if (href && isFollowLinkCombo(event, window.inkmark.platform)) {
+      event.preventDefault();
+      onFollowLinkRef.current(href);
+      return;
+    }
+
     if (target instanceof HTMLImageElement && target.src) {
       event.preventDefault();
       setPreviewImage({ doc, tabId, image: { src: target.src, alt: target.alt } });
       return;
     }
 
-    const href = pickLinkHrefFromClick(target);
     if (!href) return;
-    // 只读预览始终阻止默认 <a> 导航，避免 Electron 窗口离开当前页面；按住组合键才打开链接。
+    // 只读预览始终阻止默认 <a> 导航，避免 Electron 窗口离开当前页面。
     event.preventDefault();
-    if (isFollowLinkCombo(event, window.inkmark.platform)) {
-      onFollowLinkRef.current(href);
-    }
   };
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLDivElement>): void => {

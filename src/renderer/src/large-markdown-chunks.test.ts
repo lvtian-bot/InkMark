@@ -507,4 +507,20 @@ describe('splitMarkdownForReader & renderMarkdownChunkToHtml', () => {
     expect(contDoc.chunks.length).toBe(2);
     expect(contDoc.chunks[1].markdown).toContain('  - Sibling item');
   });
+
+  it('extractReadableMarkdownText 对大量未闭合 ![ 与 [a]( 保持线性耗时，并正确提取徽章链接文字', () => {
+    const adversarial = [
+      '[![CI](https://host/badge.svg)](https://host/actions)',
+      '![ '.repeat(20_000),
+      '[a]('.repeat(20_000),
+      '['.repeat(20_000) + ']',
+    ].join('\n');
+
+    const start = performance.now();
+    const extracted = extractReadableMarkdownText(adversarial);
+    const elapsed = performance.now() - start;
+
+    expect(elapsed).toBeLessThan(500);
+    expect(extracted.split('\n')[0]).toBe('CI');
+  });
 });
