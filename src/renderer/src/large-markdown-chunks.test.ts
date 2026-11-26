@@ -424,4 +424,87 @@ describe('splitMarkdownForReader & renderMarkdownChunkToHtml', () => {
     );
     expect(nextListHtml).toContain('<ol start="3">');
   });
+
+  it('文档以未闭合代码围栏结尾时，全局引用定义不会泄露进代码块，且围栏前链接与前置 frontmatter/标题偏移正常', () => {
+    const filler = Array.from({ length: 90 }, (_, i) => `填充行 ${i}`).join('\n\n');
+    const content = [
+      '---',
+      'title: UnclosedFenceDoc',
+      '---',
+      '',
+      '# Front Heading',
+      '',
+      '[ext]: https://example.com/ext "External"',
+      '',
+      '[not-a-def]: invalid url with spaces',
+      '',
+      filler,
+      '',
+      '## Final Section',
+      '',
+      '查看 [外链][ext]。',
+      '',
+      '```js',
+      'const tail = 42;',
+    ].join('\n');
+
+    const doc = splitMarkdownForReader(content, 60, 90);
+    expect(doc.chunks.length).toBeGreaterThanOrEqual(2);
+    expect(doc.referenceDefs).toContain('https://example.com/ext');
+    expect(doc.referenceDefs).not.toContain('invalid url with spaces');
+
+    const frontHeading = doc.headings.find((h) => h.text === 'Front Heading')!;
+    const finalHeading = doc.headings.find((h) => h.text === 'Final Section')!;
+    const html0 = renderMarkdownChunkToHtml(doc.chunks[0], doc.referenceDefs);
+    expect(html0).toContain('language-yaml');
+    expect(html0).toContain('title: UnclosedFenceDoc');
+    expect(html0).toContain(`<h1 data-heading-pos="${frontHeading.pos}">Front Heading</h1>`);
+
+    const htmlLast = renderMarkdownChunkToHtml(
+      doc.chunks[doc.chunks.length - 1],
+      doc.referenceDefs,
+    );
+    expect(htmlLast).toContain(`<h2 data-heading-pos="${finalHeading.pos}">Final Section</h2>`);
+    expect(htmlLast).toContain('<a href="https://example.com/ext" title="External">外链</a>');
+    expect(htmlLast).toContain('<code class="language-js">const tail = 42;\n</code>');
+    expect(htmlLast).not.toContain('[ext]: https://example.com/ext');
+    expect(htmlLast).not.toContain('invalid url with spaces');
+  });
+
+  it('1..3 空格缩进的顶层无序与有序列表按上限正常切分，不合并成单块且保持有序编号延续', () => {
+    const indentedBullets = Array.from({ length: 12_000 }, (_, i) => `  - Indented item ${i}`).join(
+      '\n',
+    );
+    const bulletDoc = splitMarkdownForReader(indentedBullets, 80, 120);
+    expect(bulletDoc.chunks.length).toBeGreaterThanOrEqual(90);
+    for (const chunk of bulletDoc.chunks) {
+      expect(chunk.endLine - chunk.startLine + 1).toBeLessThanOrEqual(160);
+    }
+
+    const indentedOrdered = Array.from({ length: 250 }, (_, i) => `  1. Ordered ${i + 1}`).join(
+      '\n',
+    );
+    const ordDoc = splitMarkdownForReader(indentedOrdered, 80, 120);
+    expect(ordDoc.chunks).toHaveLength(3);
+    expect(renderMarkdownChunkToHtml(ordDoc.chunks[1], ordDoc.referenceDefs)).toContain(
+      '<ol start="121">',
+    );
+    expect(renderMarkdownChunkToHtml(ordDoc.chunks[2], ordDoc.referenceDefs)).toContain(
+      '<ol start="241">',
+    );
+
+    // 2 空格顶层列表项内部的 4 空格缩进续行段落仍保留在同一列表项片段内
+    const indentedWithContinuation = [
+      '  - Head item',
+      ...Array.from({ length: 82 }, (_, i) => `    body line ${i}`),
+      '',
+      '    second paragraph in indented item',
+      '',
+      '  - Sibling item',
+    ].join('\n');
+    const contDoc = splitMarkdownForReader(indentedWithContinuation, 60, 90);
+    expect(contDoc.chunks[0].markdown).toContain('second paragraph in indented item');
+    expect(contDoc.chunks.length).toBe(2);
+    expect(contDoc.chunks[1].markdown).toContain('  - Sibling item');
+  });
 });

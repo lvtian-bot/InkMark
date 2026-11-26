@@ -25,6 +25,7 @@ export interface LargeMarkdownChunk {
   estimatedHeight: number;
   headingPositions: number[];
   continuedOrderedListStart?: number;
+  frontmatterEndOffset?: number;
 }
 
 export interface LargeMarkdownDocument {
@@ -48,6 +49,7 @@ const TABLE_SEPARATOR_RE =
 const TOP_LEVEL_LIST_RE = /^(?:[-*+]|\d{1,9}[.)])[ \t]/;
 const ANY_LIST_ITEM_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]/;
 const LIST_ITEM_PREFIX_RE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
+const LIST_ITEM_INDENT_RE = /^( {0,3})(?:[-*+]|(\d{1,9})[.)])(?:([ \t]+)(.*)|[ \t]*)$/;
 const ORDERED_LIST_ITEM_RE = /^( {0,3})(\d{1,9})([.)])(?:([ \t]+)(.*)|[ \t]*)$/;
 const UNORDERED_LIST_ITEM_RE = /^( {0,3})[-*+](?:[ \t]|$)/;
 const HR_LINE_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
@@ -60,6 +62,23 @@ interface ActiveOrderedList {
   delimiter: '.' | ')';
   nextOrdinal: number;
   contentIndent: number;
+}
+
+function parseListItemIndent(
+  line: string,
+): { leadingSpaces: number; contentIndent: number } | null {
+  if (HR_LINE_RE.test(line)) return null;
+  const m = LIST_ITEM_INDENT_RE.exec(line);
+  if (!m) return null;
+  const leadingSpaces = m[1].length;
+  const markerLen = m[2] ? m[2].length + 1 : 1;
+  const spacesAfter = m[3] ?? '';
+  const rest = m[4] ?? '';
+  const spaceLen =
+    spacesAfter.length > 0 && spacesAfter.length <= 4 && rest.trim().length > 0
+      ? spacesAfter.length
+      : 1;
+  return { leadingSpaces, contentIndent: leadingSpaces + markerLen + spaceLen };
 }
 
 interface FenceOpenInfo {
@@ -330,8 +349,7 @@ export function splitMarkdownForReader(
   const headingToChunk = new Map<number, number>();
   const slugCount = new Map<string, number>();
   const usedIds = new Set<string>();
-  const refDefLines: string[] = [];
-  const seenRefLabels = new Set<string>();
+  const refDefBlocks: string[] = [];
 
   const registerHeading = (level: number, rawText: string, pos: number, chunkId: number): void => {
     const text = stripInlineMarkdown(rawText);
@@ -358,6 +376,7 @@ export function splitMarkdownForReader(
   let inTable = false;
   let tableQuoteDepth = 0;
   let inList = false;
+  let listContentIndent = 0;
   let paragraphStartLine = -1;
   let refDefConsumedUntil = -1;
   const orderedListState: {
@@ -372,6 +391,8 @@ export function splitMarkdownForReader(
     const startOffset = lineStarts[chunkStartLine];
     const endOffset = lineNextStarts[endLineInclusive];
     const chunkLineCount = endLineInclusive - chunkStartLine + 1;
+    const chunkFmEndOffset =
+      id === 0 && frontmatterEndLine >= 0 ? lineNextStarts[frontmatterEndLine] - startOffset : 0;
     chunks.push({
       id,
       startLine: chunkStartLine,
@@ -384,6 +405,7 @@ export function splitMarkdownForReader(
       ...(chunkOrderedListStart !== undefined
         ? { continuedOrderedListStart: chunkOrderedListStart }
         : {}),
+      ...(chunkFmEndOffset > 0 ? { frontmatterEndOffset: chunkFmEndOffset } : {}),
     });
     chunkStartLine = endLineInclusive + 1;
     currentHeadingPositions = [];
@@ -403,6 +425,7 @@ export function splitMarkdownForReader(
       inTable = false;
       tableQuoteDepth = 0;
       inList = false;
+      listContentIndent = 0;
       orderedListState.active = null;
       if (!isBlankLine(line)) chunkFirstNonBlankSeen = true;
       // 前置 YAML 块禁止拆开，只在最后一行完成后考虑切分。
@@ -419,7 +442,7 @@ export function splitMarkdownForReader(
         !exitedBlockquote &&
         fenceOpenedFromListItem &&
         !isBlankLine(fenceRest) &&
-        leadingIndentWidth(fenceRest) === 0 &&
+        leadingIndentWidth(fenceRest) < Math.max(1, listContentIndent) &&
         !isClosingFence(fenceRest, fenceChar, fenceLen, true);
       if (exitedBlockquote || exitedListItem) {
         // CommonMark 中引用块或列表项容器结束时，其内未闭合围栏同步隐式闭合，当前行按正常块处理。
@@ -445,7 +468,9 @@ export function splitMarkdownForReader(
           const nextLine = lines[i + 1];
           const nextNonBlankIdx = nextNonBlankLine[i + 1];
           const nextContinuesList =
-            inList && nextNonBlankIdx !== -1 && /^[ \t]+\S/.test(lines[nextNonBlankIdx]);
+            inList &&
+            nextNonBlankIdx !== -1 &&
+            leadingIndentWidth(lines[nextNonBlankIdx]) >= listContentIndent;
           const nextContinuesQuote =
             closedQuoteDepth > 0 && stripExactBlockquoteDepth(nextLine, closedQuoteDepth) !== null;
           if (
@@ -471,6 +496,10 @@ export function splitMarkdownForReader(
       inTable = false;
       tableQuoteDepth = 0;
       if (fenceOpen.openedFromListItem && fenceOpen.quoteDepth === 0) {
+        const listIndent = parseListItemIndent(line);
+        if (listIndent && (!inList || listIndent.leadingSpaces < listContentIndent)) {
+          listContentIndent = listIndent.contentIndent;
+        }
         inList = true;
         const ordInline = ORDERED_LIST_ITEM_RE.exec(line);
         if (ordInline) {
@@ -520,9 +549,10 @@ export function splitMarkdownForReader(
       if (
         !fenceOpen.openedFromListItem &&
         (fenceOpen.quoteDepth > 0 ||
-          (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))))
+          (leadingIndentWidth(line) < listContentIndent && (i === 0 || isBlankLine(lines[i - 1]))))
       ) {
         inList = false;
+        listContentIndent = 0;
       }
       continue;
     }
@@ -546,7 +576,10 @@ export function splitMarkdownForReader(
           inTable = true;
           tableQuoteDepth = curQuote.quoteDepth;
           paragraphStartLine = -1;
-          if (curQuote.quoteDepth > 0 || !/^[ \t]/.test(line)) inList = false;
+          if (curQuote.quoteDepth > 0 || leadingIndentWidth(line) < listContentIndent) {
+            inList = false;
+            listContentIndent = 0;
+          }
           if (
             orderedListState.active &&
             (curQuote.quoteDepth > 0 ||
@@ -568,17 +601,11 @@ export function splitMarkdownForReader(
         }
       }
 
-      // 收集单行或跨行引用式链接定义，确保跨片段也能正常解析。
+      // 收集单行或跨行引用式链接定义候选块，切分后经 remark 解析筛选有效定义并按首次定义去重。
       const refHeadMatch = !inTable ? REF_DEF_HEAD_RE.exec(line) : null;
       const refEndLine = refHeadMatch ? resolveRefDefEndLine(lines, i) : -1;
       if (refHeadMatch && refEndLine !== -1) {
-        const labelKey = refHeadMatch[1].trim().toLowerCase().replace(/\s+/g, ' ');
-        if (!seenRefLabels.has(labelKey)) {
-          seenRefLabels.add(labelKey);
-          for (let r = i; r <= refEndLine; r++) {
-            refDefLines.push(lines[r]);
-          }
-        }
+        refDefBlocks.push(lines.slice(i, refEndLine + 1).join('\n'));
         refDefConsumedUntil = refEndLine;
         paragraphStartLine = -1;
         chunkFirstNonBlankSeen = true;
@@ -588,8 +615,12 @@ export function splitMarkdownForReader(
         ) {
           orderedListState.active = null;
         }
-        if (!/^[ \t]/.test(line) && (i === 0 || isBlankLine(lines[i - 1]))) {
+        if (
+          leadingIndentWidth(line) < listContentIndent &&
+          (i === 0 || isBlankLine(lines[i - 1]))
+        ) {
           inList = false;
+          listContentIndent = 0;
         }
         if (i < refDefConsumedUntil) continue;
       } else {
@@ -603,6 +634,7 @@ export function splitMarkdownForReader(
           registerHeading(level, rawBody, pos, chunkId);
           paragraphStartLine = -1;
           inList = false;
+          listContentIndent = 0;
           orderedListState.active = null;
           chunkFirstNonBlankSeen = true;
         } else if (paragraphStartLine !== -1 && !inTable && SETEXT_UNDERLINE_RE.test(line)) {
@@ -615,18 +647,26 @@ export function splitMarkdownForReader(
           currentHeadingPositions.push(pos);
           registerHeading(level, rawBody, pos, chunkId);
           paragraphStartLine = -1;
+          inList = false;
+          listContentIndent = 0;
           orderedListState.active = null;
           chunkFirstNonBlankSeen = true;
         } else {
-          if (ANY_LIST_ITEM_RE.test(line)) {
+          const listItemIndent = !inTable ? parseListItemIndent(line) : null;
+          if (listItemIndent) {
+            if (!inList || listItemIndent.leadingSpaces < listContentIndent) {
+              listContentIndent = listItemIndent.contentIndent;
+            }
             inList = true;
             paragraphStartLine = -1;
           } else if (
+            inList &&
             !isBlankLine(line) &&
-            !/^[ \t]/.test(line) &&
+            leadingIndentWidth(line) < listContentIndent &&
             (i === 0 || isBlankLine(lines[i - 1]) || BLOCKQUOTE_OR_HR_RE.test(line))
           ) {
             inList = false;
+            listContentIndent = 0;
           }
 
           if (!isBlankLine(line)) {
@@ -702,13 +742,18 @@ export function splitMarkdownForReader(
 
     const nextNonBlankIdx = nextNonBlankLine[i + 1];
     const nextNonBlank = nextNonBlankIdx !== -1 ? lines[nextNonBlankIdx] : null;
-    // 列表项内的空行后紧跟缩进续行或子列表时，属于同一列表项容器，不得在空行边界拆开。
-    const nextContinuesListItem = inList && nextNonBlank !== null && /^[ \t]+\S/.test(nextNonBlank);
+    // 仅当后续非空行缩进达到当前列表项内容缩进列时，才属于同一列表项的续行或子列表；
+    // 1..3 空格缩进的顶层兄弟列表项（如 `  - Item`）缩进小于 listContentIndent，允许在其边界切分。
+    const nextContinuesListItem =
+      inList && nextNonBlank !== null && leadingIndentWidth(nextNonBlank) >= listContentIndent;
+    const nextListIndent = parseListItemIndent(nextLine);
+    const isTopLevelSiblingList =
+      nextListIndent !== null && (!inList || nextListIndent.leadingSpaces < listContentIndent);
     const isLazyListContinuation =
       inList &&
       !isBlankLine(line) &&
       !isBlankLine(nextLine) &&
-      !TOP_LEVEL_LIST_RE.test(nextLine) &&
+      !isTopLevelSiblingList &&
       !ATX_HEADING_RE.test(nextLine) &&
       !BLOCKQUOTE_OR_HR_RE.test(nextLine);
     if (nextContinuesListItem || isLazyListContinuation) continue;
@@ -722,7 +767,7 @@ export function splitMarkdownForReader(
     if (countInChunk >= maxLines) {
       const lineIsBlockquote = BLOCKQUOTE_LINE_RE.test(line);
       const atListOrBlockBoundary =
-        TOP_LEVEL_LIST_RE.test(nextLine) ||
+        isTopLevelSiblingList ||
         HR_LINE_RE.test(nextLine) ||
         (!lineIsBlockquote && BLOCKQUOTE_LINE_RE.test(nextLine));
       if (atListOrBlockBoundary || countInChunk >= maxLines * 3) {
@@ -739,7 +784,7 @@ export function splitMarkdownForReader(
     chunks,
     headings,
     headingToChunk,
-    referenceDefs: refDefLines.join('\n'),
+    referenceDefs: normalizeReferenceDefs(refDefBlocks),
   };
 }
 
@@ -750,6 +795,7 @@ interface GlobalDefinition {
 
 interface ActiveRenderContext {
   chunkStartOffset: number;
+  bodyOffsetShift: number;
   headingSet: Set<number>;
   continuedOrderedListStart?: number;
   globalDefs: ReadonlyMap<string, GlobalDefinition>;
@@ -758,6 +804,25 @@ interface ActiveRenderContext {
 let activeRenderContext: ActiveRenderContext | null = null;
 
 const refDefParser = unified().use(remarkParse);
+
+function normalizeReferenceDefs(blocks: readonly string[]): string {
+  if (blocks.length === 0) return '';
+  const candidateRaw = blocks.join('\n\n');
+  const tree = refDefParser.parse(candidateRaw);
+  const seen = new Set<string>();
+  const validBlocks: string[] = [];
+  for (const node of tree.children) {
+    if (node.type !== 'definition' || seen.has(node.identifier)) continue;
+    const start = node.position?.start?.offset;
+    const end = node.position?.end?.offset;
+    if (typeof start === 'number' && typeof end === 'number' && end > start) {
+      seen.add(node.identifier);
+      validBlocks.push(candidateRaw.slice(start, end));
+    }
+  }
+  return validBlocks.join('\n');
+}
+
 let cachedGlobalDefs: {
   raw: string;
   map: Map<string, GlobalDefinition>;
@@ -779,12 +844,13 @@ function getGlobalDefinitions(referenceDefs: string): ReadonlyMap<string, Global
 
 function applyRenderContextToTree(tree: Root, ctx: ActiveRenderContext | null): void {
   if (!ctx) return;
-  if (
-    ctx.continuedOrderedListStart !== undefined &&
-    tree.children[0]?.type === 'list' &&
-    tree.children[0].ordered
-  ) {
-    tree.children[0].start = ctx.continuedOrderedListStart;
+  if (ctx.continuedOrderedListStart !== undefined) {
+    const firstContentNode = tree.children.find(
+      (node) => node.type !== 'definition' && node.type !== 'yaml',
+    );
+    if (firstContentNode?.type === 'list' && firstContentNode.ordered) {
+      firstContentNode.start = ctx.continuedOrderedListStart;
+    }
   }
   if (ctx.globalDefs.size > 0) {
     const stack: Parent[] = [tree];
@@ -807,8 +873,10 @@ function applyRenderContextToTree(tree: Root, ctx: ActiveRenderContext | null): 
 
 function resolveHeadingDocPos(node: MdastHeading): number | null {
   if (!activeRenderContext) return null;
-  const relOffset = node.position?.start?.offset;
-  if (typeof relOffset !== 'number') return null;
+  const rawOffset = node.position?.start?.offset;
+  if (typeof rawOffset !== 'number') return null;
+  const relOffset = rawOffset - activeRenderContext.bodyOffsetShift;
+  if (relOffset < 0) return null;
   const candidate = activeRenderContext.chunkStartOffset + relOffset;
   if (activeRenderContext.headingSet.has(candidate)) return candidate;
   // 行首可能有 0..3 个前导空格，行偏移落在 [candidate - 3, candidate]
@@ -915,10 +983,28 @@ export function renderMarkdownChunkToHtml(
   chunk: LargeMarkdownChunk,
   referenceDefs: string,
 ): string {
-  const input = referenceDefs.length > 0 ? `${chunk.markdown}\n\n${referenceDefs}` : chunk.markdown;
+  // 将经过校验的全局引用定义注入正文前方（chunk 0 若含 YAML frontmatter 则紧随其后），
+  // 既避免末尾未闭合代码围栏或 HTML 块吞掉定义，又通过 bodyOffsetShift 精确还原标题偏移。
+  let input = chunk.markdown;
+  let bodyOffsetShift = 0;
+  if (referenceDefs.length > 0) {
+    const fmEnd = chunk.frontmatterEndOffset ?? 0;
+    if (fmEnd > 0 && fmEnd <= chunk.markdown.length) {
+      const fmPart = chunk.markdown.slice(0, fmEnd);
+      const bodyPart = chunk.markdown.slice(fmEnd);
+      const injected = `\n${referenceDefs}\n\n`;
+      input = `${fmPart}${injected}${bodyPart}`;
+      bodyOffsetShift = injected.length;
+    } else {
+      const injected = `${referenceDefs}\n\n`;
+      input = `${injected}${chunk.markdown}`;
+      bodyOffsetShift = injected.length;
+    }
+  }
   const processor = chunk.id === 0 ? processorChunkZero : processorChunkBody;
   activeRenderContext = {
     chunkStartOffset: chunk.startOffset,
+    bodyOffsetShift,
     headingSet: new Set(chunk.headingPositions),
     continuedOrderedListStart: chunk.continuedOrderedListStart,
     globalDefs: getGlobalDefinitions(referenceDefs),
