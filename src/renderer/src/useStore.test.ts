@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resetToggleViewModeThrottleForTesting, selectViewMode, useStore } from './stores/useStore';
+import {
+  isLargeMarkdownTab,
+  resetToggleViewModeThrottleForTesting,
+  selectViewMode,
+  useStore,
+} from './stores/useStore';
 import { LARGE_MARKDOWN_THRESHOLD_BYTES } from '../../shared/openable-document';
 
 describe('useStore addTab', () => {
@@ -111,19 +116,23 @@ describe('useStore toolbarVisible', () => {
   });
 });
 
-describe('useStore largeDocSourceForced', () => {
+describe('useStore isLargeMarkdownTab', () => {
   const initialState = {
     tabs: useStore.getState().tabs,
     activeTabId: useStore.getState().activeTabId,
     viewMode: useStore.getState().viewMode,
   };
 
+  beforeEach(() => {
+    resetToggleViewModeThrottleForTesting();
+  });
+
   afterEach(() => {
     resetToggleViewModeThrottleForTesting();
     useStore.setState(initialState);
   });
 
-  it('超大 Markdown 标签自动标记 largeDocSourceForced 并派生源码模式，但不改写全局偏好', () => {
+  it('超过 1 MB 的 Markdown 标签保持所见即所得偏好以启用只读阅读，并可自由切换源码编辑', () => {
     useStore.setState({ viewMode: 'wysiwyg' });
     const bigContent = 'a'.repeat(LARGE_MARKDOWN_THRESHOLD_BYTES + 100);
     const bigTabId = useStore.getState().addTab({
@@ -131,24 +140,24 @@ describe('useStore largeDocSourceForced', () => {
       content: bigContent,
       fileMtime: 1,
     });
-    const smallTabId = useStore.getState().addTab({
-      filePath: 'D:/notes/small.md',
-      content: '# small',
+    const textTabId = useStore.getState().addTab({
+      filePath: 'D:/notes/huge.txt',
+      content: bigContent,
       fileMtime: 1,
     });
 
     useStore.getState().setActiveTab(bigTabId);
     const bigTab = useStore.getState().tabs.find((t) => t.id === bigTabId);
-    expect(bigTab!.largeDocSourceForced).toBe(true);
-    expect(selectViewMode(useStore.getState())).toBe('source');
-    expect(useStore.getState().viewMode).toBe('wysiwyg');
-
-    // 未经确认解除前，直接调用 toggleViewMode 不会静默翻转全局偏好
-    useStore.getState().toggleViewMode();
-    expect(useStore.getState().viewMode).toBe('wysiwyg');
-
-    // 切回普通标签恢复所见即所得
-    useStore.getState().setActiveTab(smallTabId);
+    expect(isLargeMarkdownTab(bigTab)).toBe(true);
     expect(selectViewMode(useStore.getState())).toBe('wysiwyg');
+
+    useStore.getState().toggleViewMode();
+    expect(selectViewMode(useStore.getState())).toBe('source');
+
+    // 纯文本大文件不算 Markdown 大文档，且固定源码模式
+    const textTab = useStore.getState().tabs.find((t) => t.id === textTabId);
+    expect(isLargeMarkdownTab(textTab)).toBe(false);
+    useStore.getState().setActiveTab(textTabId);
+    expect(selectViewMode(useStore.getState())).toBe('source');
   });
 });

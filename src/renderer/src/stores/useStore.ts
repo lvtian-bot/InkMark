@@ -35,8 +35,6 @@ export interface Tab {
   fileMtime: number | null;
   /** 外部改动已发生、等待用户点击提示条后加载磁盘版本（不静默刷新）。 */
   externalUpdatePending: boolean;
-  /** 大 Markdown 文档默认强制使用源码模式打开，用户确认后可解除该限制。 */
-  largeDocSourceForced: boolean;
 }
 
 interface InkMarkState extends AppSettings {
@@ -93,21 +91,33 @@ export const selectContentTheme = (s: AppSettings): ContentTheme =>
 export const tabDocumentPath = (tab: Pick<Tab, 'filePath' | 'recoveryOriginPath'>): string | null =>
   tab.filePath ?? tab.recoveryOriginPath ?? null;
 
-/** 根据标签自身限制与全局视图偏好计算实际生效的编辑模式。 */
+/** 判断标签页是否为超过 1 MB 的 Markdown 文档（所见即所得下使用只读分段预览）。 */
+export function isLargeMarkdownTab(
+  tab: Pick<Tab, 'filePath' | 'recoveryOriginPath' | 'sourceContent' | 'isStartPage'> | undefined,
+): boolean {
+  return (
+    !!tab &&
+    !tab.isStartPage &&
+    resolveDocumentKind(tabDocumentPath(tab)) === 'markdown' &&
+    isLargeMarkdownContent(tab.sourceContent)
+  );
+}
+
+/** 根据标签自身类型与全局视图偏好计算实际生效的编辑模式。 */
 export function resolveTabViewMode(
-  tab: Pick<Tab, 'filePath' | 'recoveryOriginPath' | 'largeDocSourceForced'> | undefined,
+  tab: Pick<Tab, 'filePath' | 'recoveryOriginPath'> | undefined,
   preferredMode: ViewMode,
 ): ViewMode {
   if (!tab) return preferredMode;
-  if (resolveDocumentKind(tabDocumentPath(tab)) === 'text' || tab.largeDocSourceForced) {
+  if (resolveDocumentKind(tabDocumentPath(tab)) === 'text') {
     return 'source';
   }
   return preferredMode;
 }
 
-// viewMode 存的是用户对 Markdown 文档的偏好；纯文本/代码文件或大文档保护标签固定源码模式，
+// viewMode 存的是用户对 Markdown 文档的偏好；纯文本/代码文件固定源码模式，
 // 由这个选择器派生出当前实际生效的模式。切换到受限标签不改写偏好，
-// 切回普通 Markdown 标签自动恢复原模式。
+// 切回 Markdown 标签自动恢复原模式。
 export const selectViewMode = (s: InkMarkState): ViewMode => {
   const tab = s.tabs.find((item) => item.id === s.activeTabId);
   return resolveTabViewMode(tab, s.viewMode);
@@ -139,9 +149,6 @@ function createTab(
   const filePath = init?.filePath ?? null;
   const content = init?.content ?? '';
   const isStartPage = filePath ? false : (init?.startPage ?? startPageOnLaunch);
-  const docPath = filePath ?? init?.recoveryOriginPath ?? null;
-  const largeDocSourceForced =
-    resolveDocumentKind(docPath) === 'markdown' && isLargeMarkdownContent(content);
   return {
     id: nextTabId(),
     filePath,
@@ -157,7 +164,6 @@ function createTab(
     sourceScrollTop: 0,
     fileMtime: init?.fileMtime ?? null,
     externalUpdatePending: false,
-    largeDocSourceForced,
   };
 }
 
@@ -325,12 +331,8 @@ export const useStore = create<InkMarkState>((set, get) => ({
     if (now - lastToggleViewModeTime < 250) return;
     const s = get();
     const activeTab = s.tabs.find((tab) => tab.id === s.activeTabId);
-    // 纯文本/代码文件及处于大文档源码保护中的标签不直接改写全局偏好：
-    // 大文档切换须先经过界面确认解除 largeDocSourceForced。
-    if (
-      activeTab &&
-      (resolveDocumentKind(tabDocumentPath(activeTab)) === 'text' || activeTab.largeDocSourceForced)
-    ) {
+    // 纯文本/代码文件固定源码模式，不翻转全局视图偏好。
+    if (activeTab && resolveDocumentKind(tabDocumentPath(activeTab)) === 'text') {
       return;
     }
     lastToggleViewModeTime = now;

@@ -407,13 +407,9 @@ export const messages: Record<MessageKey, string> = {
   'externalUpdate.banner': 'File changed externally. Reload before editing.',
   'externalUpdate.conflictBanner': 'File modified externally. Editing and auto-save are paused.',
 
-  'largeDoc.banner': 'Large document opened in source mode for smooth performance.',
-  'largeDoc.switchToWysiwyg': 'Open in WYSIWYG',
-  'largeDoc.confirmTitle': 'Switch to WYSIWYG Mode',
-  'largeDoc.confirmBody':
-    'This document is large ({size}). Switching to WYSIWYG mode may take several seconds and use significant memory. Continue?',
-  'largeDoc.confirmContinue': 'Continue',
-  'largeDoc.confirmKeepSource': 'Stay in Source Mode',
+  'largeDoc.banner':
+    'This document exceeds 1 MB. WYSIWYG mode is read-only for smooth reading; switch to Source mode to edit.',
+  'largeDoc.switchToSource': 'Edit in Source',
 
   'image.alt': 'image',
   'image.readFailed': 'Failed to read the image, please choose it again.',

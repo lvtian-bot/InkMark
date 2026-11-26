@@ -21,7 +21,6 @@ function makeTab(overrides: Partial<Tab> = {}): Tab {
     sourceScrollTop: 0,
     fileMtime: null,
     externalUpdatePending: false,
-    largeDocSourceForced: false,
     ...overrides,
   };
 }

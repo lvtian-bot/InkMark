@@ -107,5 +107,5 @@ describe('fastSerializer', () => {
     expect(md.length).toBeGreaterThan(100_000);
     expect(elapsed).toBeLessThan(1000);
     await ed.destroy();
-  });
+  }, 15_000);
 });

@@ -15,7 +15,6 @@ import '../styles/status-bar.css';
 
 interface StatusBarProps {
   onOpenSettings: () => void;
-  onToggleViewMode?: () => void;
 }
 
 interface PanelToggleProps {
@@ -46,7 +45,7 @@ function PanelToggle({ visible, side, icon, onToggle, showLabel, hideLabel }: Pa
   );
 }
 
-export function StatusBar({ onOpenSettings, onToggleViewMode }: StatusBarProps) {
+export function StatusBar({ onOpenSettings }: StatusBarProps) {
   const { t } = useI18n();
   const wordCount = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.wordCount ?? 0);
   const charCount = useStore((s) => s.tabs.find((t) => t.id === s.activeTabId)?.charCount ?? 0);
@@ -112,7 +111,7 @@ export function StatusBar({ onOpenSettings, onToggleViewMode }: StatusBarProps) 
         {fileTreeSide === 'left' && fileTreeToggle}
         <button
           className={`status-mode-btn${isSourceMode ? ' active' : ''}`}
-          onClick={onToggleViewMode ?? toggleViewMode}
+          onClick={toggleViewMode}
           disabled={isPlainTextTab}
           title={isPlainTextTab ? t('statusBar.sourceModeLocked') : sourceModeTitle}
           aria-label={isPlainTextTab ? t('statusBar.sourceModeLocked') : sourceModeTitle}

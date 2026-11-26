@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { selectViewMode, tabDocumentPath, useStore } from '../stores/useStore';
+import { isLargeMarkdownTab, selectViewMode, tabDocumentPath, useStore } from '../stores/useStore';
 import { editorStateCache } from '../editor-state-cache';
 import { editorHandle } from '../editor-ref';
 import { confirmDialog } from '../confirm-dialog';
 import { isImageUploadInProgress, waitForImageUploads } from '../image-upload';
+import { clearLargeReaderScrollTop } from '../large-reader-ref';
 import { sourceEditorHandle } from '../source-editor-ref';
 import { buildConflictDiff } from '../conflict-diff';
 import { t } from '../i18n';
@@ -112,7 +113,11 @@ export function useFile(
       const state = useStore.getState();
       const tab = state.tabs.find((item) => item.id === tabId);
       if (!tab) return false;
-      if (tabId === state.activeTabId && selectViewMode(state) === 'wysiwyg') {
+      if (
+        tabId === state.activeTabId &&
+        selectViewMode(state) === 'wysiwyg' &&
+        !isLargeMarkdownTab(tab)
+      ) {
         const pendingMd = editorHandle.current?.getPendingMarkdown();
         if (pendingMd != null && pendingMd !== tab.sourceContent) {
           updateTab(tabId, { sourceContent: pendingMd, isDirty: true });
@@ -156,11 +161,7 @@ export function useFile(
       if (rewritten) {
         editorStateCache.dispose(tabId);
         const isTextDoc = resolveDocumentKind(result.path) === 'text';
-        const largeDocSourceForced =
-          !isTextDoc && current.largeDocSourceForced && isLargeMarkdownContent(result.content);
-        if (largeDocSourceForced !== current.largeDocSourceForced) {
-          updateTab(tabId, { largeDocSourceForced });
-        }
+        const isLargeMd = !isTextDoc && isLargeMarkdownContent(result.content);
         if (state.activeTabId === tabId) {
           const prevMode = selectViewMode(state);
           const activeMode = selectViewMode(useStore.getState());
@@ -173,7 +174,7 @@ export function useFile(
               const loaded = sourceEditorHandle.current?.getEditorState();
               if (loaded) stateRef.current.refreshSourceMetadata(loaded);
             }
-          } else if (activeMode === 'wysiwyg') {
+          } else if (activeMode === 'wysiwyg' && !isLargeMd) {
             stateRef.current.setMarkdown(result.content);
           }
         }
@@ -243,24 +244,16 @@ export function useFile(
       editorStateCache.dispose(tabId);
       cancelAutoSaveTimer(tabId);
       const isTextDoc = resolveDocumentKind(tab.filePath) === 'text';
-      const nextLarge = !isTextDoc && isLargeMarkdownContent(result.content);
-      const nextLargeForced =
-        nextLarge &&
-        (liveTab.largeDocSourceForced ||
-          current.viewMode === 'source' ||
-          !isLargeMarkdownContent(liveTab.sourceContent));
+      const nextLargeMd = !isTextDoc && isLargeMarkdownContent(result.content);
       updateTab(tabId, {
         sourceContent: result.content,
         fileMtime: result.mtime,
         isDirty: false,
         externalUpdatePending: false,
-        largeDocSourceForced: nextLargeForced,
       });
       if (tabId === current.activeTabId) {
         const nextMode = selectViewMode(useStore.getState());
         if (current.viewMode === 'source') {
-          // 无论重载后留在源码还是因缩小而切回所见即所得，都先同步源码编辑器，
-          // 防止随后的模式切换 effect 读回旧正文覆盖磁盘最新版本。
           sourceEditorHandle.current?.setValue(result.content, {
             preserveLineSeparator: isTextDoc,
             plainText: isTextDoc,
@@ -270,7 +263,11 @@ export function useFile(
             if (loaded) current.refreshSourceMetadata(loaded);
           }
         } else if (nextMode === 'wysiwyg') {
-          current.setMarkdown(result.content);
+          if (nextLargeMd) {
+            editorHandle.current?.clear();
+          } else {
+            current.setMarkdown(result.content);
+          }
         }
       }
       setDiskBaseline(tabId, result.content);
@@ -563,18 +560,16 @@ export function useFile(
       ) {
         editorStateCache.dispose(activeTab.id);
         const isTextDoc = resolveDocumentKind(result.path) === 'text';
-        const largeDocSourceForced = !isTextDoc && isLargeMarkdownContent(result.content);
-        const nextMode =
-          isTextDoc || largeDocSourceForced ? 'source' : useStore.getState().viewMode;
+        const isLargeMd = !isTextDoc && isLargeMarkdownContent(result.content);
+        const nextMode = isTextDoc ? 'source' : useStore.getState().viewMode;
         updateTab(activeTab.id, {
           filePath: result.path,
           fileName: result.path.split(/[/\\]/).pop()!,
           sourceContent: result.content,
           fileMtime: result.mtime,
           isStartPage: false,
-          largeDocSourceForced,
         });
-        if (nextMode === 'wysiwyg') {
+        if (nextMode === 'wysiwyg' && !isLargeMd) {
           s.setMarkdown(result.content);
         } else if (s.viewMode === 'source') {
           // 偏好已是源码模式时必须在此处直接装载：复用标签不改变活动标签，
@@ -698,6 +693,7 @@ export function useFile(
       cancelAutoSaveTimer(id);
       editorStateCache.dispose(id);
       clearDiskBaseline(id);
+      clearLargeReaderScrollTop(id);
 
       // 关闭最后一个标签页时回到欢迎页，而非关闭整个窗口；
       // store 的 closeTab 会在标签页清空后自动新建一个欢迎页标签页。
@@ -760,6 +756,7 @@ export function useFile(
         missingNotifiedTabIdsRef.current.delete(tab.id);
         editorStateCache.dispose(tab.id);
         clearDiskBaseline(tab.id);
+        clearLargeReaderScrollTop(tab.id);
         closeTabStore(tab.id);
       }
       return kept;

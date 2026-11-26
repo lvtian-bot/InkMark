@@ -1,0 +1,45 @@
+.large-reader-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.large-reader-view.is-hidden {
+  display: none;
+}
+
+/* 复用 editor-container / theme-* / markdown-body 视觉体系，覆盖 body 的 user-select: none 以支持复制阅读 */
+.large-reader-body {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  outline: none;
+}
+
+.large-reader-container.is-link-follow-hint .large-reader-body a {
+  cursor: pointer;
+}
+
+.large-reader-body img {
+  cursor: zoom-in;
+  max-width: 100%;
+}
+
+.large-reader-chunk {
+  contain: layout style;
+}
+
+.large-reader-chunk > :first-child {
+  margin-top: 0;
+}
+
+.large-reader-chunk > :last-child {
+  margin-bottom: 0;
+}
+
+.large-reader-chunk-placeholder {
+  width: 100%;
+  pointer-events: none;
+}
